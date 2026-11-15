@@ -1,0 +1,259 @@
+<meta charset="utf-8">
+<title>Arterial</title>
+<meta name="description" content="A browser city builder: roads, zoning, traffic, buses and trains.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
+<style>
+/* Layout: full-bleed 3D view; a slim civic-console bar on top, tool dock at the bottom, panels float at the sides. */
+:root {
+  --ink: #0d131a;
+  --panel: rgba(14, 21, 29, 0.86);
+  --panel-solid: #121b25;
+  --line: rgba(160, 190, 215, 0.16);
+  --fg: #e9eff4;
+  --mute: #93a4b4;
+  --accent: #3d8bff;
+  --accent-2: #ffb547;
+  --good: #4fd17a;
+  --warn: #ffb547;
+  --bad: #ff5d4f;
+  --font: 'Barlow', 'Segoe UI', system-ui, sans-serif;
+  --cond: 'Barlow Condensed', 'Arial Narrow', 'Segoe UI', sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; margin: 0; background: var(--ink); color: var(--fg); font-family: var(--font); font-size: 14px; overflow: hidden; }
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+button { font: inherit; color: inherit; }
+#app { position: fixed; inset: 0; }
+#view { position: absolute; inset: 0; touch-action: none; }
+#view canvas { display: block; }
+.ui { position: absolute; z-index: 5; }
+.glass { background: var(--panel); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 8px 30px rgba(0,0,0,0.35); }
+.lbl { font-family: var(--cond); text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; color: var(--mute); font-weight: 600; }
+.num { font-variant-numeric: tabular-nums; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ---------- top bar ---------- */
+.topbar { top: calc(8px + env(safe-area-inset-top, 0px)); left: 8px; right: 8px; display: flex; gap: 6px; align-items: stretch; pointer-events: none; flex-wrap: wrap; }
+.topbar > * { pointer-events: auto; }
+.tb { display: flex; align-items: center; gap: 14px; padding: 7px 14px; min-height: 48px; }
+.cityblk { flex-direction: column; align-items: flex-start; gap: 3px; justify-content: center; min-width: 170px; }
+.cname { font-family: var(--cond); font-size: 20px; font-weight: 700; letter-spacing: 0.02em; line-height: 1; }
+.mile { display: flex; align-items: center; gap: 8px; width: 100%; }
+.mbar { flex: 1; height: 5px; background: rgba(255,255,255,0.1); border-radius: 3px; overflow: hidden; min-width: 80px; }
+.mbar i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #7fb6ff); }
+.mile span { font-size: 11px; color: var(--mute); white-space: nowrap; }
+.stat { display: flex; flex-direction: column; gap: 1px; }
+.stat b { font-size: 17px; font-weight: 700; line-height: 1.05; }
+.stat small { font-size: 11px; }
+.pos { color: var(--good); } .neg { color: var(--bad); }
+.demand { display: flex; gap: 5px; align-items: flex-end; height: 34px; padding-top: 2px; }
+.dbar { display: flex; flex-direction: column; align-items: center; gap: 2px; width: 18px; }
+.dbar .track { width: 10px; height: 24px; background: rgba(255,255,255,0.08); border-radius: 2px; position: relative; overflow: hidden; }
+.dbar .track i { position: absolute; left: 0; right: 0; bottom: 0; height: 0; border-radius: 2px; transition: height 0.6s; }
+.dbar span { font-family: var(--cond); font-size: 10px; font-weight: 700; color: var(--mute); line-height: 1; }
+.dbar.off { opacity: 0.25; }
+.clock { gap: 10px; }
+.clock .t { font-size: 20px; font-weight: 700; font-family: var(--cond); line-height: 1; }
+.speed { display: flex; gap: 2px; }
+.speed button { width: 30px; height: 28px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); border-radius: 6px; cursor: pointer; display: grid; place-items: center; }
+.speed button.on { background: var(--accent); border-color: var(--accent); }
+.speed svg { width: 14px; height: 14px; fill: currentColor; }
+.menu { gap: 4px; padding: 6px; margin-left: auto; }
+.mbtn { height: 36px; padding: 0 10px; border: 1px solid transparent; background: transparent; border-radius: 7px; cursor: pointer; display: flex; align-items: center; gap: 6px; font-family: var(--cond); font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; font-size: 12px; color: var(--mute); }
+.mbtn:hover { background: rgba(255,255,255,0.06); color: var(--fg); }
+.mbtn.on { background: rgba(61,139,255,0.18); color: #cfe2ff; border-color: rgba(61,139,255,0.4); }
+.mbtn svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- objectives ---------- */
+.goals { top: calc(68px + env(safe-area-inset-top, 0px)); left: 8px; width: 270px; padding: 10px 12px; }
+.goals h4 { margin: 0 0 6px; font-family: var(--cond); font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--accent-2); display: flex; justify-content: space-between; }
+.goals h4 button { background: none; border: 0; color: var(--mute); cursor: pointer; font-size: 14px; }
+.goals ol { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; line-height: 1.3; }
+.goals li.done { color: var(--mute); text-decoration: line-through; }
+.goals li.cur { color: var(--fg); font-weight: 600; }
+
+/* ---------- toolbar ---------- */
+.toolbar { left: 8px; right: 8px; margin: 0 auto; width: fit-content; bottom: calc(10px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 4px; padding: 6px; max-width: calc(100vw - 16px); overflow-x: auto; }
+.tbtn { width: 70px; height: 62px; border-radius: 8px; border: 1px solid transparent; background: transparent; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--mute); flex: none; }
+.tbtn:hover { background: rgba(255,255,255,0.06); color: var(--fg); }
+.tbtn.on { background: rgba(61,139,255,0.2); border-color: rgba(61,139,255,0.5); color: #fff; }
+.tbtn svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.tbtn span { font-family: var(--cond); font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; }
+.tbtn.danger.on { background: rgba(255,93,79,0.2); border-color: rgba(255,93,79,0.6); }
+.sep { width: 1px; background: var(--line); margin: 6px 3px; flex: none; }
+
+.palette { left: 8px; right: 8px; margin: 0 auto; width: fit-content; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 6px; padding: 8px; max-width: calc(100vw - 16px); overflow-x: auto; }
+.card { width: 128px; flex: none; border: 1px solid var(--line); background: rgba(255,255,255,0.03); border-radius: 8px; padding: 8px; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 5px; position: relative; }
+.card:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.06); }
+.card.on { border-color: var(--accent); background: rgba(61,139,255,0.16); }
+.card .sw { height: 38px; border-radius: 5px; display: grid; place-items: center; }
+.card .sw svg { width: 30px; height: 30px; fill: none; stroke: rgba(255,255,255,0.92); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.card b { font-size: 13px; line-height: 1.15; font-weight: 600; }
+.card small { font-size: 12px; color: var(--accent-2); font-variant-numeric: tabular-nums; }
+.card.locked { cursor: not-allowed; opacity: 0.55; }
+.card.locked small { color: var(--mute); }
+.card .lock { position: absolute; top: 6px; right: 6px; font-size: 10px; font-family: var(--cond); text-transform: uppercase; letter-spacing: 0.06em; background: rgba(0,0,0,0.6); padding: 2px 5px; border-radius: 4px; color: var(--mute); }
+.hint { align-self: center; padding: 0 10px; max-width: 260px; font-size: 12px; color: var(--mute); line-height: 1.35; flex: none; }
+
+/* ---------- panels ---------- */
+.panel { top: calc(68px + env(safe-area-inset-top, 0px)); width: 330px; max-height: calc(100% - 170px); overflow-y: auto; padding: 14px 16px; }
+.panel.left { left: 8px; }
+.panel.right { right: 8px; }
+.panel h3 { margin: 0; font-family: var(--cond); font-size: 22px; font-weight: 700; letter-spacing: 0.01em; line-height: 1.1; text-wrap: balance; }
+.panel .sub { color: var(--mute); font-size: 13px; margin-top: 2px; }
+.phead { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px; }
+.x { background: none; border: 0; color: var(--mute); cursor: pointer; font-size: 20px; line-height: 1; padding: 2px 4px; }
+.x:hover { color: var(--fg); }
+.sec { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; display: grid; gap: 7px; }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
+.row > span:first-child { color: var(--mute); }
+.row b { font-weight: 600; font-variant-numeric: tabular-nums; }
+.meter { height: 6px; border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden; flex: 1; max-width: 140px; }
+.meter i { display: block; height: 100%; border-radius: 3px; }
+.stars { letter-spacing: 2px; color: var(--accent-2); font-size: 13px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.chip.bad { background: rgba(255,93,79,0.16); color: #ffb0a8; }
+.chip.warn { background: rgba(255,181,71,0.16); color: #ffd79c; }
+.chip.good { background: rgba(79,209,122,0.14); color: #a8efbf; }
+.btn { height: 34px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--line); background: rgba(255,255,255,0.05); cursor: pointer; font-weight: 600; font-size: 13px; }
+.btn:hover { background: rgba(255,255,255,0.1); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary:hover { background: #5a9dff; }
+.btn.danger { color: #ffb0a8; border-color: rgba(255,93,79,0.4); }
+.btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.tax { display: grid; grid-template-columns: 92px 1fr 40px; gap: 8px; align-items: center; font-size: 13px; }
+.tax input { width: 100%; accent-color: var(--accent); }
+.line { display: grid; grid-template-columns: 14px 1fr auto; gap: 8px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 8px; }
+.line .dot { width: 14px; height: 14px; border-radius: 50%; }
+.line .nm { font-weight: 600; }
+.line .meta { color: var(--mute); font-size: 12px; }
+.line .ctl { display: flex; gap: 3px; align-items: center; }
+.line .ctl button { width: 26px; height: 26px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,0.05); cursor: pointer; }
+.line.broken { border-color: rgba(255,93,79,0.6); }
+.views { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.views button { height: 54px; border-radius: 8px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); cursor: pointer; font-size: 12px; font-weight: 600; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; }
+.views button i { width: 22px; height: 6px; border-radius: 3px; }
+.views button.on { border-color: var(--accent); background: rgba(61,139,255,0.2); }
+.legend { display: flex; justify-content: space-between; font-size: 11px; color: var(--mute); }
+.legend .grad { height: 8px; border-radius: 4px; flex: 1; margin: 0 8px; align-self: center; background: linear-gradient(90deg, #e6332a, #e6c833, #3fd65a); }
+.set { display: grid; grid-template-columns: 1fr 150px; gap: 8px; align-items: center; font-size: 13px; }
+.set select { height: 30px; background: var(--panel-solid); border: 1px solid var(--line); color: var(--fg); border-radius: 6px; padding: 0 6px; font: inherit; }
+.keys { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 12px; color: var(--mute); }
+.keys kbd { font-family: var(--cond); font-weight: 600; background: rgba(255,255,255,0.08); border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; color: var(--fg); justify-self: start; }
+table.bud { width: 100%; border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; }
+table.bud td { padding: 3px 0; }
+table.bud td:last-child { text-align: right; }
+table.bud tr.tot td { border-top: 1px solid var(--line); font-weight: 700; padding-top: 6px; }
+canvas.spark { width: 100%; height: 56px; display: block; }
+
+/* ---------- tooltip / toasts / modal ---------- */
+.tip { pointer-events: none; padding: 6px 10px; font-size: 13px; white-space: nowrap; transform: translate(16px, 16px); z-index: 9; }
+.toasts { right: 12px; bottom: calc(96px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 6px; align-items: flex-end; pointer-events: none; z-index: 8; }
+.toast { padding: 9px 14px; font-size: 13px; max-width: 340px; animation: tin 0.25s ease-out; border-left: 3px solid var(--accent); }
+.toast.bad { border-left-color: var(--bad); }
+.toast.good { border-left-color: var(--good); }
+.toast.chirp { border-left-color: #6fc3ff; font-style: italic; color: #d6e6f5; }
+@keyframes tin { from { transform: translateY(8px); opacity: 0; } }
+.modal { inset: 0; display: grid; place-items: center; background: rgba(5,9,13,0.55); z-index: 30; }
+.mbox { width: min(440px, calc(100vw - 32px)); padding: 24px; text-align: center; }
+.mbox .eyebrow { font-family: var(--cond); text-transform: uppercase; letter-spacing: 0.14em; color: var(--accent-2); font-size: 13px; font-weight: 700; }
+.mbox h2 { font-family: var(--cond); font-size: 40px; margin: 4px 0 6px; line-height: 1; }
+.mbox p { color: var(--mute); line-height: 1.45; margin: 6px 0 16px; }
+
+/* ---------- start screen ---------- */
+.start { inset: 0; z-index: 40; display: grid; place-items: center; background: radial-gradient(ellipse at 30% 20%, rgba(13,19,26,0.25), rgba(13,19,26,0.85)); padding: 16px; }
+.sbox { width: min(520px, 100%); padding: 30px 30px 26px; }
+.brand { font-family: var(--cond); font-weight: 700; font-size: 64px; line-height: 0.9; letter-spacing: 0.01em; margin: 0; }
+.brand em { font-style: normal; color: var(--accent); }
+.tag { color: var(--mute); margin: 8px 0 20px; font-size: 15px; line-height: 1.4; }
+.field { display: grid; gap: 6px; margin-bottom: 14px; }
+.field input, .field select { height: 40px; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); padding: 0 12px; font: inherit; font-size: 15px; }
+.sbtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
+.sbtns .btn { height: 42px; padding: 0 18px; font-size: 15px; }
+.legendrow { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 18px; font-size: 12px; color: var(--mute); }
+#loading { position: fixed; inset: 0; display: grid; place-items: center; background: var(--ink); z-index: 50; font-family: var(--cond); font-size: 22px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mute); }
+#err { position: fixed; left: 12px; bottom: 12px; z-index: 60; max-width: 520px; padding: 10px 14px; background: #3a1512; border: 1px solid var(--bad); border-radius: 8px; font-size: 12px; white-space: pre-wrap; }
+.fps { position: absolute; right: 10px; bottom: 6px; font-size: 11px; color: rgba(255,255,255,0.45); z-index: 4; font-variant-numeric: tabular-nums; pointer-events: none; }
+
+@media (max-width: 900px) {
+  .goals { display: none; }
+  .tb { padding: 6px 10px; gap: 10px; }
+  .menu .mbtn span { display: none; }
+  .panel { width: calc(100vw - 16px); left: 8px !important; right: 8px !important; top: auto; bottom: calc(150px + env(safe-area-inset-bottom, 0px)); max-height: 45vh; }
+  .tbtn { width: 58px; }
+  .demand { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { animation: none; } .dbar .track i { transition: none; } }
+</style>
+
+<div id="app">
+  <div id="view"></div>
+  <div class="fps" id="fps"></div>
+
+  <header class="ui topbar" id="topbar">
+    <div class="glass tb cityblk">
+      <div class="cname" id="cityName">Arterial</div>
+      <div class="mile"><div class="mbar"><i id="mileFill"></i></div><span id="mileText"></span></div>
+    </div>
+    <div class="glass tb">
+      <div class="stat"><span class="lbl">Funds</span><b class="num" id="money">$0</b><small class="num" id="net"></small></div>
+      <div class="stat"><span class="lbl">Population</span><b class="num" id="pop">0</b><small class="num" id="popsub" style="color:var(--mute)"></small></div>
+      <div class="stat"><span class="lbl">Happiness</span><b class="num" id="happy">–</b><small id="happysub" style="color:var(--mute)"></small></div>
+      <div class="demand" id="demand" title="Zone demand"></div>
+    </div>
+    <div class="glass tb clock">
+      <div class="stat"><b class="t num" id="time">07:00</b><small id="date" style="color:var(--mute)"></small></div>
+      <div class="speed" id="speed">
+        <button id="sp0" title="Pause (Space)" aria-label="Pause"><svg viewBox="0 0 16 16"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg></button>
+        <button id="sp1" title="Normal speed (1)" aria-label="Normal speed"><svg viewBox="0 0 16 16"><path d="M4 2l9 6-9 6z"/></svg></button>
+        <button id="sp2" title="Fast (2)" aria-label="Fast"><svg viewBox="0 0 16 16"><path d="M1 2l7 6-7 6zM8 2l7 6-7 6z"/></svg></button>
+        <button id="sp4" title="Fastest (3)" aria-label="Fastest"><svg viewBox="0 0 16 16"><path d="M0 3l5 5-5 5zM5.5 3l5 5-5 5zM11 3l5 5-5 5z"/></svg></button>
+      </div>
+    </div>
+    <div class="glass tb menu" id="menu">
+      <button class="mbtn" data-panel="views" title="Info views"><svg viewBox="0 0 24 24"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg><span>Views</span></button>
+      <button class="mbtn" data-panel="budget" title="Budget and taxes"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M16 15h2"/></svg><span>Budget</span></button>
+      <button class="mbtn" data-panel="transit" title="Transit lines"><svg viewBox="0 0 24 24"><rect x="5" y="3" width="14" height="14" rx="3"/><path d="M5 11h14M8 21l1.5-4M16 21l-1.5-4"/><circle cx="9" cy="14" r="0.6"/><circle cx="15" cy="14" r="0.6"/></svg><span>Transit</span></button>
+      <button class="mbtn" data-panel="stats" title="City statistics"><svg viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg><span>Stats</span></button>
+      <button class="mbtn" data-panel="settings" title="Graphics and game settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Settings</span></button>
+    </div>
+  </header>
+
+  <section class="ui glass goals" id="goals" hidden></section>
+  <nav class="ui glass toolbar" id="toolbar" aria-label="Build tools"></nav>
+  <div class="ui glass palette" id="palette" hidden></div>
+  <aside class="ui glass panel left" id="infoPanel" hidden></aside>
+  <aside class="ui glass panel right" id="sidePanel" hidden></aside>
+  <div class="ui glass tip" id="tip" hidden></div>
+  <div class="ui toasts" id="toasts" aria-live="polite"></div>
+  <div class="ui modal" id="modal" hidden></div>
+
+  <div class="ui start" id="start" hidden>
+    <div class="glass sbox">
+      <h1 class="brand">Arter<em>i</em>al</h1>
+      <p class="tag">Lay roads off the highway, zone neighbourhoods and watch every car find its way. Grow from a village of cottages into a city of towers, connected by buses and trains.</p>
+      <div class="field"><label class="lbl" for="cityInput">City name</label><input id="cityInput" maxlength="28" value="Port Alder"></div>
+      <div class="field"><label class="lbl" for="presetStart">Graphics quality</label>
+        <select id="presetStart"><option value="low">Low: integrated graphics, older laptops</option><option value="medium">Medium: most laptops</option><option value="high">High: gaming laptops and desktops</option><option value="ultra">Ultra: powerful desktop GPUs</option></select>
+      </div>
+      <div class="sbtns"><button class="btn primary" id="btnNew">Found a new city</button><button class="btn" id="btnContinue" hidden>Continue saved city</button></div>
+      <div class="legendrow"><span><b>WASD</b> move</span><span><b>Right-drag</b> rotate</span><span><b>Wheel</b> zoom</span><span><b>Space</b> pause</span></div>
+    </div>
+  </div>
+  <div id="loading">Loading Arterial…</div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+<script src="js/core.js"></script>
+<script src="js/world.js"></script>
+<script src="js/gfx.js"></script>
+<script src="js/meshes.js"></script>
+<script src="js/traffic.js"></script>
+<script src="js/transit.js"></script>
+<script src="js/sim.js"></script>
+<script src="js/tools.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
