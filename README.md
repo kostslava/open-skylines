@@ -1,147 +1,118 @@
-<div align="center">
+<p align="center">
+  <img src="assets/banner.svg" width="100%" alt="Arterial: a city builder that runs in your browser">
+</p>
 
-# 🏙️ Arterial
+<p align="center">
+  <a href="https://kostslava.github.io/open-skylines/"><img src="assets/play.svg" height="52" alt="Play in your browser"></a>
+</p>
 
-**A 3D city builder that runs in your browser.**
-Lay roads off the highway, zone neighbourhoods, and watch every car find its own way through town.
-Grow from a village of cottages into a metropolis of towers, linked by buses and trains.
+## what is this
 
-[![Play now](https://img.shields.io/badge/▶_PLAY_NOW-kostslava.github.io%2Fopen--skylines-3d8bff?style=for-the-badge)](https://kostslava.github.io/open-skylines/)
+a city builder you play in the browser. it's kinda like cities skylines 2 but way smaller and simpler, made in three.js. nothing to install, just open the link.
 
-![Three.js](https://img.shields.io/badge/Three.js-r158-000000?style=flat-square&logo=threedotjs)
-![JavaScript](https://img.shields.io/badge/Vanilla_JS-no_build_step-f7df1e?style=flat-square&logo=javascript&logoColor=black)
-![Runs in](https://img.shields.io/badge/runs_in-Chrome_·_Edge_·_Firefox-4fd17a?style=flat-square)
-![Install](https://img.shields.io/badge/install-nothing-ffb547?style=flat-square)
+you start off a highway with an empty island, lay some roads, zone stuff, and buildings show up when people actually want to live or work there. every car is its own agent driving its own route, so if you build a dumb intersection you'll watch it jam up. grow the population and you unlock bigger buildings, buses, trains, and eventually towers.
 
-</div>
+water and power are automatic because managing pipes is boring.
 
----
+## how the city grows
 
-## ✨ What's in it
+<p align="center">
+  <img src="assets/milestones.svg" width="100%" alt="Milestones: settlement 0, village 250, town 800, small city 2,000, city 4,000, big city 8,000, metropolis 15,000">
+</p>
 
-| | |
-|---|---|
-| 🚗 **Living traffic** | Every car is a real agent. It plans a route with A*, picks a lane, follows the car in front, and queues at junctions. Build a bad intersection and you'll *see* the jam. |
-| 🏘️ **Zoning that grows** | Residential, commercial, industrial and office zones. Buildings appear when there's demand and level up as land value rises. |
-| 🚌 **Transit that matters** | Draw bus lines and train/metro lines (elevated or underground). Passengers walk to stops, transfer between lines and pay fares. |
-| 🚒 **City services** | Police, fire, health, schools, garbage and parks, each with a coverage radius and vehicles out on the roads. |
-| 💰 **Budget & taxes** | Set tax rates per zone, watch income against upkeep, and take out loans when you're in a pinch. |
-| 🌗 **Day & night** | Windows light up, streetlights glow and the city changes mood as the clock runs. |
-| 🔍 **Info views** | Traffic, land value, happiness, pollution, noise, and coverage for every service. |
-| 💬 **Resident chatter** | Your citizens comment on what's happening in their city. |
+each milestone gives you some cash and unlocks new stuff:
 
-Water and power are **fully automatic**, so you can spend your time on the fun parts.
-
----
-
-## 📈 From settlement to metropolis
-
-You start small. Hitting each population milestone pays a cash reward and unlocks new tools.
-
-| Milestone | Population | Unlocks |
+| milestone | pop | unlocks |
 |---|---:|---|
-| 🛖 Settlement | 0 | Small roads, avenues, low density housing & shops, industry, basic services |
-| 🏡 Village | 250 | Medium density housing, bus lines, Town Plaza |
-| 🏘️ Town | 800 | Highways, high density commercial, High School |
-| 🏙️ Small City | 2,000 | Trains & metro, offices, Hospital, Police HQ |
-| 🌆 City | 4,000 | High density housing, University, Central Park |
-| 🌃 Big City | 8,000 | Stadium, Observation Tower |
-| 👑 Metropolis | 15,000 | The Grand Arch |
+| settlement | 0 | small roads, avenues, low density homes and shops, industry, basic services |
+| village | 250 | medium density homes, bus lines, town plaza |
+| town | 800 | highways, high density commercial, high school |
+| small city | 2,000 | trains and metro, offices, hospital, police HQ |
+| city | 4,000 | high density homes, university, central park |
+| big city | 8,000 | stadium, observation tower |
+| metropolis | 15,000 | grand arch |
 
----
+## what's in it
 
-## 🎮 Controls
+- **zoning.** residential, commercial, industrial and office. buildings level up as land value goes up
+- **traffic.** cars pathfind with A*, pick lanes, follow each other and queue at junctions. the traffic view shows you where it's jammed
+- **transit.** bus lines and train/metro lines, elevated or underground. people walk to stops, transfer, and pay fares
+- **services.** police, fire, health, schools, garbage, parks. each one covers a radius and sends its own vehicles out
+- **money.** taxes per zone, upkeep, and loans if you go broke
+- **the rest.** day/night cycle, info views for basically everything, and residents who complain about stuff
 
-| Key | Action |
+## controls
+
+| key | does |
 |---|---|
-| <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> | Move the camera (hold <kbd>Shift</kbd> to go faster) |
-| <kbd>Q</kbd> / <kbd>E</kbd> | Rotate |
-| <kbd>R</kbd> / <kbd>F</kbd> | Zoom in / out |
-| <kbd>T</kbd> / <kbd>G</kbd> | Tilt |
-| Right-drag | Rotate and tilt |
-| Middle-drag | Pan |
-| Mouse wheel | Zoom |
-| <kbd>Space</kbd> | Pause |
-| <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | Game speed |
-| <kbd>B</kbd> | Bulldoze |
-| <kbd>R</kbd> | Rotate a building before placing it |
-| <kbd>Esc</kbd> | Cancel the current tool |
+| <kbd>W</kbd> <kbd>A</kbd> <kbd>S</kbd> <kbd>D</kbd> | move camera, hold <kbd>Shift</kbd> to go faster |
+| <kbd>Q</kbd> <kbd>E</kbd> | rotate |
+| <kbd>R</kbd> <kbd>F</kbd> | zoom in / out |
+| <kbd>T</kbd> <kbd>G</kbd> | tilt |
+| right drag | rotate + tilt |
+| middle drag | pan |
+| scroll | zoom |
+| <kbd>Space</kbd> | pause |
+| <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> | game speed |
+| <kbd>B</kbd> | bulldoze |
+| <kbd>R</kbd> | rotate a building before you place it |
+| <kbd>Esc</kbd> | cancel tool |
 
-### 💡 Tips for a first city
-1. **Branch off the highway** with a small road. Only roads connected to the highway count.
-2. **Zone along your roads** by dragging a rectangle. Watch the R / C / I demand bars at the top.
-3. **Mix it up.** Homes need jobs and shops, and industry is noisy, so give it some distance.
-4. **Open the Traffic view** when things feel slow. Red roads are jammed: add an avenue, a second route or a bus line.
-5. **Keep an eye on the budget.** A clinic and a fire station early on will save you from disasters.
+## if it's your first city
 
----
+1. build a small road off the highway. roads that aren't connected to it don't count
+2. drag zones along the road and watch the R / C / I demand bars at the top
+3. people need jobs and shops, and industry is loud, so don't put it right next to houses
+4. if stuff feels slow open the traffic view. red roads are jammed, so add an avenue, another route, or a bus line
+5. get a clinic and a fire station early, fires will wreck you otherwise
 
-## 🖥️ Graphics presets
+## graphics
 
-Pick one on the start screen and change it any time in **Settings**.
+there's a quality dropdown on the start screen (low, medium, high, ultra) and you can change it in settings whenever. low is for older laptops and integrated graphics, ultra is for a real gpu.
 
-| Preset | Good for |
-|---|---|
-| **Low** | Integrated graphics, older laptops |
-| **Medium** | Most laptops |
-| **High** | Gaming laptops and desktops |
-| **Ultra** | Powerful desktop GPUs |
+## running it locally
 
----
-
-## 🚀 Running it
-
-**Easiest:** just open **[kostslava.github.io/open-skylines](https://kostslava.github.io/open-skylines/)**.
-
-**Locally:** clone the repo and open `index.html` in Chrome, Edge or Firefox. You'll need an internet connection, because the 3D engine and fonts load from a CDN.
+just clone it and open `index.html` in chrome, edge or firefox. you still need internet because three.js and the fonts load from a cdn.
 
 ```bash
 git clone https://github.com/kostslava/open-skylines.git
 ```
 
-**Saving:** your city saves to your browser's local storage. It autosaves every in-game month, and you can save by hand with **Settings → Save now**. Saves stay on the computer and browser you played on.
+your city saves in your browser. it autosaves every in-game month, or hit settings → save now. saves don't carry over between computers.
 
-**Single file:** `dist/arterial.html` is the whole game bundled into one file. After editing anything in `js/`, rebuild it with:
+`dist/arterial.html` is the whole game in one file. if you edit anything in `js/`, rebuild it with:
 
 ```powershell
 powershell -File build.ps1
 ```
 
----
+## code
 
-## 🗂️ How the code is laid out
+no framework, no bundler. just plain scripts loaded in order that share one global `CB` object.
 
-No framework and no bundler. It's plain scripts loaded in order, sharing one global `CB` namespace.
-
-| File | What it does |
+| file | what it does |
 |---|---|
-| `js/core.js` | Constants and balance: roads, zones, services, milestones, quality presets |
-| `js/world.js` | Tile grid, terrain generation (island, river, mountains), height queries |
-| `js/gfx.js` | Renderer, lighting, day/night, sky, water, terrain, shader patches, camera, picking |
-| `js/meshes.js` | Procedural buildings, roads, rail, trees, vehicles, previews, icons |
-| `js/traffic.js` | Cost-based A* routing, lane choice, car following, junction queueing, congestion |
-| `js/transit.js` | Stops, bus and metro lines, passenger routing with transfers, trains |
-| `js/sim.js` | Growth, demand, jobs, happiness, levels, services, fires, garbage, economy, milestones |
-| `js/tools.js` | Input handling and build tools |
-| `js/ui.js` | Interface panels, info views, goals |
-| `js/main.js` | Boot, main loop, save/load |
+| `js/core.js` | constants and balance: roads, zones, services, milestones, quality presets |
+| `js/world.js` | tile grid and terrain gen (island, river, mountains) |
+| `js/gfx.js` | renderer, lighting, day/night, sky, water, terrain, camera, picking |
+| `js/meshes.js` | procedural buildings, roads, rail, trees, vehicles |
+| `js/traffic.js` | A* routing, lanes, car following, junction queues, congestion |
+| `js/transit.js` | stops, bus and metro lines, passenger routing, trains |
+| `js/sim.js` | growth, demand, jobs, happiness, services, fires, garbage, money, milestones |
+| `js/tools.js` | input and build tools |
+| `js/ui.js` | panels, info views, goals |
+| `js/main.js` | boot, main loop, save/load |
 
 <details>
-<summary><b>🧪 Debug URL parameters</b> (for testing)</summary>
+<summary><b>debug url params</b></summary>
 
 <br>
 
-| Parameter | Effect |
+| param | does |
 |---|---|
-| `?demo=1&ms=4&ff=72` | Build a demo town, unlock up to milestone 4, then fast-forward 72 game hours |
-| `&preset=low\|medium\|high\|ultra` | Force a graphics preset |
-| `&hour=21` | Set the time of day |
-| `&ov=traffic` | Open an info view on load |
+| `?demo=1&ms=4&ff=72` | builds a demo town, unlocks up to milestone 4, fast forwards 72 game hours |
+| `&preset=low\|medium\|high\|ultra` | forces a graphics preset |
+| `&hour=21` | sets the time of day |
+| `&ov=traffic` | opens an info view on load |
 
 </details>
-
----
-
-<div align="center">
-<sub>Inspired by the big city builders, but made small enough to run in a browser tab.</sub>
-</div>
