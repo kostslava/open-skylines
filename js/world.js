@@ -1,5 +1,5 @@
 'use strict';
-// Arterial — world grid, terrain generation and spatial queries
+// Open Skylines — world grid, terrain generation and spatial queries
 (function () {
   const { C, U } = CB;
   const W = C.W, T = C.TILE;
@@ -8,6 +8,12 @@
     seed: 1,
     hc: null,       // corner heights (W+1)^2
     road: null,     // road type per tile
+    link: null,     // bitmask of connected neighbours (N E S W)
+    rdir: null,     // forward direction of the strip (0-3)
+    rpart: null,    // side of the partner strip + 1 (dual carriageways), 0 = none
+    jcl: null,      // junction cluster id per tile, -1 = not a junction
+    clusters: [],
+    jcfg: new Map(), // tile -> shared junction config object
     rail: null,     // 1 elevated, 2 subway
     zone: null,
     bld: null,      // building id per tile
@@ -23,6 +29,11 @@
     Wd.seed = seed;
     Wd.hc = new Float32Array((W + 1) * (W + 1));
     Wd.road = new Uint8Array(W * W);
+    Wd.link = new Uint8Array(W * W);
+    Wd.rdir = new Uint8Array(W * W);
+    Wd.rpart = new Uint8Array(W * W);
+    Wd.jcl = new Int32Array(W * W).fill(-1);
+    Wd.clusters = []; Wd.jcfg = new Map();
     Wd.rail = new Uint8Array(W * W);
     Wd.zone = new Uint8Array(W * W);
     Wd.bld = new Int32Array(W * W);
@@ -90,16 +101,27 @@
         if (avg > 45) Wd.tree[i] = 0; // tree line
       }
     }
-    // highway from the west edge
+    // dual carriageway highway from the west edge: north strip westbound (out), south strip eastbound (in)
     Wd.outside = [];
-    for (let x = 0; x <= C.P0 + 16; x++) {
-      const i = U.idx(x, hwRow);
-      Wd.road[i] = 3; Wd.tree[i] = 0;
-      Wd.tree[U.idx(x, hwRow - 1)] = 0; Wd.tree[U.idx(x, hwRow + 1)] = 0;
+    const HW = C.START_HW, xe = C.P0 + 15;
+    for (let x = 0; x <= xe; x++) {
+      for (const [yy, dir] of [[hwRow, 3], [hwRow + 1, 1]]) {
+        const i = U.idx(x, yy);
+        Wd.road[i] = HW; Wd.rdir[i] = dir; Wd.rpart[i] = (yy === hwRow ? 2 : 0) + 1;
+        if (x > 0) Wd.linkTiles(i, U.idx(x - 1, yy));
+      }
+      for (let k = -1; k <= 2; k++) Wd.tree[U.idx(x, hwRow + k)] = 0;
     }
-    Wd.outside.push(U.idx(0, hwRow));
+    // a short two-way connector at the end so the player has somewhere to start
+    const a = U.idx(xe + 1, hwRow), b = U.idx(xe + 1, hwRow + 1);
+    for (const t of [a, b]) { Wd.road[t] = C.ROAD_BASIC; Wd.rdir[t] = 2; Wd.tree[t] = 0; }
+    Wd.linkTiles(a, b); Wd.linkTiles(a, U.idx(xe, hwRow)); Wd.linkTiles(b, U.idx(xe, hwRow + 1));
+    Wd.outIn = U.idx(0, hwRow + 1); Wd.outOut = U.idx(0, hwRow);
+    Wd.outside.push(Wd.outIn, Wd.outOut);
+    Wd.hwEnd = b;
     Wd.updateZonable();
     Wd.updateConn();
+    Wd.updateJunctions();
   }
 
   // ---------- height queries ----------
@@ -148,14 +170,35 @@
 
   // ---------- network helpers ----------
   Wd.roadMask = function (i) {
-    const x = U.tx(i), y = U.ty(i); let m = 0;
-    for (let d = 0; d < 4; d++) {
-      const nx = x + C.DX[d], ny = y + C.DY[d];
-      if (U.inWorld(nx, ny) && Wd.road[U.idx(nx, ny)]) m |= 1 << d;
-    }
-    // outside connection: edge tile connects off-map
-    if (Wd.outside.indexOf(i) >= 0) m |= 8;
+    let m = Wd.link[i];
+    if (i === Wd.outIn || i === Wd.outOut) m |= 8; // continues off-map to the west
     return m;
+  };
+  Wd.linkTiles = function (a, b) {
+    const dx = U.tx(b) - U.tx(a), dy = U.ty(b) - U.ty(a);
+    const d = dy < 0 ? 0 : dx > 0 ? 1 : dy > 0 ? 2 : 3;
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+    Wd.link[a] |= 1 << d; Wd.link[b] |= 1 << ((d + 2) % 4);
+  };
+  Wd.unlinkAll = function (i) {
+    for (let d = 0; d < 4; d++) {
+      if (!(Wd.link[i] & (1 << d))) continue;
+      const j = Wd.neighbor(i, d); if (j >= 0) Wd.link[j] &= ~(1 << ((d + 2) % 4));
+    }
+    Wd.link[i] = 0;
+  };
+  Wd.linked = (i, d) => (Wd.link[i] & (1 << d)) !== 0;
+  // forward lanes only (one-way strip)?
+  Wd.isOneway = function (i) { const R = C.ROADS[Wd.road[i]]; return !!R && (R.oneway || R.w === 2); };
+  // Can a vehicle (car) step from i to its neighbour in direction d?
+  Wd.canDrive = function (i, d) {
+    if (!(Wd.roadMask(i) & (1 << d))) return false;
+    const j = Wd.neighbor(i, d); if (j < 0) return false;
+    const Rj = C.ROADS[Wd.road[j]]; if (!Rj || !Rj.car) return false;
+    const op = (d + 2) % 4;
+    if (Wd.isOneway(i) && Wd.jcl[i] < 0 && Wd.rdir[i] === op) return false;
+    if (Wd.isOneway(j) && Wd.jcl[j] < 0 && Wd.rdir[j] === op) return false;
+    return true;
   };
   Wd.railMask = function (i) {
     const x = U.tx(i), y = U.ty(i); let m = 0;
@@ -195,14 +238,98 @@
     const q = [];
     for (const o of Wd.outside) if (Wd.road[o]) { c[o] = 1; q.push(o); }
     while (q.length) {
-      const i = q.pop(); const x = U.tx(i), y = U.ty(i);
+      const i = q.pop();
       for (let d = 0; d < 4; d++) {
-        const nx = x + C.DX[d], ny = y + C.DY[d];
-        if (!U.inWorld(nx, ny)) continue;
-        const j = U.idx(nx, ny);
-        if (Wd.road[j] && !c[j]) { c[j] = 1; q.push(j); }
+        if (!Wd.linked(i, d)) continue;
+        const j = Wd.neighbor(i, d);
+        if (j >= 0 && Wd.road[j] && !c[j]) { c[j] = 1; q.push(j); }
       }
     }
+  };
+
+  // ---------- junction clusters ----------
+  // A junction is a road tile with 3+ connections. Touching junction tiles form one intersection.
+  Wd.TURN = { S: 1, R: 2, L: 4, U: 8 };
+  Wd.relTurn = (din, dout) => [1, 2, 8, 4][(dout - din + 4) % 4];
+  Wd.updateJunctions = function () {
+    const N = W * W, jcl = Wd.jcl; jcl.fill(-1);
+    const old = Wd.jcfg; Wd.jcfg = new Map();
+    Wd.clusters = [];
+    for (let i = 0; i < N; i++) {
+      if (!Wd.road[i] || jcl[i] >= 0 || Wd.degree(i) < 3) continue;
+      const id = Wd.clusters.length, tiles = [i], q = [i]; jcl[i] = id;
+      while (q.length) {
+        const t = q.pop();
+        for (let d = 0; d < 4; d++) {
+          if (!Wd.linked(t, d)) continue;
+          const j = Wd.neighbor(t, d);
+          if (j >= 0 && jcl[j] < 0 && Wd.road[j] && Wd.degree(j) >= 3) { jcl[j] = id; tiles.push(j); q.push(j); }
+        }
+      }
+      Wd.clusters.push({ id, tiles });
+    }
+    for (const cl of Wd.clusters) {
+      // approaches (traffic entering) and exits
+      cl.aps = []; cl.exits = []; let rank = 0, cars = false, cx = 0, cy = 0;
+      for (const t of cl.tiles) {
+        cx += U.tx(t); cy += U.ty(t);
+        for (let d = 0; d < 4; d++) {
+          if (!Wd.linked(t, d)) continue;
+          const o = Wd.neighbor(t, d); if (o < 0 || jcl[o] === cl.id) continue;
+          const Ro = C.ROADS[Wd.road[o]]; rank = Math.max(rank, C.GRP_RANK[Ro.grp]); if (Ro.car) cars = true;
+          const din = (d + 2) % 4;
+          if (Ro.car && Wd.canDrive(o, din)) cl.aps.push({ tile: o, into: t, d: din, key: o * 4 + din, lanes: Wd.lanesToward(o, din).length });
+          if (Ro.car && Wd.canDrive(t, d)) cl.exits.push({ tile: o, from: t, d });
+        }
+      }
+      cl.cx = cx / cl.tiles.length + 0.5; cl.cy = cy / cl.tiles.length + 0.5;
+      cl.rank = rank; cl.cars = cars;
+      let cfg = null;
+      for (const t of cl.tiles) if (old.has(t)) { cfg = old.get(t); break; }
+      if (!cfg) cfg = { ctrl: 'auto', stops: {}, lanes: {} };
+      cl.cfg = cfg;
+      for (const t of cl.tiles) Wd.jcfg.set(t, cfg);
+      // available turns per entry direction
+      cl.avail = [0, 0, 0, 0];
+      for (const ap of cl.aps) for (const ex of cl.exits) cl.avail[ap.d] |= Wd.relTurn(ap.d, ex.d);
+      for (const ap of cl.aps) {
+        const cur = cfg.lanes[ap.key];
+        if (!cur || cur.length !== ap.lanes || cur.some(m => !(m & cl.avail[ap.d]))) cfg.lanes[ap.key] = Wd.defaultLanes(ap.lanes, cl.avail[ap.d]);
+      }
+      cl.mask = [0, 0, 0, 0];
+      for (const ap of cl.aps) for (const m of cfg.lanes[ap.key]) cl.mask[ap.d] |= m;
+      cl.ctrl = Wd.ctrlOf(cl);
+      cl.phase = 0; cl.pt = Math.random() * 8;
+    }
+  };
+  Wd.ctrlOf = function (cl) {
+    const c = cl.cfg.ctrl;
+    if (c !== 'auto') return c;
+    if (!cl.cars || cl.aps.length < 3) return 'none';
+    return cl.rank >= 2 ? 'lights' : 'none';
+  };
+  Wd.defaultLanes = function (n, avail) {
+    const { S, R, L, U: UT } = Wd.TURN;
+    const out = [];
+    if (n <= 1) out.push(S | R | L);
+    else if (n === 2) out.push(S | R, L | S);
+    else { out.push(R | S); for (let k = 1; k < n - 1; k++) out.push(S); out.push(L); }
+    for (let k = 0; k < out.length; k++) { out[k] &= avail; if (!out[k]) out[k] = avail & (S | R | L) || avail; }
+    // every available turn must be served by some lane
+    for (const t of [S, R, L]) if ((avail & t) && !out.some(m => m & t)) { if (t === R) out[0] |= t; else out[out.length - 1] |= t; }
+    if (!(avail & (S | R | L)) && (avail & UT)) out[out.length - 1] |= UT;
+    return out;
+  };
+  // lane offsets (traveller frame, + = right) for a vehicle on tile i moving in direction d
+  Wd.lanesToward = function (i, d) {
+    const R = C.ROADS[Wd.road[i]]; if (!R) return [1.6];
+    const L = R.L;
+    if (!R.car) return [0];
+    if (R.oneway || R.w === 2 || !L.back.length) return L.fwd;
+    const f = Wd.rdir[i];
+    if (d === (f + 2) % 4) return L.back;
+    if (d === f) return L.fwd;
+    return R.back > R.fwd ? L.back : L.fwd;
   };
 
   Wd.neighbor = function (i, d) {

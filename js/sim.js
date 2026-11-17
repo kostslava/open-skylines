@@ -1,5 +1,5 @@
 'use strict';
-// Arterial — city simulation: zoning growth, demand, jobs, happiness, services, economy, milestones
+// Open Skylines — city simulation: zoning growth, demand, jobs, happiness, services, economy, milestones
 (function () {
   const { C, U } = CB;
   const T = C.TILE, W = C.W, N = W * W;
@@ -62,7 +62,8 @@
   S.capOf = function (b) {
     const z = zoneOf(b); if (!z) return 0;
     const c = z.cap[b.level - 1];
-    return z.perBuilding ? c : c * b.w * b.d;
+    if (z.perBuilding) { const a = b.w * b.d; return Math.max(2, Math.round(c * (a <= 1 ? 0.7 : a <= 2 ? 1 : a <= 3 ? 1.25 : a <= 4 ? 1.5 : 2))); }
+    return c * b.w * b.d;
   };
   S.centerTile = b => U.idx(b.x + (b.fw >> 1), b.y + (b.fh >> 1));
 
@@ -179,9 +180,8 @@
       for (let d = 0; d < 4; d++) { const j = frontOK(i, d); if (j >= 0 && Wd.conn[j]) dirs.push(d); }
       if (!dirs.length) continue;
       const f = U.pick(dirs, S.rng);
-      const sizes = C.ZONES[z].lots.slice().sort(() => S.rng() - 0.5);
-      const lv = S.cov.lv[i];
-      if (lv > 40) sizes.sort((p, q) => q[0] * q[1] - p[0] * p[1]);
+      // weighted random order: each lot type gets a random key biased by its weight
+      const sizes = C.ZONES[z].lots.map(l => [l[0], l[1], Math.pow(S.rng(), 1 / (l[2] || 1))]).sort((p, q) => q[2] - p[2]);
       for (const [w, d] of sizes) {
         const spec = fitLot(i, f, w, d, z);
         if (spec) {
@@ -289,7 +289,9 @@
     const Wd = CB.World;
     Wd.updateZonable();
     Wd.updateConn();
+    Wd.updateJunctions();
     Wd.roadVer++;
+    CB.Meshes.junctionsChanged();
     for (let i = 0; i < N; i++) if (Wd.zone[i] && !Wd.zonable[i] && !Wd.bld[i]) Wd.zone[i] = 0;
     S.lotsDirty = true; S.zoneTexDirty = true;
     CB.Traffic.validate();
@@ -343,7 +345,9 @@
     const L = CB.Traffic.load;
     for (let i = 0; i < N; i++) {
       const rt = Wd.road[i]; if (!rt) continue;
-      const v = Math.min(1, L[i] / C.ROADS[rt].cap) * (rt === 3 ? 1 : 0.7) + (rt === 3 ? 0.35 : 0);
+      const R = C.ROADS[rt]; if (!R.car) continue;
+      const hw = R.grp === 'highway';
+      const v = Math.min(1, L[i] / R.cap) * (hw ? 1 : 0.7) + (hw ? 0.35 : R.grp === 'large' ? 0.12 : 0);
       if (v < 0.08) continue;
       const x = U.tx(i), y = U.ty(i);
       for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
@@ -351,6 +355,11 @@
         const j = ny * W + nx, f = v * (1 - (Math.abs(dx) + Math.abs(dy)) * 0.2);
         if (f > cv.noise[j]) cv.noise[j] = f;
       }
+    }
+    // tree-lined streets
+    for (let i = 0; i < N; i++) {
+      const rt = Wd.road[i]; if (!rt || !C.ROADS[rt].trees) continue;
+      stamp(cv.park, U.tx(i) + 0.5, U.ty(i) + 0.5, 3, 0.25, true);
     }
     // land value
     for (let y = C.P0; y < C.P1; y++) for (let x = C.P0; x < C.P1; x++) {
@@ -698,6 +707,59 @@
     });
   }
 
+  // ---------------- mode choice ----------------
+  // Households own cars at different rates by density; short trips are walked, medium trips
+  // are cycled when the route feels safe, and the rest pick between transit and the car.
+  const CAR_OWN = [0.9, 0.88, 0.62, 0.42];
+  const BIKE_OWN = 0.72;
+  function recordMode(m) { const M = CB.Traffic.mode; for (const k in M) M[k] += ((k === m ? 1 : 0) - M[k]) * 0.01; }
+  S.chooseMode = function (dist, hasCar, safety, transit, carT) {
+    // dist: route length in tiles. safety: 0..1 bike comfort of the best bike route (or -1 if none).
+    // transit: transit route time or null. carT: estimated car time.
+    const r = S.rng;
+    const pWalk = dist <= 7 ? 0.85 : dist <= 20 ? 0.85 * (20 - dist) / 13 : 0;
+    if (r() < pWalk) return 'walk';
+    if (safety >= 0 && dist <= 70) {
+      const fd = dist <= 30 ? 1 : (70 - dist) / 40;
+      const pBike = BIKE_OWN * fd * (0.08 + 0.92 * Math.pow(safety, 1.5));
+      if (r() < pBike) return 'bike';
+    }
+    if (transit) {
+      const p = hasCar ? 1 / (1 + Math.exp((transit - carT * 1.3) / 10)) : 1;
+      if (r() < p * 0.92 + 0.04) return 'transit';
+    }
+    if (hasCar) return 'car';
+    if (safety >= 0 && dist <= 90) return 'bike';
+    if (dist <= 40) return 'walk';
+    return 'car'; // taxi / ride from a friend
+  };
+  function softTrip(kind, path, done) {
+    const est = path.length * T / (kind === 'bike' ? 11 : 4.5);
+    const a = CB.Traffic.spawnSoft(kind, path, (t) => done && done(t, true));
+    if (!a && done) done(est, true);
+  }
+  function personTrip(fromTile, toTile, purpose, n, done, zone) {
+    const dist = U.dist(fromTile, toTile);
+    const hasCar = S.rng() < (CAR_OWN[zone] || 0.85);
+    let bikePath = null, safety = -1;
+    if (dist > 4 && dist <= 90) { bikePath = CB.Traffic.findSoftPath(fromTile, toTile, true); if (bikePath) safety = CB.Traffic.bikeSafety(bikePath); }
+    const carT = dist * T / (13 * C.VEH_SPEED) * (1 + 1.8 * (1 - CB.Traffic.stats.flow)) + 14;
+    const r = dist > 6 ? CB.Transit.route(fromTile, toTile) : null;
+    const mode = S.chooseMode(dist, hasCar, safety, r ? r.time : null, carT);
+    recordMode(mode);
+    if (mode === 'walk') {
+      const p = dist <= 40 ? CB.Traffic.findSoftPath(fromTile, toTile, false) : null;
+      if (p) { softTrip('ped', p, done); return; }
+    } else if (mode === 'bike' && bikePath) { softTrip('bike', bikePath, done); return; }
+    else if (mode === 'transit' && r) {
+      S.stats.transitShare += (1 - S.stats.transitShare) * 0.01;
+      r._t0 = CB.Traffic.time;
+      CB.Transit.addPassenger(r, n, () => done && done(CB.Traffic.time - r._t0, true));
+      return;
+    }
+    S.stats.transitShare *= 0.99;
+    carTrip(fromTile, toTile, purpose, n, done);
+  }
   function carTrip(from, to, purpose, n, onArrive, kind) {
     CB.Traffic.request({
       from, to, kind: kind || (S.rng() < 0.3 ? 'suv' : 'car'), col: kind === 'truck' || kind === 'van' ? null : carColor(), purpose,
@@ -705,25 +767,6 @@
       onFail: (why) => { if (why === 'cap' && onArrive) onArrive(U.dist(from, to) * T / 16 + 10, true); },
     });
   }
-  function personTrip(fromTile, toTile, purpose, n, done, carFree) {
-    // mode choice: car time + parking/fuel cost vs transit time (CS2: time, comfort, money)
-    const dist = U.dist(fromTile, toTile);
-    const carT = dist * T / (13 * C.VEH_SPEED) * (1 + 1.8 * (1 - CB.Traffic.stats.flow)) + 14;
-    const r = CB.Transit.route(fromTile, toTile);
-    if (r) {
-      const p = 1 / (1 + Math.exp((r.time - carT * 1.3) / 10));
-      if (S.rng() < Math.max(p * 0.9 + 0.05, carFree || 0)) {
-        S.stats.transitShare += (1 - S.stats.transitShare) * 0.01;
-        CB.Transit.addPassenger(r, n, () => done && done(CB.Traffic.time - r._t0, true));
-        r._t0 = CB.Traffic.time;
-        return;
-      }
-    }
-    S.stats.transitShare *= 0.99;
-    carTrip(fromTile, toTile, purpose, n, done);
-  }
-  // share of households without a car (they ride transit whenever a route exists)
-  const CAR_FREE = [0, 0.08, 0.22, 0.32];
   function recordCommute(b) {
     return (t, ok) => {
       if (!S.buildings.has(b.id)) return;
@@ -731,34 +774,37 @@
       b.commute = b.commute ? b.commute * 0.8 + v * 0.2 : v;
     };
   }
+  // shift starts: most people start between 7 and 9, some late morning, some afternoon/evening
+  const toWorkCurve = h => 0.5 * gauss(h, 7.2, 0.7) + 0.28 * gauss(h, 8.5, 0.8) + 0.12 * gauss(h, 11.5, 1.4) + 0.1 * gauss(h, 15.5, 1.6);
+  const toHomeCurve = h => 0.5 * gauss(h, 16.2, 0.9) + 0.28 * gauss(h, 17.6, 1.0) + 0.12 * gauss(h, 20.5, 1.4) + 0.1 * (gauss(h, 23.6, 1.4) + gauss(h, -0.4, 1.4));
 
   function generateTrips(dtH) {
     if (!resList.length && !workList.length) return;
-    const h = S.hour, st = S.stats, A = S.acc;
+    const h = S.hour, st = S.stats, A = S.acc, Wd = CB.World;
     const cars = CB.Gfx.settings.cars;
-    const ppc = Math.max(1, st.employed / (cars * 0.85));
-    const toWork = gauss(h, 7.6, 1.2), toHome = gauss(h, 17.3, 1.4);
+    const ppc = Math.max(1, st.employed / (cars * 0.6));
+    const toWork = toWorkCurve(h), toHome = toHomeCurve(h);
     A.work += st.employed * toWork * dtH / ppc;
     A.home += st.employed * toHome * dtH / ppc;
-    A.shop += st.pop * 0.25 * dayCurve(h) * dtH / ppc;
+    A.shop += st.pop * 0.22 * dayCurve(h) * dtH / ppc;
     let indF = 0; for (const b of indList) indF += b.filled + b.outside;
-    A.freight += indF * 0.35 * dayCurve(h) * dtH / Math.max(1, ppc * 0.7) + comList.length * 0.15 * dayCurve(h) * dtH;
-    A.visit += (st.pop * 0.02 + visitList.length * 3) * dayCurve(h) * dtH / ppc;
+    A.freight += indF * 0.3 * dayCurve(h) * dtH / Math.max(1, ppc * 0.7) + comList.length * 0.12 * dayCurve(h) * dtH;
+    A.visit += (st.pop * 0.015 + visitList.length * 2) * dayCurve(h) * dtH / ppc;
     A.cin += st.outsideIn * toWork * dtH / ppc;
     A.cout += st.outsideIn * toHome * dtH / ppc;
-    const out = CB.World.outside[0];
+    const inT = Wd.outIn, outT = Wd.outOut;
     let guard = 0;
     while (A.work >= 1 && guard++ < 30) {
       A.work--;
       const b = randomOf(resList); if (!b || !b.work.length) continue;
       const w = S.buildings.get(U.pick(b.work, S.rng).id); if (!w) continue;
-      personTrip(b.road, w.road, 'Commuting to work', ppc, recordCommute(b), CAR_FREE[b.zone]);
+      personTrip(b.road, w.road, 'Commuting to work', ppc, recordCommute(b), b.zone);
     }
     while (A.home >= 1 && guard++ < 60) {
       A.home--;
       const b = randomOf(resList); if (!b || !b.work.length) continue;
       const w = S.buildings.get(U.pick(b.work, S.rng).id); if (!w) continue;
-      personTrip(w.road, b.road, 'Heading home', ppc, recordCommute(b), CAR_FREE[b.zone]);
+      personTrip(w.road, b.road, 'Heading home', ppc, recordCommute(b), b.zone);
     }
     while (A.shop >= 1 && guard++ < 90) {
       A.shop--;
@@ -767,7 +813,7 @@
       for (let k = 0; k < 5; k++) { const c = randomOf(comList); const d = U.dist(c.road, b.road) + S.rng() * 8; if (d < bd) { bd = d; best = c; } }
       if (!best) continue;
       const shop = best;
-      personTrip(b.road, shop.road, 'Going shopping', ppc, () => { if (S.buildings.has(shop.id)) shop.cust += ppc; }, CAR_FREE[b.zone]);
+      personTrip(b.road, shop.road, 'Going shopping', ppc, () => { if (S.buildings.has(shop.id)) shop.cust += ppc; }, b.zone);
     }
     while (A.freight >= 1 && guard++ < 110) {
       A.freight--;
@@ -775,36 +821,33 @@
       if (src) {
         const dst = comList.length && S.rng() < 0.65 ? randomOf(comList) : null;
         if (dst) carTrip(src.road, dst.road, 'Delivering goods', 1, null, 'truck');
-        else if (out !== undefined) carTrip(src.road, out, 'Exporting goods', 1, null, 'truck');
-      } else if (comList.length && out !== undefined) {
-        carTrip(out, randomOf(comList).road, 'Importing goods', 1, null, 'truck');
-      }
+        else carTrip(src.road, outT, 'Exporting goods', 1, null, 'truck');
+      } else if (comList.length) carTrip(inT, randomOf(comList).road, 'Importing goods', 1, null, 'truck');
     }
     while (A.visit >= 1 && guard++ < 130) {
       A.visit--;
-      const dst = randomOf(visitList); if (!dst || out === undefined) continue;
-      const tgt = dst;
-      carTrip(out, dst.road, 'Visiting the city', ppc, () => { if (S.buildings.has(tgt.id) && tgt.kind === 'zone') tgt.cust += ppc; });
+      const tgt = randomOf(visitList); if (!tgt) continue;
+      carTrip(inT, tgt.road, 'Visiting the city', ppc, () => { if (S.buildings.has(tgt.id) && tgt.kind === 'zone') tgt.cust += ppc; });
     }
     while (A.cin >= 1 && guard++ < 150) {
       A.cin--;
-      const w = randomOf(workList.filter ? workList : []); if (!w || !w.outside || out === undefined) continue;
-      carTrip(out, w.road, 'Commuting from out of town', ppc, null);
+      const w = randomOf(workList); if (!w || !w.outside) continue;
+      carTrip(inT, w.road, 'Commuting from out of town', ppc, null);
     }
     while (A.cout >= 1 && guard++ < 170) {
       A.cout--;
-      const w = randomOf(workList); if (!w || !w.outside || out === undefined) continue;
-      carTrip(w.road, out, 'Leaving town', ppc, null);
+      const w = randomOf(workList); if (!w || !w.outside) continue;
+      carTrip(w.road, outT, 'Leaving town', ppc, null);
     }
     for (const k in A) if (A[k] > 40) A[k] = 40;
   }
 
   function moveIn(b) {
-    const out = CB.World.outside[0];
-    if (out === undefined || !CB.World.conn[b.road]) return;
+    const inT = CB.World.outIn;
+    if (inT === undefined || !CB.World.conn[b.road]) return;
     const n = Math.ceil(b.cap * 0.5);
     CB.Traffic.request({
-      from: out, to: b.road, kind: 'van', purpose: 'Moving in',
+      from: inT, to: b.road, kind: 'van', purpose: 'Moving in',
       onArrive: () => { if (S.buildings.has(b.id)) b.res = Math.min(b.cap, b.res + n); },
       onFail: () => { if (S.buildings.has(b.id)) b.res = Math.min(b.cap, b.res + n); },
     });
@@ -831,7 +874,7 @@
     const inc = { res: res * S.tax.res / 10 / 24, com: com * S.tax.com / 10 / 24, ind: ind * S.tax.ind / 10 / 24, off: off * S.tax.off / 10 / 24 };
     let roads = 0;
     for (let i = 0; i < N; i++) {
-      if (Wd.road[i] && U.inPlay(U.tx(i), U.ty(i))) roads += C.ROADS[Wd.road[i]].upkeep;
+      if (Wd.road[i] && U.inPlay(U.tx(i), U.ty(i))) { const R = C.ROADS[Wd.road[i]]; roads += R.upkeep / R.w; }
       if (Wd.rail[i]) roads += C.RAIL[Wd.rail[i]].upkeep;
     }
     let transit = 0;
@@ -991,9 +1034,10 @@
       work: b.work, happy: Math.round(b.happy), garbage: Math.round(b.garbage), prog: b.prog, low: b.low, abandT: b.abandT, custRatio: b.custRatio, commute: Math.round(b.commute), age: b.age,
     }));
     return {
-      v: 1, seed: Wd.seed, name: S.name, money: S.money, month: S.month, hour: S.hour, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
+      v: 2, seed: Wd.seed, name: S.name, money: S.money, month: S.month, hour: S.hour, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
       history: S.history, last: S.last, budget: S.budget,
-      road: U.encodeRLE(Wd.road), rail: U.encodeRLE(Wd.rail), zone: U.encodeRLE(Wd.zone), tree: U.encodeRLE(Wd.tree),
+      road: U.encodeRLE(Wd.road), link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart),
+      jcfg: Wd.clusters.map(cl => ({ t: cl.tiles[0], c: cl.cfg })), rail: U.encodeRLE(Wd.rail), zone: U.encodeRLE(Wd.zone), tree: U.encodeRLE(Wd.tree),
       buildings: bl, transit: CB.Transit.serialize(),
     };
   };
@@ -1002,10 +1046,14 @@
     S.init({ name: d.name, seed: d.seed });
     Object.assign(S, { money: d.money, month: d.month, hour: d.hour, milestone: d.milestone, tax: d.tax, loans: d.loans || [], nextId: d.nextId, history: d.history || [], last: d.last || blankBudget(), budget: d.budget || blankBudget() });
     Wd.road.set(U.decodeRLE(d.road, Uint8Array, N));
+    Wd.link.set(U.decodeRLE(d.link, Uint8Array, N));
+    Wd.rdir.set(U.decodeRLE(d.rdir, Uint8Array, N));
+    Wd.rpart.set(U.decodeRLE(d.rpart, Uint8Array, N));
+    Wd.jcfg = new Map(); for (const j of d.jcfg || []) Wd.jcfg.set(j.t, j.c);
     Wd.rail.set(U.decodeRLE(d.rail, Uint8Array, N));
     Wd.zone.set(U.decodeRLE(d.zone, Uint8Array, N));
     Wd.tree.set(U.decodeRLE(d.tree, Uint8Array, N));
-    Wd.updateZonable(); Wd.updateConn(); Wd.roadVer++;
+    Wd.updateZonable(); Wd.updateConn(); Wd.updateJunctions(); Wd.roadVer++;
     for (const o of d.buildings) {
       const b = Object.assign({ cust: 0, gTarget: false, vehOut: 0, fire: 0, prob: null }, o);
       let mx = -1e9, mn = 1e9;

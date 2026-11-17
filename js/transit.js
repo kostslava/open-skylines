@@ -1,5 +1,5 @@
 'use strict';
-// Arterial — public transport: stops, bus & rail lines, passenger routing, trains
+// Open Skylines — public transport: stops, bus & rail lines, passenger routing, trains
 (function () {
   const { C, U } = CB;
   const T = C.TILE;
@@ -17,7 +17,8 @@
   X.canPlaceStop = function (type, tile) {
     const Wd = CB.World;
     if (X.stopAtTile(tile, type)) return 'A stop already exists here';
-    if (type === 'bus') { if (!Wd.road[tile]) return 'Bus stops go on roads'; if (Wd.road[tile] === 3) return 'Buses cannot stop on highways'; }
+    if (type === 'bus') { const R = C.ROADS[Wd.road[tile]]; if (!R || !R.car) return 'Bus stops go on roads'; if (R.grp === 'highway') return 'Buses cannot stop on highways'; }
+    else if (type === 'tram') { const R = C.ROADS[Wd.road[tile]]; if (!R || !R.tram) return 'Streetcar stops go on roads with tram tracks'; }
     else if (!Wd.rail[tile]) return 'Stations go on rail track';
     return null;
   };
@@ -31,7 +32,7 @@
   const STREETS = ['Maple', 'Harbour', 'Station', 'Elm', 'Union', 'King', 'Queen', 'Mill', 'Bridge', 'Park', 'Market', 'Victoria', 'Cedar', 'Lake', 'Spring', 'Ridge', 'Granite', 'Willow', 'Beacon', 'Orchard', 'Pine', 'Front', 'Church', 'College', 'Dundas', 'Bay', 'Albion', 'Linden'];
   function nameFor(type) {
     const n = STREETS[(X.nextStop * 7) % STREETS.length];
-    return type === 'bus' ? n + ' St' : n + ' Station';
+    return type === 'bus' ? n + ' St' : type === 'tram' ? n + ' Stop' : n + ' Station';
   }
   X.removeStop = function (s) {
     X.stops = X.stops.filter(q => q !== s); byId.delete(s.id);
@@ -49,7 +50,7 @@
   X.createLine = function (type, stopIds) {
     const n = X.lines.filter(l => l.type === type).length + 1;
     const color = X.COLORS[(X.nextLine - 1) % X.COLORS.length];
-    const l = { id: X.nextLine++, type, name: (type === 'bus' ? 'Bus ' : 'Metro ') + n, color, stops: stopIds.slice(), vehicles: type === 'bus' ? 2 : 1, ridersMonth: 0, ridersLast: 0, broken: false };
+    const l = { id: X.nextLine++, type, name: ({ bus: 'Bus ', tram: 'Streetcar ', rail: 'Metro ' })[type] + n, color, stops: stopIds.slice(), vehicles: type === 'rail' ? 1 : 2, ridersMonth: 0, ridersLast: 0, broken: false };
     X.lines.push(l);
     X.buildLine(l);
     for (const id of l.stops) { const s = byId.get(id); if (s && !s.color) { s.color = color; CB.Meshes.markInfra(s.tile); } }
@@ -63,11 +64,13 @@
     for (const s of X.stops) s.waiting = s.waiting.filter(p => !p.legs.some(g => g.line === l.id));
     X.dirty = true;
   };
-  X.setVehicles = function (l, n) { l.vehicles = U.clamp(n, 1, l.type === 'bus' ? 12 : 8); spawnVehicles(l); X.dirty = true; };
+  X.setVehicles = function (l, n) { l.vehicles = U.clamp(n, 1, l.type === 'rail' ? 8 : 12); spawnVehicles(l); X.dirty = true; };
 
   function segPath(type, a, b) {
-    return type === 'bus' ? CB.Traffic.findPath(a, b, true) : CB.Traffic.findRailPath(a, b);
+    return type === 'bus' ? CB.Traffic.findPath(a, b, true) : type === 'tram' ? CB.Traffic.findTramPath(a, b) : CB.Traffic.findRailPath(a, b);
   }
+  X.segPath = segPath;
+  X.isRoadLine = type => type === 'bus' || type === 'tram';
   X.buildLine = function (l) {
     const tiles = l.stops.map(id => byId.get(id).tile);
     const path = [], sidx = [];
@@ -85,7 +88,7 @@
     l.path = path; l.sidx = sidx;
     l.length = path.length * T;
     const sp = C.TRANSIT[l.type].speed * C.VEH_SPEED;
-    l.loopTime = l.length / (sp * (l.type === 'bus' ? 0.7 : 0.85)) + l.stops.length * (l.type === 'bus' ? 2 : 3);
+    l.loopTime = l.length / (sp * (l.type !== 'rail' ? 0.7 : 0.85)) + l.stops.length * (l.type !== 'rail' ? 2 : 3);
     if (l.type === 'rail') buildPoly(l);
     drawRibbon(l);
     spawnVehicles(l);
@@ -150,11 +153,11 @@
     for (const i of l.path) {
       const x = (U.tx(i) + 0.5) * T + off, z = (U.ty(i) + 0.5) * T + off;
       let y;
-      if (l.type === 'bus') y = Wd.roadH(x, z) + 1.6;
+      if (l.type !== 'rail') y = Wd.roadH(x, z) + 1.6;
       else y = Wd.rail[i] === 1 ? Wd.deckH(x, z) + 1.6 : Math.max(Wd.groundH(x, z), C.WATER) + 2.2;
       pts.push(x, y, z);
     }
-    l.ribbon = Mx.ribbon(pts, l.type === 'bus' ? 1.6 : 2.4, l.color, true);
+    l.ribbon = Mx.ribbon(pts, l.type !== 'rail' ? 1.6 : 2.4, l.color, true);
     if (l.ribbon) { l.ribbon.visible = X.ribbonsOn; Mx.lineGroup.add(l.ribbon); }
   }
   X.ribbonsOn = false;
@@ -173,10 +176,10 @@
     removeVehicles(l);
     if (!l.path || l.broken) return;
     const n = l.vehicles;
-    if (l.type === 'bus') {
+    if (l.type !== 'rail') {
       for (let k = 0; k < n; k++) {
         const startK = Math.floor(k * l.stops.length / n) % l.stops.length;
-        const v = CB.Traffic.spawn({ kind: 'bus', path: l.path, loop: true, col: CB.Meshes.CAR_COLORS && lcCol(l.color) });
+        const v = CB.Traffic.spawn({ kind: l.type, path: l.path, loop: true, col: CB.Meshes.CAR_COLORS && lcCol(l.color) });
         if (!v) continue;
         v.line = l; v.pass = []; v.load = 0;
         v.seg = l.sidx[startK]; v.t = 0;
@@ -229,7 +232,7 @@
     const l = v.line; if (!l || !l.path) return;
     const stop = byId.get(l.stops[v.stopK]);
     let b = 0;
-    if (stop) b = serveStop(v, l, stop, C.TRANSIT.bus.cap);
+    if (stop) b = serveStop(v, l, stop, C.TRANSIT[l.type].cap);
     v.dwell = 1.4 + b * 0.04;
     v.stopK = (v.stopK + 1) % l.stops.length;
     v.stopAt = l.sidx[v.stopK];
@@ -248,7 +251,7 @@
     for (const l of X.lines) {
       if (!l.path || l.broken) continue;
       const base = adj.length;
-      const sp = C.TRANSIT[l.type].speed * C.VEH_SPEED * (l.type === 'bus' ? 0.65 : 0.85);
+      const sp = C.TRANSIT[l.type].speed * C.VEH_SPEED * (l.type !== 'rail' ? 0.65 : 0.85);
       const wait = Math.min(25, l.loopTime / (2 * Math.max(1, l.vehicles)));
       const n = l.stops.length;
       for (let k = 0; k < n; k++) adj.push([]);
@@ -259,7 +262,7 @@
         adj[node].push([si, 2, 'a', l.id]);
         const a = l.sidx[k], b = k + 1 < n ? l.sidx[k + 1] : l.path.length;
         const dist = (b - a) * T;
-        adj[node].push([base + (k + 1) % n, dist / sp + (l.type === 'bus' ? 2 : 3), 'r', l.id]);
+        adj[node].push([base + (k + 1) % n, dist / sp + (l.type !== 'rail' ? 2 : 3), 'r', l.id]);
       }
       lineNodes.push({ l, base });
     }
@@ -395,12 +398,18 @@
     for (const l of X.lines) X.buildLine(l);
     for (const s of X.stops.slice()) {
       const Wd = CB.World;
-      if ((s.type === 'bus' && !Wd.road[s.tile]) || (s.type === 'rail' && !Wd.rail[s.tile])) X.removeStop(s);
+      if (X.canPlaceStopIgnoringSelf(s)) X.removeStop(s);
     }
     X.dirty = true;
   };
+  X.canPlaceStopIgnoringSelf = function (s) {
+    const Wd = CB.World, R = C.ROADS[Wd.road[s.tile]];
+    if (s.type === 'bus') return !R || !R.car;
+    if (s.type === 'tram') return !R || !R.tram;
+    return !Wd.rail[s.tile];
+  };
   X.vehiclesOf = function (l) {
-    if (l.type === 'bus') return CB.Traffic.vehicles.filter(v => v.line === l);
+    if (l.type !== 'rail') return CB.Traffic.vehicles.filter(v => v.line === l);
     return X.trains.filter(t => t.line === l);
   };
   X.clearAll = function () {

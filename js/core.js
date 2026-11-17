@@ -1,5 +1,5 @@
 'use strict';
-// Arterial — core config, constants and utilities
+// Open Skylines — core config, constants and utilities
 window.CB = {};
 (function () {
   const C = CB.C = {
@@ -11,56 +11,157 @@ window.CB = {};
     HOUR_SEC: 10,      // real seconds per game hour at 1x
     CHUNK: 16,
     VEH_SPEED: 1.8,    // visual speed multiplier for agents
-    START_MONEY: 80000,
+    START_MONEY: 70000,
     WALK_R: 16,        // tiles people will walk to a stop
-    SAVE_KEY: 'arterial.save.v1',
-    SET_KEY: 'arterial.settings.v1',
+    SAVE_KEY: 'openskylines.save.v2',
+    SET_KEY: 'openskylines.settings.v1',
   };
   C.P0 = C.PAD; C.P1 = C.PAD + C.N;
   C.DX = [0, 1, 0, -1]; C.DY = [-1, 0, 1, 0]; // N E S W (y grows south / +z)
   C.WORLD = C.W * C.TILE;
 
   // ---------- Roads ----------
+  // w: strips (tiles across). A 2-strip road is a dual carriageway: each strip is one-way.
+  // fwd/back: lanes per direction on a strip. side: sidewalk width. bike: 0 none, 1 painted, 2 protected.
+  // med: centre treatment. car:false = bikes & pedestrians only.
+  const R = (key, name, grp, o) => Object.assign({ key, name, grp, w: 1, fwd: 1, back: 1, oneway: false, speed: 12, cap: 4, cost: 25, upkeep: 0.5, zonable: true, side: 2, bike: 0, med: 'paint', surf: 'asph', tram: false, car: true, unlock: 0, desc: '' }, o);
   C.ROADS = [null,
-    { key: 'street', name: 'Small Road', desc: 'Two-lane local street. Buildings can grow along it.', speed: 12, lanes: 1, cost: 25, upkeep: 0.5, zonable: true, sidewalk: 1.8, unlock: 0, cap: 4, off: [1.6] },
-    { key: 'avenue', name: 'Avenue', desc: 'Four lanes. Carries about twice the traffic of a small road.', speed: 16, lanes: 2, cost: 60, upkeep: 1.2, zonable: true, sidewalk: 0.9, unlock: 0, cap: 7, off: [1.1, 3.1] },
-    { key: 'highway', name: 'Highway', desc: 'Fast four-lane road. No buildings can face it.', speed: 26, lanes: 2, cost: 140, upkeep: 2.5, zonable: false, sidewalk: 0, unlock: 2, cap: 9, off: [1.35, 3.65] },
+    R('basic', 'Two-Lane Road', 'small', { desc: 'The everyday street. One lane each way.' }),
+    R('gravel', 'Gravel Road', 'small', { surf: 'dirt', side: 0, speed: 8, cap: 3, cost: 10, upkeep: 0.2, med: 'none', desc: 'Cheap and slow. No sidewalks.' }),
+    R('oneway2', 'One-Way, 2 Lanes', 'small', { oneway: true, fwd: 2, back: 0, cap: 5, cost: 30, desc: 'Drag in the direction traffic should flow.' }),
+    R('bike2', 'Two-Lane + Bike Lanes', 'small', { bike: 1, side: 1.6, cost: 35, unlock: 1, desc: 'Painted bike lanes on both sides.' }),
+    R('median2', 'Two-Lane + Median', 'small', { med: 'curb', side: 1.7, cost: 35, unlock: 2, desc: 'A raised curb splits the two directions.' }),
+    R('trees2', 'Two-Lane + Trees', 'small', { side: 2.4, cost: 40, unlock: 2, trees: true, desc: 'Street trees. Raises land value.' }),
+    R('asym12', 'Three-Lane, 1 + 2', 'small', { fwd: 2, back: 1, cap: 5, cost: 40, side: 1.5, unlock: 2, desc: 'Two lanes in the drag direction, one back.' }),
+    R('oneway3', 'One-Way, 3 Lanes', 'small', { oneway: true, fwd: 3, back: 0, cap: 7, side: 1.5, cost: 45, unlock: 2, desc: 'Drag in the direction traffic should flow.' }),
+    R('prot2', 'Two-Lane + Protected Bikes', 'small', { bike: 2, side: 1.4, cost: 45, unlock: 3, desc: 'Curb-separated bike tracks. Cyclists love it.' }),
+    R('tram2', 'Two-Lane + Tram', 'small', { tram: true, cost: 60, unlock: 4, upkeep: 0.8, desc: 'Streetcar tracks in both lanes.' }),
+    R('ave4', 'Four-Lane Avenue', 'medium', { w: 2, fwd: 2, back: 0, speed: 15, cap: 7, cost: 70, upkeep: 1.2, med: 'paint', side: 2.2, unlock: 2, desc: 'Two tiles wide. Two lanes each way.' }),
+    R('ave4bike', 'Avenue + Bike Lanes', 'medium', { w: 2, fwd: 2, back: 0, speed: 15, cap: 7, cost: 80, upkeep: 1.3, bike: 1, side: 1.8, unlock: 3 }),
+    R('ave4grass', 'Avenue + Grass Median', 'medium', { w: 2, fwd: 2, back: 0, speed: 15, cap: 7, cost: 80, upkeep: 1.3, med: 'grass', side: 2, unlock: 3 }),
+    R('ave4trees', 'Avenue + Tree Median', 'medium', { w: 2, fwd: 2, back: 0, speed: 15, cap: 7, cost: 90, upkeep: 1.4, med: 'trees', side: 2, unlock: 3, trees: true }),
+    R('ave4prot', 'Avenue + Protected Bikes', 'medium', { w: 2, fwd: 2, back: 0, speed: 15, cap: 7, cost: 95, upkeep: 1.4, bike: 2, med: 'curb', side: 1.6, unlock: 3 }),
+    R('ave4tram', 'Avenue + Tram', 'medium', { w: 2, fwd: 2, back: 0, speed: 15, cap: 7, cost: 120, upkeep: 1.6, tram: true, med: 'curb', side: 2, unlock: 4 }),
+    R('blvd6', 'Six-Lane Boulevard', 'large', { w: 2, fwd: 3, back: 0, speed: 17, cap: 10, cost: 130, upkeep: 2, med: 'curb', side: 1.6, unlock: 5, desc: 'Three lanes each way. Gets traffic lights.' }),
+    R('blvd6trees', 'Boulevard + Trees', 'large', { w: 2, fwd: 3, back: 0, speed: 17, cap: 10, cost: 145, upkeep: 2.2, med: 'trees', side: 1.4, unlock: 5, trees: true }),
+    R('blvd6bike', 'Boulevard + Bike Lanes', 'large', { w: 2, fwd: 3, back: 0, speed: 17, cap: 10, cost: 145, upkeep: 2.2, med: 'curb', bike: 1, side: 1.2, unlock: 5 }),
+    R('blvd6prot', 'Boulevard + Protected Bikes', 'large', { w: 2, fwd: 3, back: 0, speed: 17, cap: 10, cost: 160, upkeep: 2.3, med: 'paint', bike: 2, side: 1.1, unlock: 5 }),
+    R('blvd8', 'Eight-Lane Road', 'large', { w: 2, fwd: 4, back: 0, speed: 18, cap: 13, cost: 180, upkeep: 2.6, med: 'curb', side: 0.8, unlock: 6 }),
+    R('hw2', 'Two-Lane Highway', 'highway', { w: 2, fwd: 2, back: 0, speed: 26, cap: 9, cost: 140, upkeep: 2.4, zonable: false, side: 0.9, med: 'barrier', unlock: 4, desc: 'Fast. Nothing can be built along it.' }),
+    R('hw3', 'Three-Lane Highway', 'highway', { w: 2, fwd: 3, back: 0, speed: 28, cap: 13, cost: 190, upkeep: 3, zonable: false, side: 0.7, med: 'barrier', unlock: 5 }),
+    R('hw4', 'Four-Lane Highway', 'highway', { w: 2, fwd: 4, back: 0, speed: 30, cap: 17, cost: 250, upkeep: 3.8, zonable: false, side: 0.5, med: 'barrier', unlock: 6 }),
+    R('ramp1', 'One-Lane Ramp', 'highway', { oneway: true, fwd: 1, back: 0, speed: 20, cap: 5, cost: 70, upkeep: 1.2, zonable: false, side: 1.2, med: 'none', unlock: 4, desc: 'One-way. Use it for on and off ramps.' }),
+    R('ramp2', 'Two-Lane Ramp', 'highway', { oneway: true, fwd: 2, back: 0, speed: 22, cap: 8, cost: 100, upkeep: 1.6, zonable: false, side: 0.9, med: 'none', unlock: 4 }),
+    R('rural', 'Rural Highway', 'highway', { speed: 20, cap: 5, cost: 60, upkeep: 0.8, zonable: false, side: 1.0, med: 'paint', unlock: 4, desc: 'Fast two-lane road. No buildings.' }),
+    R('bikepath', 'Bike Path', 'path', { car: false, zonable: false, cost: 12, upkeep: 0.2, side: 0, med: 'none', unlock: 1, desc: 'Bikes and pedestrians only.' }),
+    R('footpath', 'Pedestrian Path', 'path', { car: false, zonable: false, cost: 8, upkeep: 0.1, side: 0, med: 'none', unlock: 0, desc: 'A shortcut for people on foot.' }),
   ];
+  C.ROAD_GROUPS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['highway', 'Highways'], ['path', 'Paths']];
+  C.START_HW = C.ROADS.findIndex(r => r && r.key === 'hw2');
+  C.ROAD_BASIC = 1;
+  C.GRP_RANK = { path: 0, small: 1, medium: 2, large: 3, highway: 4 };
+
+  // Cross-section layout of one strip, in metres across the tile (0 = left edge looking "forward").
+  const MED_W = { none: 0, paint: 0.3, curb: 0.9, grass: 1.8, trees: 2.2, barrier: 0.8 };
+  C.layout = function (R) {
+    const Tl = C.TILE, sw = R.side, bw = R.bike === 2 ? 1.7 : R.bike === 1 ? 1.4 : 0;
+    const L = { sw, bw, fwd: [], back: [], med: 0, pair: R.w === 2, lw: 3 };
+    if (!R.car) { L.path = true; return L; }
+    let lw;
+    if (R.w === 2) {
+      L.med = MED_W[R.med] / 2;
+      lw = (Tl - L.med - bw - sw) / R.fwd;
+      for (let j = 0; j < R.fwd; j++) L.fwd.push(Tl - sw - bw - (j + 0.5) * lw - Tl / 2);
+      L.left = L.med; // lanes start here (from the left)
+    } else if (R.oneway) {
+      lw = (Tl - 2 * sw - 2 * bw) / R.fwd;
+      for (let j = 0; j < R.fwd; j++) L.fwd.push(Tl - sw - bw - (j + 0.5) * lw - Tl / 2);
+    } else {
+      L.med = MED_W[R.med];
+      lw = (Tl - 2 * sw - 2 * bw - L.med) / (R.fwd + R.back);
+      for (let j = 0; j < R.fwd; j++) L.fwd.push(Tl - sw - bw - (j + 0.5) * lw - Tl / 2);
+      for (let j = 0; j < R.back; j++) L.back.push(Tl / 2 - (sw + bw + (j + 0.5) * lw)); // in the backward traveller's frame
+      L.medX = sw + bw + R.back * lw + L.med / 2; // centre line from the left edge
+    }
+    L.lw = lw;
+    L.bikeOff = Tl / 2 - sw - bw / 2;   // right side, traveller frame
+    L.walkOff = Tl / 2 - Math.max(0.8, sw) / 2;
+    return L;
+  };
+  for (let r = 1; r < C.ROADS.length; r++) C.ROADS[r].L = C.layout(C.ROADS[r]);
+  // bike-friendliness of a road for cyclists (0..1)
+  C.bikeScore = function (R) {
+    if (!R.car) return 1;
+    if (R.grp === 'highway') return 0;
+    if (R.bike === 2) return 0.95;
+    if (R.bike === 1) return R.grp === 'large' ? 0.6 : 0.75;
+    if (R.grp === 'small') return R.surf === 'dirt' ? 0.6 : 0.5;
+    return R.grp === 'medium' ? 0.2 : 0.06;
+  };
 
   // ---------- Zones ----------
   C.ZONES = [null,
-    { key: 'rlow', name: 'Low Density Residential', short: 'Res · Low', cat: 'res', color: '#5fcf5a', unlock: 0, lots: [[1, 2]], cap: [3, 4, 4, 5, 6], perBuilding: true },
-    { key: 'rmed', name: 'Medium Density Residential', short: 'Res · Medium', cat: 'res', color: '#2f9e48', unlock: 1, lots: [[1, 2], [2, 2]], cap: [8, 9, 11, 13, 15] },
-    { key: 'rhigh', name: 'High Density Residential', short: 'Res · High', cat: 'res', color: '#167a3a', unlock: 4, lots: [[2, 2], [2, 3]], cap: [18, 23, 28, 34, 40] },
-    { key: 'clow', name: 'Low Density Commercial', short: 'Com · Low', cat: 'com', color: '#59a6f5', unlock: 0, lots: [[1, 2], [2, 2]], cap: [2, 3, 3, 4, 5] },
-    { key: 'chigh', name: 'High Density Commercial', short: 'Com · High', cat: 'com', color: '#2b62d9', unlock: 2, lots: [[2, 2], [2, 3]], cap: [5, 6, 8, 9, 11] },
-    { key: 'ind', name: 'Industrial', short: 'Industry', cat: 'ind', color: '#f0c43a', unlock: 0, lots: [[2, 2], [2, 3], [3, 3]], cap: [3, 3, 4, 4, 5] },
-    { key: 'office', name: 'Office', short: 'Office', cat: 'off', color: '#b276f2', unlock: 3, lots: [[2, 2], [2, 3]], cap: [8, 10, 12, 14, 17] },
+    { key: 'rlow', name: 'Low Density Residential', short: 'Res · Low', cat: 'res', color: '#5fcf5a', unlock: 0, lots: [[1, 1, 15], [1, 2, 34], [1, 3, 14], [2, 2, 25], [2, 3, 12]], cap: [3, 4, 4, 5, 6], perBuilding: true },
+    { key: 'rmed', name: 'Medium Density Residential', short: 'Res · Medium', cat: 'res', color: '#2f9e48', unlock: 3, lots: [[1, 2, 40], [2, 2, 40], [2, 3, 20]], cap: [8, 9, 11, 13, 15] },
+    { key: 'rhigh', name: 'High Density Residential', short: 'Res · High', cat: 'res', color: '#167a3a', unlock: 6, lots: [[2, 2, 50], [2, 3, 50]], cap: [18, 23, 28, 34, 40] },
+    { key: 'clow', name: 'Low Density Commercial', short: 'Com · Low', cat: 'com', color: '#59a6f5', unlock: 0, lots: [[1, 2, 60], [2, 2, 40]], cap: [2, 3, 3, 4, 5] },
+    { key: 'chigh', name: 'High Density Commercial', short: 'Com · High', cat: 'com', color: '#2b62d9', unlock: 4, lots: [[2, 2, 50], [2, 3, 50]], cap: [5, 6, 8, 9, 11] },
+    { key: 'ind', name: 'Industrial', short: 'Industry', cat: 'ind', color: '#f0c43a', unlock: 0, lots: [[2, 2, 40], [2, 3, 35], [3, 3, 25]], cap: [3, 3, 4, 4, 5] },
+    { key: 'office', name: 'Office', short: 'Office', cat: 'off', color: '#b276f2', unlock: 5, lots: [[2, 2, 50], [2, 3, 50]], cap: [8, 10, 12, 14, 17] },
   ];
   C.LV_REQ = [0, 18, 32, 46, 60]; // land value needed to reach level n+1
 
   // ---------- Services, parks, landmarks ----------
+  const SV = (o) => Object.assign({ upkeep: 0, radius: 8 }, o);
   C.SERVICES = {
-    police: { name: 'Police Station', cat: 'services', size: [2, 2], cost: 6000, upkeep: 350, radius: 14, cov: 'police', unlock: 0, veh: 'police', vehCount: 2, desc: 'Patrols reduce crime nearby.' },
-    policehq: { name: 'Police Headquarters', cat: 'services', size: [3, 3], cost: 18000, upkeep: 900, radius: 26, cov: 'police', unlock: 3, veh: 'police', vehCount: 5, desc: 'Large police coverage.' },
-    fire: { name: 'Fire Station', cat: 'services', size: [2, 2], cost: 6000, upkeep: 350, radius: 15, cov: 'fire', unlock: 0, veh: 'fire', vehCount: 2, desc: 'Fire trucks put out fires before buildings burn down.' },
-    clinic: { name: 'Medical Clinic', cat: 'services', size: [2, 2], cost: 5000, upkeep: 300, radius: 13, cov: 'health', unlock: 0, veh: 'ambulance', vehCount: 1, desc: 'Keeps residents healthy and happy.' },
-    hospital: { name: 'Hospital', cat: 'services', size: [3, 3], cost: 20000, upkeep: 1100, radius: 28, cov: 'health', unlock: 3, veh: 'ambulance', vehCount: 4, desc: 'Large health coverage.' },
-    elem: { name: 'Elementary School', cat: 'services', size: [2, 2], cost: 7000, upkeep: 380, radius: 13, cov: 'edu', unlock: 0, desc: 'Education raises land value and enables offices.' },
-    high: { name: 'High School', cat: 'services', size: [3, 3], cost: 14000, upkeep: 700, radius: 20, cov: 'edu', unlock: 2, desc: 'Wider education coverage.' },
-    univ: { name: 'University', cat: 'services', size: [4, 4], cost: 35000, upkeep: 1600, radius: 34, cov: 'edu', unlock: 4, desc: 'Big boost to education and office demand.' },
-    garbage: { name: 'Waste Transfer Station', cat: 'services', size: [3, 2], cost: 7000, upkeep: 400, radius: 30, cov: 'garbage', unlock: 0, veh: 'garbage', vehCount: 6, pollute: 0.5, desc: 'Garbage trucks collect from buildings in range.' },
-    park: { name: 'Pocket Park', cat: 'parks', size: [1, 1], cost: 800, upkeep: 25, radius: 6, cov: 'park', unlock: 0, desc: 'Small green space. Raises happiness and land value.' },
-    plaza: { name: 'Town Plaza', cat: 'parks', size: [2, 2], cost: 2500, upkeep: 70, radius: 9, cov: 'park', unlock: 1, desc: 'Paved square with a fountain.' },
-    bigpark: { name: 'Central Park', cat: 'parks', size: [4, 4], cost: 9000, upkeep: 220, radius: 15, cov: 'park', unlock: 4, desc: 'Large park with a pond.' },
-    stadium: { name: 'Stadium', cat: 'landmarks', size: [4, 4], cost: 60000, upkeep: 1500, radius: 30, cov: 'landmark', unlock: 5, desc: 'Attracts visitors citywide.' },
-    tower: { name: 'Observation Tower', cat: 'landmarks', size: [2, 2], cost: 45000, upkeep: 800, radius: 26, cov: 'landmark', unlock: 5, desc: 'A city icon. Raises land value.' },
-    arch: { name: 'Grand Arch', cat: 'landmarks', size: [3, 3], cost: 120000, upkeep: 1000, radius: 40, cov: 'landmark', unlock: 6, desc: 'Monument to a great metropolis.' },
+    // services
+    garbage: SV({ name: 'Waste Transfer Station', cat: 'services', tab: 'garbage', size: [3, 2], cost: 6000, upkeep: 380, radius: 30, cov: 'garbage', unlock: 1, veh: 'garbage', vehCount: 6, pollute: 0.5, desc: 'Garbage trucks collect from buildings in range.' }),
+    recycle: SV({ name: 'Recycling Center', cat: 'services', tab: 'garbage', size: [3, 3], cost: 14000, upkeep: 650, radius: 40, cov: 'garbage', unlock: 4, veh: 'garbage', vehCount: 9, pollute: 0.15, desc: 'Bigger range, much less pollution.' }),
+    clinic: SV({ name: 'Medical Clinic', cat: 'services', tab: 'health', size: [2, 2], cost: 5000, upkeep: 300, radius: 13, cov: 'health', unlock: 1, veh: 'ambulance', vehCount: 1, desc: 'Keeps residents healthy and happy.' }),
+    hospital: SV({ name: 'Hospital', cat: 'services', tab: 'health', size: [3, 3], cost: 20000, upkeep: 1100, radius: 28, cov: 'health', unlock: 5, veh: 'ambulance', vehCount: 4, desc: 'Large health coverage.' }),
+    police: SV({ name: 'Police Station', cat: 'services', tab: 'police', size: [2, 2], cost: 6000, upkeep: 350, radius: 14, cov: 'police', unlock: 2, veh: 'police', vehCount: 2, desc: 'Patrols reduce crime nearby.' }),
+    policehq: SV({ name: 'Police Headquarters', cat: 'services', tab: 'police', size: [3, 3], cost: 18000, upkeep: 900, radius: 26, cov: 'police', unlock: 5, veh: 'police', vehCount: 5, desc: 'Large police coverage.' }),
+    fire: SV({ name: 'Fire Station', cat: 'services', tab: 'fire', size: [2, 2], cost: 6000, upkeep: 350, radius: 15, cov: 'fire', unlock: 2, veh: 'fire', vehCount: 2, desc: 'Fire trucks put out fires before buildings burn down.' }),
+    firehq: SV({ name: 'Fire Headquarters', cat: 'services', tab: 'fire', size: [3, 3], cost: 17000, upkeep: 850, radius: 28, cov: 'fire', unlock: 5, veh: 'fire', vehCount: 5, desc: 'Large fire coverage.' }),
+    elem: SV({ name: 'Elementary School', cat: 'services', tab: 'edu', size: [2, 2], cost: 7000, upkeep: 380, radius: 13, cov: 'edu', unlock: 2, desc: 'Education raises land value and enables offices.' }),
+    high: SV({ name: 'High School', cat: 'services', tab: 'edu', size: [3, 3], cost: 14000, upkeep: 700, radius: 20, cov: 'edu', unlock: 4, desc: 'Wider education coverage.' }),
+    univ: SV({ name: 'University', cat: 'services', tab: 'edu', size: [4, 4], cost: 35000, upkeep: 1600, radius: 34, cov: 'edu', unlock: 6, desc: 'Big boost to education and office demand.' }),
   };
+  // parks: [key, name, tab, w, d, cost, upkeep, radius, unlock]
+  const PARKS = [
+    ['park', 'Pocket Park', 'small', 1, 1, 600, 20, 6, 1], ['playground', 'Playground', 'small', 1, 1, 900, 25, 6, 1], ['grove', 'Tree Grove', 'small', 1, 1, 500, 15, 5, 1],
+    ['miniplaza', 'Statue Square', 'small', 1, 1, 1100, 30, 6, 2], ['garden', 'Community Garden', 'small', 1, 2, 1200, 30, 7, 2], ['court', 'Basketball Court', 'small', 1, 2, 1400, 35, 7, 2],
+    ['dogpark', 'Dog Park', 'small', 2, 1, 1300, 30, 7, 3], ['benches', 'Shady Benches', 'small', 2, 1, 900, 20, 6, 2],
+    ['plaza', 'Town Plaza', 'medium', 2, 2, 2500, 70, 9, 3], ['trail', 'Forest Trail', 'medium', 2, 2, 1800, 40, 9, 3], ['bigplay', 'Adventure Playground', 'medium', 2, 2, 3000, 80, 9, 3],
+    ['skate', 'Skate Park', 'medium', 2, 2, 2800, 70, 9, 4], ['meadow', 'Picnic Meadow', 'medium', 2, 3, 2400, 55, 10, 4], ['soccer', 'Soccer Field', 'medium', 2, 3, 3600, 90, 10, 4],
+    ['flowers', 'Flower Garden', 'medium', 2, 2, 3200, 80, 9, 5],
+    ['bigpark', 'Central Park', 'large', 4, 4, 9000, 220, 15, 6], ['woods', 'Woodland Reserve', 'large', 4, 4, 6000, 120, 15, 6], ['grandplaza', 'Grand Plaza', 'large', 3, 3, 8500, 200, 13, 6],
+    ['lakepark', 'Lake Park', 'large', 4, 3, 9500, 220, 14, 7], ['zen', 'Zen Garden', 'large', 3, 3, 7800, 180, 13, 7], ['sports', 'Sports Complex', 'large', 4, 4, 14000, 320, 16, 7],
+    ['amphi', 'Amphitheater Park', 'large', 3, 4, 11000, 260, 15, 8],
+  ];
+  for (const p of PARKS) C.SERVICES[p[0]] = SV({ name: p[1], cat: 'parks', tab: p[2], size: [p[3], p[4]], cost: p[5], upkeep: p[6], radius: p[7], cov: 'park', unlock: p[8] });
+  const LMK = [
+    ['claude', 'Claude Arch', 3, 3, 60000, 900, 32, 7, 'A warm arch crowned with a spark. Thinks about your city.'],
+    ['vscode', 'VS Code Tower', 3, 3, 70000, 1000, 32, 7, 'An office tower in the shape of the editor’s logo.'],
+    ['octocat', 'Octocat Statue', 2, 2, 45000, 700, 28, 7, 'A giant cat with tentacles. Forks welcome.'],
+    ['duck', 'Rubber Duck Monument', 3, 3, 50000, 700, 30, 7, 'Explain your bugs to it. It listens.'],
+    ['terminal', 'Terminal Monolith', 2, 2, 55000, 800, 28, 8, 'A black slab with a blinking prompt.'],
+    ['stack', 'Stack Tower', 2, 2, 80000, 1100, 34, 8, 'Stacked slabs that never quite line up.'],
+    ['neural', 'Neural Net Sphere', 3, 3, 90000, 1200, 36, 8, 'Nodes and weights lit up at night.'],
+    ['python', 'Twin Serpent Towers', 3, 3, 100000, 1300, 36, 9, 'Two coiled towers, blue and yellow.'],
+    ['tux', 'Penguin Plaza', 3, 3, 65000, 900, 30, 8, 'A friendly penguin on an open plaza.'],
+    ['whale', 'Container Whale', 4, 3, 85000, 1100, 34, 9, 'A whale carrying stacked shipping containers.'],
+    ['stadium', 'Hackathon Arena', 4, 4, 120000, 1500, 40, 9, 'Attracts visitors citywide.'],
+    ['tower', 'Cloud Spire', 2, 2, 110000, 1200, 38, 9, 'An observation tower above the clouds.'],
+  ];
+  for (const p of LMK) C.SERVICES[p[0]] = SV({ name: p[1], cat: 'landmarks', tab: 'landmarks', size: [p[2], p[3]], cost: p[4], upkeep: p[5], radius: p[6], cov: 'landmark', unlock: p[7], desc: p[8] });
+  C.PARK_TABS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large']];
+  C.SVC_TABS = [['garbage', 'Garbage'], ['health', 'Healthcare'], ['police', 'Police'], ['fire', 'Fire'], ['edu', 'Education']];
 
   C.TRANSIT = {
-    bus: { name: 'Bus', speed: 10, cap: 30, upkeep: 90, fare: 2, stopCost: 250, unlock: 1, len: 10 },
-    rail: { name: 'Train / Metro', speed: 24, cap: 160, upkeep: 600, fare: 3, stopCost: 7000, ugStopCost: 11000, unlock: 3, len: 14 },
+    bus: { name: 'Bus', speed: 10, cap: 30, upkeep: 90, fare: 2, stopCost: 250, unlock: 3, len: 10 },
+    tram: { name: 'Streetcar', speed: 12, cap: 70, upkeep: 220, fare: 2, stopCost: 600, unlock: 4, len: 14 },
+    rail: { name: 'Train / Metro', speed: 24, cap: 160, upkeep: 600, fare: 3, stopCost: 7000, ugStopCost: 11000, unlock: 6, len: 14 },
   };
   C.RAIL = [null,
     { key: 'elev', name: 'Elevated Track', cost: 160, upkeep: 1.5, desc: 'Track on a viaduct. Can cross roads and water.' },
@@ -69,12 +170,15 @@ window.CB = {};
 
   C.MILESTONES = [
     { name: 'Settlement', pop: 0, reward: 0, unlocks: '' },
-    { name: 'Village', pop: 250, reward: 15000, unlocks: 'Medium density housing, bus lines, Town Plaza' },
-    { name: 'Town', pop: 800, reward: 25000, unlocks: 'Highways, high density commercial, High School' },
-    { name: 'Small City', pop: 2000, reward: 40000, unlocks: 'Trains & metro, offices, Hospital, Police HQ' },
-    { name: 'City', pop: 4000, reward: 60000, unlocks: 'High density housing, University, Central Park' },
-    { name: 'Big City', pop: 8000, reward: 90000, unlocks: 'Stadium, Observation Tower' },
-    { name: 'Metropolis', pop: 15000, reward: 150000, unlocks: 'Grand Arch' },
+    { name: 'Hamlet', pop: 50, reward: 8000, unlocks: 'Garbage collection, Medical Clinic, bike lanes, small parks' },
+    { name: 'Village', pop: 150, reward: 12000, unlocks: 'Police, fire, schools, avenues, more small roads' },
+    { name: 'Small Town', pop: 300, reward: 18000, unlocks: 'Buses, medium density housing, medium parks, protected bike lanes' },
+    { name: 'Town', pop: 600, reward: 25000, unlocks: 'Highways, streetcars, high school, recycling, dense commercial' },
+    { name: 'Large Town', pop: 1200, reward: 35000, unlocks: 'Boulevards, offices, hospital, police and fire HQ' },
+    { name: 'Small City', pop: 2500, reward: 50000, unlocks: 'Trains and metro, university, high density housing, large parks' },
+    { name: 'City', pop: 5000, reward: 70000, unlocks: 'First landmarks: Claude Arch, VS Code Tower, Octocat, Rubber Duck' },
+    { name: 'Big City', pop: 9000, reward: 100000, unlocks: 'More landmarks: Terminal, Stack Tower, Neural Sphere, Penguin Plaza' },
+    { name: 'Metropolis', pop: 15000, reward: 150000, unlocks: 'Twin Serpent Towers, Container Whale, Hackathon Arena, Cloud Spire' },
   ];
 
   C.QUALITY = {
@@ -112,6 +216,7 @@ window.CB = {};
   };
   U.lin = v => Math.pow(v, 2.2);
   U.hex = function (h) {
+    if (h.length === 4) h = '#' + h[1] + h[1] + h[2] + h[2] + h[3] + h[3];
     const n = parseInt(h.slice(1), 16);
     return [((n >> 16) & 255) / 255, ((n >> 8) & 255) / 255, (n & 255) / 255];
   };

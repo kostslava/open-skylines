@@ -1,5 +1,5 @@
 'use strict';
-// Arterial — boot, main loop, settings, save/load
+// Open Skylines — boot, main loop, settings, save/load
 (function () {
   const { C, U } = CB;
   const $ = id => document.getElementById(id);
@@ -52,7 +52,7 @@
   Game.showStart = function (fresh) {
     if (fresh) {
       storeDel(C.SAVE_KEY);
-      try { sessionStorage.setItem('arterial.fresh', '1'); } catch (e) { /* ignore */ }
+      try { sessionStorage.setItem('openskylines.fresh', '1'); } catch (e) { /* ignore */ }
       location.reload();
     }
   };
@@ -63,7 +63,7 @@
     const save = readSave();
     const params = new URLSearchParams(location.search);
     let fresh = false;
-    try { fresh = sessionStorage.getItem('arterial.fresh') === '1'; sessionStorage.removeItem('arterial.fresh'); } catch (e) { /* ignore */ }
+    try { fresh = sessionStorage.getItem('openskylines.fresh') === '1'; sessionStorage.removeItem('openskylines.fresh'); } catch (e) { /* ignore */ }
     let seed = save && !fresh ? save.seed : Math.floor(Math.random() * 1e6) + 1;
     if (params.get('seed')) seed = +params.get('seed');
     if (params.get('trace')) console.log('seed ' + seed);
@@ -127,8 +127,8 @@
     $('goals').hidden = false;
     CB.UI.setSpeed(1);
     const hw = CB.World.hwRow;
-    CB.Gfx.focus((C.P0 + 18) * C.TILE, (hw + 0.5) * C.TILE, 300);
-    CB.UI.toast('Welcome to ' + CB.Sim.name + '. Open Roads and drag from the end of the highway to start your city.', 'good');
+    CB.Gfx.focus((C.P0 + 18) * C.TILE, (hw + 1) * C.TILE, 260);
+    CB.UI.toast('Welcome to ' + CB.Sim.name + '. Open Roads and drag a street from the little road at the end of the highway.', 'good');
     Game.save(true);
   }
   function continueSave(save) {
@@ -201,29 +201,24 @@
     }
   }
   function demoCity(ms) {
-    const Wd = CB.World, S = CB.Sim, U2 = U;
-    S.money = 400000;
+    const Wd = CB.World, S = CB.Sim, U2 = U, I = U.idx, Tl = CB.Tools;
+    S.money = 900000;
     S.milestone = ms || 0;
-    const r = Wd.hwRow, x0 = C.P0 + 17;
-    const rd = (x, y, t) => { if (U2.inPlay(x, y) && Wd.roadOK(U2.idx(x, y))) S.setRoad(U2.idx(x, y), t); };
-    for (let x = x0; x <= x0 + 46; x++) rd(x, r, 2);
-    for (let k = 0; k <= 7; k++) for (let y = r - 21; y <= r + 21; y++) rd(x0 + 4 + k * 6, y, 1);
-    for (let j = 0; j <= 7; j++) { if (r - 21 + j * 6 === r) continue; for (let x = x0 + 4; x <= x0 + 46; x++) rd(x, r - 21 + j * 6, 1); }
-    if (ms >= 3) { for (let x = x0 + 4; x <= x0 + 46; x++) S.setRail(U2.idx(x, r - 6), 1); }
-    S.networkChanged();
-    if (ms >= 1) {
-      const X = CB.Transit;
-      const ids = [[x0 + 8, r], [x0 + 22, r], [x0 + 34, r], [x0 + 34, r - 9], [x0 + 22, r - 9], [x0 + 8, r - 9]].map(([x, y]) => X.addStop('bus', U2.idx(x, y)).id);
-      X.createLine('bus', ids);
-      const ids2 = [[x0 + 10, r + 9], [x0 + 28, r + 9], [x0 + 28, r + 3], [x0 + 10, r + 3]].map(([x, y]) => X.addStop('bus', U2.idx(x, y)).id);
-      X.createLine('bus', ids2);
-    }
+    const r = Wd.hwRow, x0 = C.P0 + 16;
+    const road = (rt, a, b) => { Tl._simulate({ type: 'road', rt }, a, b); };
+    const AVE = C.ROADS.findIndex(q => q && q.key === 'ave4');
+    const BIKE = C.ROADS.findIndex(q => q && q.key === 'bike2');
+    // main avenue east from the connector
+    road(ms >= 2 ? AVE : 1, I(x0, r + 1), I(x0 + 46, r + 1));
+    for (let k = 0; k <= 6; k++) road(k % 2 && ms >= 1 ? BIKE : 1, I(x0 + 6 + k * 6, r - 20), I(x0 + 6 + k * 6, r + 21));
+    for (let j = 0; j <= 7; j++) { const y = r - 20 + j * 6; if (Math.abs(y - r) <= 2) continue; road(1, I(x0 + 6, y), I(x0 + 42, y)); }
+    if (ms >= 6) { for (let x = x0 + 4; x <= x0 + 46; x++) S.setRail(U2.idx(x, r - 7), 1); S.networkChanged(); }
+    const X = CB.Transit;
     if (ms >= 3) {
-      const X = CB.Transit;
-      const ids = [x0 + 6, x0 + 25, x0 + 44].map(x => X.addStop('rail', U2.idx(x, r - 6)).id);
-      X.createLine('rail', ids);
-      X.setVehicles(X.lines[X.lines.length - 1], 2);
+      const ids = [[x0 + 12, r + 1], [x0 + 24, r + 1], [x0 + 36, r + 1], [x0 + 36, r - 8], [x0 + 24, r - 8], [x0 + 12, r - 8]].map(([x, y]) => (X.stopAtTile(I(x, y), 'bus') || X.addStop('bus', I(x, y))).id);
+      X.createLine('bus', ids);
     }
+    if (ms >= 6) { const ids = [x0 + 6, x0 + 25, x0 + 44].map(x => X.addStop('rail', I(x, r - 7)).id); X.createLine('rail', ids); X.setVehicles(X.lines[X.lines.length - 1], 2); }
     const place = (key, tx, ty) => {
       for (let rad = 0; rad < 12; rad++) for (let dy = -rad; dy <= rad; dy++) for (let dx = -rad; dx <= rad; dx++) {
         const lot = S.serviceLot(key, tx + dx, ty + dy, 0);
@@ -231,33 +226,35 @@
       }
       return false;
     };
-    place('clinic', x0 + 14, r - 3); place('fire', x0 + 26, r + 3); place('police', x0 + 32, r - 3);
-    place('elem', x0 + 20, r - 9); place('garbage', x0 + 40, r + 15); place('park', x0 + 8, r - 9); place('park', x0 + 26, r - 15);
-    place('plaza', x0 + 20, r + 3);
+    if (ms >= 1) { place('clinic', x0 + 14, r - 3); place('garbage', x0 + 40, r + 15); place('park', x0 + 9, r - 9); place('playground', x0 + 27, r - 15); }
+    if (ms >= 2) { place('fire', x0 + 26, r + 4); place('police', x0 + 32, r - 3); place('elem', x0 + 20, r - 9); }
+    if (ms >= 3) place('plaza', x0 + 20, r + 5);
+    if (ms >= 7) { place('claude', x0 + 33, r + 10); place('vscode', x0 + 14, r + 10); place('octocat', x0 + 38, r - 15); place('duck', x0 + 9, r - 15); }
     for (let i = 0; i < Wd.zone.length; i++) {
       if (!Wd.zonable[i] || Wd.bld[i]) continue;
       const x = U2.tx(i), y = U2.ty(i);
       if (x < x0 + 3 || x > x0 + 47 || Math.abs(y - r) > 22) continue;
       const dy = y - r;
       let z = 1;
-      if (Math.abs(dy) <= 2) z = 4;
+      if (Math.abs(dy) <= 3) z = 4;
       else if (dy > 12) z = 6;
-      else if (dy > 2 && x > x0 + 30) z = 4;
-      else if (dy < -12 && ms >= 1) z = 2;
-      if (ms >= 4 && Math.abs(dy) <= 8 && x < x0 + 20 && dy < 0) z = 3;
-      if (ms >= 3 && dy > 2 && dy <= 8 && x < x0 + 18) z = 7;
+      else if (dy > 3 && x > x0 + 30) z = 4;
+      else if (dy < -12 && ms >= 3) z = 2;
+      if (ms >= 6 && Math.abs(dy) <= 8 && x < x0 + 20 && dy < 0) z = 3;
+      if (ms >= 5 && dy > 3 && dy <= 8 && x < x0 + 18) z = 7;
       S.setZone(i, z);
     }
     S.zoneTexDirty = true;
+    Tl.setTool(null);
     CB.Gfx.focus((x0 + 24) * C.TILE, r * C.TILE, 520);
   }
   // drives the real tools the way a player would
   function playTest() {
     const Wd = CB.World, Tl = CB.Tools, I = U.idx;
-    const r = Wd.hwRow, x0 = C.P0 + 17;
+    const r = Wd.hwRow, x0 = C.P0 + 16;
     const log = [];
     const m0 = CB.Sim.money;
-    Tl._simulate({ type: 'road', rt: 1 }, I(x0, r), I(x0 + 24, r));            // main street east
+    Tl._simulate({ type: "road", rt: 1 }, I(x0, r + 1), I(x0 + 24, r + 1));            // main street east
     Tl._simulate({ type: 'road', rt: 1 }, I(x0 + 8, r - 10), I(x0 + 8, r + 10)); // cross street
     Tl._simulate({ type: 'road', rt: 1 }, I(x0 + 16, r - 10), I(x0 + 16, r + 10));
     Tl._simulate({ type: 'road', rt: 1 }, I(x0 + 8, r - 10), I(x0 + 16, r - 10));

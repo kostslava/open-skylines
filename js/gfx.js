@@ -1,5 +1,5 @@
 'use strict';
-// Arterial — renderer, scene, lighting, sky, water, terrain, materials, camera & picking
+// Open Skylines — renderer, scene, lighting, sky, water, terrain, materials, camera & picking
 (function () {
   const { C, U } = CB;
   const T = C.TILE, W = C.W;

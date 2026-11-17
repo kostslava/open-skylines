@@ -1,6 +1,6 @@
 <meta charset="utf-8">
-<title>Arterial</title>
-<meta name="description" content="A browser city builder: roads, zoning, traffic, buses and trains.">
+<title>Open Skylines</title>
+<meta name="description" content="Open Skylines: a browser city builder with real traffic, lanes, intersections, bikes, buses and trains.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow:wght@400;500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap">
@@ -85,17 +85,36 @@ button { font: inherit; color: inherit; }
 .tbtn.danger.on { background: rgba(255,93,79,0.2); border-color: rgba(255,93,79,0.6); }
 .sep { width: 1px; background: var(--line); margin: 6px 3px; flex: none; }
 
-.palette { left: 8px; right: 8px; margin: 0 auto; width: fit-content; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 6px; padding: 8px; max-width: calc(100vw - 16px); overflow-x: auto; }
-.card { width: 128px; flex: none; border: 1px solid var(--line); background: rgba(255,255,255,0.03); border-radius: 8px; padding: 8px; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 5px; position: relative; }
+.palette { left: 8px; right: 8px; margin: 0 auto; width: fit-content; bottom: calc(86px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 6px; padding: 6px 8px 8px; max-width: calc(100vw - 16px); }
+.ptabs { display: flex; gap: 2px; border-bottom: 1px solid var(--line); overflow-x: auto; }
+.ptab { border: 0; background: none; cursor: pointer; padding: 6px 12px 7px; font-family: var(--cond); font-weight: 600; font-size: 13px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--mute); border-bottom: 2px solid transparent; margin-bottom: -1px; white-space: nowrap; }
+.ptab:hover { color: var(--fg); }
+.ptab.on { color: #fff; border-bottom-color: var(--accent); }
+.ptab.dim { opacity: 0.45; }
+.cards { display: flex; gap: 5px; overflow-x: auto; padding-bottom: 2px; }
+.card { width: 104px; flex: none; border: 1px solid var(--line); background: rgba(255,255,255,0.03); border-radius: 7px; padding: 5px; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px; position: relative; }
 .card:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.06); }
 .card.on { border-color: var(--accent); background: rgba(61,139,255,0.16); }
-.card .sw { height: 38px; border-radius: 5px; display: grid; place-items: center; }
-.card .sw svg { width: 30px; height: 30px; fill: none; stroke: rgba(255,255,255,0.92); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
-.card b { font-size: 13px; line-height: 1.15; font-weight: 600; }
-.card small { font-size: 12px; color: var(--accent-2); font-variant-numeric: tabular-nums; }
-.card.locked { cursor: not-allowed; opacity: 0.55; }
+.card .sw { height: 46px; border-radius: 4px; display: grid; place-items: center; overflow: hidden; }
+.card .sw svg { width: 26px; height: 26px; fill: none; stroke: rgba(255,255,255,0.92); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.card .sw svg[preserveAspectRatio] { width: 100%; height: 100%; stroke: none; }
+.card b { font-size: 12px; line-height: 1.15; font-weight: 600; min-height: 28px; }
+.card small { font-size: 11px; color: var(--accent-2); font-variant-numeric: tabular-nums; }
+.card.locked { cursor: not-allowed; opacity: 0.5; }
 .card.locked small { color: var(--mute); }
-.card .lock { position: absolute; top: 6px; right: 6px; font-size: 10px; font-family: var(--cond); text-transform: uppercase; letter-spacing: 0.06em; background: rgba(0,0,0,0.6); padding: 2px 5px; border-radius: 4px; color: var(--mute); }
+.card .lock { position: absolute; top: 7px; right: 7px; font-size: 10px; font-family: var(--cond); text-transform: uppercase; letter-spacing: 0.04em; background: rgba(0,0,0,0.7); padding: 1px 5px; border-radius: 4px; color: #fff; z-index: 1; }
+.seg { display: flex; flex-wrap: wrap; gap: 4px; }
+.seg button { height: 30px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); cursor: pointer; font-size: 12px; font-weight: 600; }
+.seg button.on { background: rgba(61,139,255,0.22); border-color: var(--accent); color: #fff; }
+.seg small { color: var(--mute); font-weight: 500; }
+.jdia { width: 160px; height: 160px; display: block; margin: 10px auto 0; }
+.appr { display: grid; gap: 4px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+.appr:last-child { border-bottom: 0; }
+.appr .an { font-size: 13px; font-weight: 600; } .appr .an small { color: var(--mute); font-weight: 500; margin-left: 4px; }
+.lanes { display: flex; gap: 6px; flex-wrap: wrap; }
+.lane { display: flex; gap: 2px; padding: 3px; background: #2a2e34; border-radius: 6px; border-left: 2px dashed rgba(255,255,255,0.35); }
+.lane button { width: 26px; height: 26px; border-radius: 4px; border: 1px solid transparent; background: transparent; color: rgba(255,255,255,0.3); cursor: pointer; font-size: 15px; line-height: 1; }
+.lane button.on { background: rgba(255,255,255,0.12); color: #fff; border-color: rgba(255,255,255,0.25); }
 .hint { align-self: center; padding: 0 10px; max-width: 260px; font-size: 12px; color: var(--mute); line-height: 1.35; flex: none; }
 
 /* ---------- panels ---------- */
@@ -195,7 +214,7 @@ canvas.spark { width: 100%; height: 56px; display: block; }
 
   <header class="ui topbar" id="topbar">
     <div class="glass tb cityblk">
-      <div class="cname" id="cityName">Arterial</div>
+      <div class="cname" id="cityName">Open Skylines</div>
       <div class="mile"><div class="mbar"><i id="mileFill"></i></div><span id="mileText"></span></div>
     </div>
     <div class="glass tb">
@@ -233,8 +252,8 @@ canvas.spark { width: 100%; height: 56px; display: block; }
 
   <div class="ui start" id="start" hidden>
     <div class="glass sbox">
-      <h1 class="brand">Arter<em>i</em>al</h1>
-      <p class="tag">Lay roads off the highway, zone neighbourhoods and watch every car find its way. Grow from a village of cottages into a city of towers, connected by buses and trains.</p>
+      <h1 class="brand">Open <em>Skylines</em></h1>
+      <p class="tag">Start with a dirt crossroads off the highway. Grow it into a city of avenues, bike lanes, streetcars and towers, one milestone at a time.</p>
       <div class="field"><label class="lbl" for="cityInput">City name</label><input id="cityInput" maxlength="28" value="Port Alder"></div>
       <div class="field"><label class="lbl" for="presetStart">Graphics quality</label>
         <select id="presetStart"><option value="low">Low: integrated graphics, older laptops</option><option value="medium">Medium: most laptops</option><option value="high">High: gaming laptops and desktops</option><option value="ultra">Ultra: powerful desktop GPUs</option></select>
@@ -243,7 +262,7 @@ canvas.spark { width: 100%; height: 56px; display: block; }
       <div class="legendrow"><span><b>WASD</b> move</span><span><b>Right-drag</b> rotate</span><span><b>Wheel</b> zoom</span><span><b>Space</b> pause</span></div>
     </div>
   </div>
-  <div id="loading">Loading Arterial…</div>
+  <div id="loading">Loading Open Skylines…</div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>

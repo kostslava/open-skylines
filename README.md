@@ -1,45 +1,45 @@
 <p align="center">
-  <img src="assets/banner.svg" width="100%" alt="Arterial: a city builder that runs in your browser">
+  <img src="assets/banner.svg" width="100%" alt="Open Skylines: a city builder that runs in your browser">
 </p>
 
 <p align="center">
   <a href="https://kostslava.github.io/open-skylines/"><img src="assets/play.svg" height="52" alt="Play in your browser"></a>
-</p>
+<## what is this
 
-## what is this
+a city builder you play in the browser. kinda like cities skylines but way smaller, made in three.js. nothing to install, just open the link.
 
-a city builder you play in the browser. it's kinda like cities skylines 2 but way smaller and simpler, made in three.js. nothing to install, just open the link.
-
-you start off a highway with an empty island, lay some roads, zone stuff, and buildings show up when people actually want to live or work there. every car is its own agent driving its own route, so if you build a dumb intersection you'll watch it jam up. grow the population and you unlock bigger buildings, buses, trains, and eventually towers.
+you start with an empty island and a highway. lay a street, zone some houses, and the town grows. every car, bike and pedestrian is its own agent with its own route, so if you build a dumb intersection you'll watch it jam up, and if you build bike lanes people actually ride them.
 
 water and power are automatic because managing pipes is boring.
 
 ## how the city grows
 
-<p align="center">
-  <img src="assets/milestones.svg" width="100%" alt="Milestones: settlement 0, village 250, town 800, small city 2,000, city 4,000, big city 8,000, metropolis 15,000">
-</p>
-
-each milestone gives you some cash and unlocks new stuff:
+you start with just roads and zoning. services unlock as people move in:
 
 | milestone | pop | unlocks |
 |---|---:|---|
-| settlement | 0 | small roads, avenues, low density homes and shops, industry, basic services |
-| village | 250 | medium density homes, bus lines, town plaza |
-| town | 800 | highways, high density commercial, high school |
-| small city | 2,000 | trains and metro, offices, hospital, police HQ |
-| city | 4,000 | high density homes, university, central park |
-| big city | 8,000 | stadium, observation tower |
-| metropolis | 15,000 | grand arch |
+| settlement | 0 | small roads, low density homes and shops, industry |
+| hamlet | 50 | garbage, medical clinic, bike lanes and paths, small parks |
+| village | 150 | police, fire, elementary school, avenues, more small roads, roundabouts |
+| small town | 300 | buses, medium density housing, medium parks, protected bike lanes |
+| town | 600 | highways, streetcars, high school, recycling, dense commercial |
+| large town | 1,200 | boulevards, offices, hospital, police and fire HQ |
+| small city | 2,500 | trains and metro, university, high density housing, large parks |
+| city | 5,000 | landmarks: claude arch, vs code tower, octocat statue, rubber duck |
+| big city | 9,000 | terminal monolith, stack tower, neural net sphere, penguin plaza |
+| metropolis | 15,000 | twin serpent towers, container whale, hackathon arena, cloud spire |
 
 ## what's in it
 
-- **zoning.** residential, commercial, industrial and office. buildings level up as land value goes up
-- **traffic.** cars pathfind with A*, pick lanes, follow each other and queue at junctions. the traffic view shows you where it's jammed
-- **transit.** bus lines and train/metro lines, elevated or underground. people walk to stops, transfer, and pay fares
-- **services.** police, fire, health, schools, garbage, parks. each one covers a radius and sends its own vehicles out
-- **money.** taxes per zone, upkeep, and loans if you go broke
-- **the rest.** day/night cycle, info views for basically everything, and residents who complain about stuff
+- **roads.** small roads are one tile, avenues, boulevards and highways are two tiles wide (one carriageway each way). 29 road types: one-ways, 1+2 asymmetric, gravel, medians, tree-lined, painted and protected bike lanes, tram tracks, ramps, bike and foot paths. the menu is split into tabs like the real thing
+- **intersections.** traffic lights go up automatically where avenues or bigger meet; small street crossings stay uncontrolled. every approach gets painted lane arrows. the intersection editor (roads → intersections) lets you switch between lights, stop signs, all-way stops and roundabouts, pick who stops, tune green times, and choose which turns each lane allows. cars plan routes around the arrows
+- **traffic.** cars pathfind with direction-aware A*, respect one-ways, pick lanes from the arrows, follow each other and wait at signals. people only drive when it makes sense: short trips are walked, medium trips are cycled if the route is safe (more bike lanes = more cyclists), and transit wins when it's quicker. shifts are staggered so not everyone leaves at 8:00
+- **zoning.** residential, commercial, industrial and office. low density lots come in five sizes, from cottages to estates with a pool
+- **transit.** buses, streetcars, elevated trains and metro
+- **services and parks.** garbage, health, police, fire, education, 22 parks from pocket parks to woodland reserves
+- **the rest.** day/night cycle, info views, budget and loans, residents who complain about stuff
+
+uff
 
 ## controls
 
@@ -60,11 +60,12 @@ each milestone gives you some cash and unlocks new stuff:
 
 ## if it's your first city
 
-1. build a small road off the highway. roads that aren't connected to it don't count
+1. drag a small road from the little connector at the end of the highway. roads that aren't connected don't count
 2. drag zones along the road and watch the R / C / I demand bars at the top
 3. people need jobs and shops, and industry is loud, so don't put it right next to houses
-4. if stuff feels slow open the traffic view. red roads are jammed, so add an avenue, another route, or a bus line
-5. get a clinic and a fire station early, fires will wreck you otherwise
+4. at 50 people build a clinic and garbage, at 150 a fire station. fires will wreck you otherwise
+5. one-way roads follow the direction you drag. the yellow arrows in the preview show the flow
+6. if traffic jams, open the traffic view. add bike lanes, a second route, or fix the intersection in the editor
 
 ## graphics
 
@@ -80,11 +81,13 @@ git clone https://github.com/kostslava/open-skylines.git
 
 your city saves in your browser. it autosaves every in-game month, or hit settings → save now. saves don't carry over between computers.
 
-`dist/arterial.html` is the whole game in one file. if you edit anything in `js/`, rebuild it with:
+`dist/open-skylines.html` is the whole game in one file. if you edit anything in `js/`, rebuild it with:
 
-```powershell
-powershell -File build.ps1
+```bash
+./build.sh
 ```
+
+(or `powershell -File build.ps1` on windows)
 
 ## code
 
@@ -93,12 +96,12 @@ no framework, no bundler. just plain scripts loaded in order that share one glob
 | file | what it does |
 |---|---|
 | `js/core.js` | constants and balance: roads, zones, services, milestones, quality presets |
-| `js/world.js` | tile grid and terrain gen (island, river, mountains) |
+| `js/world.js` | tile grid, terrain gen, road links, one-ways, junction clusters |
 | `js/gfx.js` | renderer, lighting, day/night, sky, water, terrain, camera, picking |
 | `js/meshes.js` | procedural buildings, roads, rail, trees, vehicles |
-| `js/traffic.js` | A* routing, lanes, car following, junction queues, congestion |
+| `js/traffic.js` | direction-aware A*, lane arrows, signals, car following, cyclists and pedestrians |
 | `js/transit.js` | stops, bus and metro lines, passenger routing, trains |
-| `js/sim.js` | growth, demand, jobs, happiness, services, fires, garbage, money, milestones |
+| `js/sim.js` | growth, demand, jobs, mode choice, happiness, services, money, milestones |
 | `js/tools.js` | input and build tools |
 | `js/ui.js` | panels, info views, goals |
 | `js/main.js` | boot, main loop, save/load |
@@ -110,7 +113,7 @@ no framework, no bundler. just plain scripts loaded in order that share one glob
 
 | param | does |
 |---|---|
-| `?demo=1&ms=4&ff=72` | builds a demo town, unlocks up to milestone 4, fast forwards 72 game hours |
+| `?demo=1&ms=7&ff=72` | builds a demo town, unlocks up to milestone 4, fast forwards 72 game hours |
 | `&preset=low\|medium\|high\|ultra` | forces a graphics preset |
 | `&hour=21` | sets the time of day |
 | `&ov=traffic` | opens an info view on load |

@@ -1,5 +1,5 @@
 'use strict';
-// Arterial — DOM interface: top bar, tool dock, panels, info views, goals, toasts
+// Open Skylines — DOM interface: top bar, tool dock, panels, info views, goals, toasts
 (function () {
   const { C, U } = CB;
   const $ = id => document.getElementById(id);
@@ -37,40 +37,126 @@
     zones: '<path d="M3 3h8v8H3zM13 3h8v8h-8zM3 13h8v8H3zM13 13h8v8h-8z"/>',
     bulldoze: '<path d="M5 5l14 14M19 5L5 19"/>',
   };
-  const svg = k => '<svg viewBox="0 0 24 24" aria-hidden="true">' + (IC[k] || '') + '</svg>';
-  const SVC_ICON = { police: 'police', policehq: 'police', fire: 'fire', clinic: 'health', hospital: 'health', elem: 'edu', high: 'edu', univ: 'edu', garbage: 'garbage', park: 'park', plaza: 'plaza', bigpark: 'park', stadium: 'stadium', tower: 'tower', arch: 'arch' };
+  Object.assign(IC, {
+    junction: '<path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"/><circle cx="12" cy="12" r="1.5"/>',
+    lights: '<rect x="8" y="2" width="8" height="18" rx="2"/><circle cx="12" cy="6" r="1.5"/><circle cx="12" cy="11" r="1.5"/><circle cx="12" cy="16" r="1.5"/>',
+    stop: '<path d="M8 3h8l5 5v8l-5 5H8l-5-5V8z"/>',
+    round: '<circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/>',
+    free: '<path d="M12 3v18M3 12h18"/>',
+    tramstop: '<path d="M6 21V3M6 4h8v6H6M10 21v-6"/><path d="M14 18h6"/>',
+    tramline: '<rect x="5" y="5" width="14" height="12" rx="3"/><path d="M9 2h6M12 2v3M8 21l2-4M16 21l-2-4"/>',
+    playground: '<path d="M4 20V8l8-4 8 4v12M8 20v-6h8v6"/>',
+    landmark: '<path d="M12 2l3 7h7l-5.5 4 2 7-6.5-4.5L5.5 20l2-7L2 9h7z"/>',
+    recycle: '<path d="M7 19l-4-7 4-7M17 5l4 7-4 7M8 5h8M8 19h8"/>',
+  });
+  const svg = k => '<svg viewBox="0 0 24 24" aria-hidden="true">' + (IC[k] || IC.landmark) + '</svg>';
+  const SVC_ICON = { police: 'police', policehq: 'police', fire: 'fire', firehq: 'fire', clinic: 'health', hospital: 'health', elem: 'edu', high: 'edu', univ: 'edu', garbage: 'garbage', recycle: 'recycle', plaza: 'plaza', grandplaza: 'plaza', miniplaza: 'plaza', playground: 'playground', bigplay: 'playground', stadium: 'stadium', tower: 'tower', claude: 'arch' };
   const SVC_COL = { police: '#2c5aa0', fire: '#b8322a', health: '#c8323e', edu: '#a0632f', garbage: '#4d7a4a', park: '#3f8a3a', landmark: '#8a6a2a' };
 
-  function catItems(key) {
-    const S = CB.Sim, items = [];
+  // top-down cross-section thumbnail of a road
+  function roadSvg(R) {
+    const L = R.L, S = 6; // px per metre
+    const W = 10 * S * R.w, H = 44;
+    let g = '';
+    const rect = (x, w, col) => { g += `<rect x="${x.toFixed(1)}" y="0" width="${Math.max(0.5, w).toFixed(1)}" height="${H}" fill="${col}"/>`; };
+    const dash = (x, col) => { g += `<line x1="${x}" y1="2" x2="${x}" y2="${H - 2}" stroke="${col || '#e6e6df'}" stroke-width="1" stroke-dasharray="5 4"/>`; };
+    const solid = (x, col) => { g += `<line x1="${x}" y1="0" x2="${x}" y2="${H}" stroke="${col}" stroke-width="1.2"/>`; };
+    const arrow = (x, up) => { g += up ? `<path d="M${x} 13l-3 5h6z M${x - 0.6} 18h1.2v12h-1.2z" fill="#fff" opacity="0.85"/>` : `<path d="M${x} 31l-3 -5h6z M${x - 0.6} 14h1.2v12h-1.2z" fill="#fff" opacity="0.85"/>`; };
+    if (!R.car) {
+      rect(0, W, '#6b9444'); rect(W / 2 - 10, 20, R.key === 'bikepath' ? '#7a4a3c' : '#c9c1ad');
+      if (R.key === 'bikepath') dash(W / 2);
+      return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}</svg>`;
+    }
+    const asph = R.surf === 'dirt' ? '#8a7458' : '#3c3f44';
+    const strip = (ox, mirror) => {
+      const X = u => ox + (mirror ? 10 - u : u) * S;
+      const band = (u0, u1, col) => { const a = X(u0), b = X(u1); rect(Math.min(a, b), Math.abs(b - a), col); };
+      band(0, 10, asph);
+      const sw = R.side, bw = L.bw;
+      const sides = R.w === 2 ? [1] : [0, 1];
+      for (const sd of sides) {
+        if (sw > 0) band(sd ? 10 - sw : 0, sd ? 10 : sw, R.grp === 'highway' ? '#6b6b66' : '#aeada6');
+        if (R.trees && sw > 0) { const cx = X(sd ? 10 - sw / 2 : sw / 2); g += `<circle cx="${cx}" cy="12" r="4.5" fill="#4f7d34"/><circle cx="${cx}" cy="32" r="4.5" fill="#4f7d34"/>`; }
+        if (bw > 0) { band(sd ? 10 - sw - bw : sw, sd ? 10 - sw : sw + bw, '#3f7a4e'); if (R.bike === 2) band(sd ? 10 - sw - bw : sw + bw - 0.35, sd ? 10 - sw - bw + 0.35 : sw + bw, '#aeada6'); }
+      }
+      if (R.surf === 'dirt') return;
+      if (R.w === 2) {
+        if (R.med === 'paint') solid(X(0.07), '#dfb33a');
+        else if (R.med === 'barrier') band(0, 0.4, '#b9b6ad');
+        else band(0, L.med, R.med === 'curb' ? '#aeada6' : '#5d8c3c');
+        if (R.med === 'trees') g += `<circle cx="${X(0.3)}" cy="22" r="4" fill="#3f6b30"/>`;
+        for (let j = 0; j < L.fwd.length - 1; j++) dash(X(5 + (L.fwd[j] + L.fwd[j + 1]) / 2));
+        for (const o of L.fwd) arrow(X(5 + o), !mirror);
+        if (R.tram) for (const o of L.fwd.slice(-1)) { solid(X(5 + o - 0.7), '#9095a0'); solid(X(5 + o + 0.7), '#9095a0'); }
+      } else if (R.oneway) {
+        for (let j = 0; j < L.fwd.length - 1; j++) dash(X(5 + (L.fwd[j] + L.fwd[j + 1]) / 2));
+        for (const o of L.fwd) arrow(X(5 + o), true);
+      } else {
+        const mx = L.medX;
+        if (R.med === 'curb') band(mx - L.med / 2, mx + L.med / 2, '#aeada6');
+        else if (R.grp === 'highway') dash(X(mx));
+        else { solid(X(mx - 0.13), '#dfb33a'); solid(X(mx + 0.13), '#dfb33a'); }
+        for (let j = 0; j < L.fwd.length - 1; j++) dash(X(5 + (L.fwd[j] + L.fwd[j + 1]) / 2));
+        for (let j = 0; j < L.back.length - 1; j++) dash(X(5 - (L.back[j] + L.back[j + 1]) / 2));
+        for (const o of L.fwd) arrow(X(5 + o), true);
+        for (const o of L.back) arrow(X(5 - o), false);
+        if (R.tram) for (const x of [5 + L.fwd[0], 5 - L.back[0]]) { solid(X(x - 0.7), '#9095a0'); solid(X(x + 0.7), '#9095a0'); }
+      }
+    };
+    if (R.w === 2) { strip(0, true); strip(10 * S, false); } else strip(0, false);
+    return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}</svg>`;
+  }
+
+  const roadItem = (r) => { const R = C.ROADS[r]; return { name: R.name, cost: U.money(R.cost) + '/tile', unlock: R.unlock, tool: { type: 'road', rt: r }, thumb: roadSvg(R), desc: R.desc + (R.w === 2 ? ' Two tiles wide.' : '') }; };
+  const svcItem = (k) => { const sv = C.SERVICES[k]; return { name: sv.name, cost: U.money(sv.cost), unlock: sv.unlock, tool: { type: 'svc', key: k }, icon: SVC_ICON[k] || (sv.cat === 'parks' ? 'park' : sv.cat === 'landmarks' ? 'landmark' : 'police'), col: SVC_COL[sv.cov] || '#555', desc: (sv.desc || '') + ` ${sv.size[0]}×${sv.size[1]} tiles.` }; };
+  const CATS = [
+    { key: 'roads', name: 'Roads', icon: 'avenue', tabs: C.ROAD_GROUPS.concat([['junction', 'Intersections']]) },
+    { key: 'zones', name: 'Zoning', icon: 'zones' },
+    { key: 'services', name: 'Services', icon: 'police', tabs: C.SVC_TABS },
+    { key: 'parks', name: 'Parks', icon: 'park', tabs: C.PARK_TABS },
+    { key: 'transit', name: 'Transit', icon: 'busline', tabs: [['bus', 'Bus'], ['tram', 'Streetcar'], ['train', 'Train'], ['metro', 'Metro']] },
+    { key: 'landmarks', name: 'Landmarks', icon: 'landmark' },
+  ];
+  UI.tab = {};
+  function catItems(key, tab) {
+    const items = [];
     if (key === 'roads') {
-      for (let r = 1; r <= 3; r++) { const R = C.ROADS[r]; items.push({ name: R.name, cost: U.money(R.cost) + ' / tile', unlock: R.unlock, tool: { type: 'road', rt: r }, icon: R.key, col: '#3a4048', desc: R.desc }); }
+      if (tab === 'junction') {
+        items.push({ name: 'Edit Intersection', cost: 'Free', unlock: 0, tool: { type: 'junction' }, icon: 'junction', col: '#3d6b9a', desc: 'Click an intersection to change its control and lane arrows.' });
+        items.push({ name: 'Traffic Lights', cost: 'Free', unlock: 0, tool: { type: 'junction', apply: 'lights' }, icon: 'lights', col: '#2f6a3a', desc: 'Click intersections to add signals.' });
+        items.push({ name: 'Stop Signs', cost: 'Free', unlock: 0, tool: { type: 'junction', apply: 'stop' }, icon: 'stop', col: '#a83228', desc: 'The smaller road stops. Change which sides in the editor.' });
+        items.push({ name: 'All-Way Stop', cost: 'Free', unlock: 0, tool: { type: 'junction', apply: 'allstop' }, icon: 'stop', col: '#7a2a22', desc: 'Everyone stops, first come first served.' });
+        items.push({ name: 'Roundabout', cost: 'Free', unlock: 2, tool: { type: 'junction', apply: 'round' }, icon: 'round', col: '#2f5a9a', desc: 'Yield on entry, keep moving.' });
+        items.push({ name: 'No Control', cost: 'Free', unlock: 0, tool: { type: 'junction', apply: 'none' }, icon: 'free', col: '#555c66', desc: 'Free-for-all. Fine for quiet streets.' });
+        items.push({ name: 'Reset to Auto', cost: 'Free', unlock: 0, tool: { type: 'junction', apply: 'auto' }, icon: 'junction', col: '#444a52', desc: 'Lights on medium and larger roads, nothing on small ones.' });
+      } else for (let r = 1; r < C.ROADS.length; r++) if (C.ROADS[r].grp === tab) items.push(roadItem(r));
     } else if (key === 'zones') {
       for (let z = 1; z < C.ZONES.length; z++) { const Z = C.ZONES[z]; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color }); }
       items.push({ name: 'Remove Zoning', cost: 'Free', unlock: 0, tool: { type: 'dezone' }, icon: 'dezone', col: '#555c66' });
     } else if (key === 'transit') {
-      items.push({ name: 'Bus Stop', cost: U.money(C.TRANSIT.bus.stopCost), unlock: 1, tool: { type: 'stop', st: 'bus' }, icon: 'busstop', col: '#2f86e0' });
-      items.push({ name: 'Bus Line', cost: U.money(C.TRANSIT.bus.upkeep) + ' / bus / mo', unlock: 1, tool: { type: 'line', lt: 'bus' }, icon: 'busline', col: '#2f86e0' });
-      items.push({ name: C.RAIL[1].name, cost: U.money(C.RAIL[1].cost) + ' / tile', unlock: 3, tool: { type: 'rail', rr: 1 }, icon: 'elev', col: '#7a5a9a' });
-      items.push({ name: C.RAIL[2].name, cost: U.money(C.RAIL[2].cost) + ' / tile', unlock: 3, tool: { type: 'rail', rr: 2 }, icon: 'sub', col: '#5a4a7a' });
-      items.push({ name: 'Train Station', cost: U.money(C.TRANSIT.rail.stopCost) + '+', unlock: 3, tool: { type: 'stop', st: 'rail' }, icon: 'station', col: '#e85d2a' });
-      items.push({ name: 'Train / Metro Line', cost: U.money(C.TRANSIT.rail.upkeep) + ' / train / mo', unlock: 3, tool: { type: 'line', lt: 'rail' }, icon: 'metro', col: '#e85d2a' });
-    } else {
-      for (const k in C.SERVICES) {
-        const sv = C.SERVICES[k]; if (sv.cat !== key) continue;
-        items.push({ name: sv.name, cost: U.money(sv.cost), unlock: sv.unlock, tool: { type: 'svc', key: k }, icon: SVC_ICON[k], col: SVC_COL[sv.cov] || '#555', desc: sv.desc });
+      const TR = C.TRANSIT;
+      if (tab === 'bus') {
+        items.push({ name: 'Bus Stop', cost: U.money(TR.bus.stopCost), unlock: TR.bus.unlock, tool: { type: 'stop', st: 'bus' }, icon: 'busstop', col: '#2f86e0' });
+        items.push({ name: 'Bus Line', cost: U.money(TR.bus.upkeep) + '/bus/mo', unlock: TR.bus.unlock, tool: { type: 'line', lt: 'bus' }, icon: 'busline', col: '#2f86e0', desc: 'Click stops in order, then the first stop again.' });
+      } else if (tab === 'tram') {
+        for (let r = 1; r < C.ROADS.length; r++) if (C.ROADS[r].tram) items.push(roadItem(r));
+        items.push({ name: 'Streetcar Stop', cost: U.money(TR.tram.stopCost), unlock: TR.tram.unlock, tool: { type: 'stop', st: 'tram' }, icon: 'tramstop', col: '#d8642a', desc: 'Goes on roads with tram tracks.' });
+        items.push({ name: 'Streetcar Line', cost: U.money(TR.tram.upkeep) + '/car/mo', unlock: TR.tram.unlock, tool: { type: 'line', lt: 'tram' }, icon: 'tramline', col: '#d8642a', desc: 'Click stops in order, then the first stop again.' });
+      } else if (tab === 'train') {
+        items.push({ name: C.RAIL[1].name, cost: U.money(C.RAIL[1].cost) + '/tile', unlock: TR.rail.unlock, tool: { type: 'rail', rr: 1 }, icon: 'elev', col: '#7a5a9a', desc: C.RAIL[1].desc });
+        items.push({ name: 'Train Station', cost: U.money(TR.rail.stopCost), unlock: TR.rail.unlock, tool: { type: 'stop', st: 'rail' }, icon: 'station', col: '#e85d2a' });
+        items.push({ name: 'Train Line', cost: U.money(TR.rail.upkeep) + '/train/mo', unlock: TR.rail.unlock, tool: { type: 'line', lt: 'rail' }, icon: 'metro', col: '#e85d2a' });
+      } else {
+        items.push({ name: C.RAIL[2].name, cost: U.money(C.RAIL[2].cost) + '/tile', unlock: TR.rail.unlock, tool: { type: 'rail', rr: 2 }, icon: 'sub', col: '#5a4a7a', desc: C.RAIL[2].desc });
+        items.push({ name: 'Metro Station', cost: U.money(TR.rail.ugStopCost), unlock: TR.rail.unlock, tool: { type: 'stop', st: 'rail' }, icon: 'station', col: '#c8452a' });
+        items.push({ name: 'Metro Line', cost: U.money(TR.rail.upkeep) + '/train/mo', unlock: TR.rail.unlock, tool: { type: 'line', lt: 'rail' }, icon: 'metro', col: '#c8452a' });
       }
+    } else {
+      for (const k in C.SERVICES) { const sv = C.SERVICES[k]; if (sv.cat !== key || (tab && sv.tab !== tab)) continue; items.push(svcItem(k)); }
     }
     return items;
   }
-  const CATS = [
-    { key: 'roads', name: 'Roads', icon: 'avenue', hint: 'Drag to draw. Roads bend once at the corner. Start from the highway.' },
-    { key: 'zones', name: 'Zoning', icon: 'zones', hint: 'Drag a rectangle along roads. Buildings grow when there is demand.' },
-    { key: 'services', name: 'Services', icon: 'police', hint: 'Buildings must face a road. Press R to rotate.' },
-    { key: 'parks', name: 'Parks', icon: 'park', hint: 'Parks raise happiness and land value, so buildings level up.' },
-    { key: 'transit', name: 'Transit', icon: 'busline', hint: 'Choose a line tool, click stops in order, then click the first stop again to close the loop.' },
-    { key: 'landmarks', name: 'Landmarks', icon: 'arch', hint: 'Landmarks unlock at large populations and attract visitors.' },
-  ];
+  UI.catItems = catItems;
 
   // ---------------- init ----------------
   UI.init = function () {
@@ -78,10 +164,9 @@
     tb.innerHTML = CATS.map(c => `<button class="tbtn" data-cat="${c.key}" title="${c.name}">${svg(c.icon)}<span>${c.name}</span></button>`).join('') +
       '<div class="sep"></div><button class="tbtn danger" id="bdz" title="Bulldoze (B)">' + svg('bulldoze') + '<span>Bulldoze</span></button>';
     tb.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', () => UI.openCat(b.dataset.cat === UI.cat ? null : b.dataset.cat)));
-    $('bdz').addEventListener('click', () => { UI.openCat(null); CB.Tools.setTool(CB.Tools.tool.type === 'bulldoze' ? null : { type: 'bulldoze' }); });
+    $('bdz').addEventListener('click', () => { const on = CB.Tools.tool.type === 'bulldoze'; UI.openCat(null); CB.Tools.setTool(on ? null : { type: 'bulldoze' }); });
     for (const s of [0, 1, 2, 4]) $('sp' + s).addEventListener('click', () => UI.setSpeed(s));
     document.querySelectorAll('#menu [data-panel]').forEach(b => b.addEventListener('click', () => UI.openPanel(UI.panel === b.dataset.panel ? null : b.dataset.panel)));
-    // demand bars
     const D = [['rlow', 'L', '#5fcf5a'], ['rmed', 'M', '#2f9e48'], ['rhigh', 'H', '#167a3a'], ['com', 'C', '#59a6f5'], ['ind', 'I', '#f0c43a'], ['off', 'O', '#b276f2']];
     $('demand').innerHTML = D.map(d => `<div class="dbar" id="dm_${d[0]}" title="${d[0]}"><div class="track"><i style="background:${d[2]}"></i></div><span>${d[1]}</span></div>`).join('');
     const titles = { rlow: 'Residential · low density', rmed: 'Residential · medium density', rhigh: 'Residential · high density', com: 'Commercial', ind: 'Industrial', off: 'Office' };
@@ -95,42 +180,142 @@
     UI.cat = key;
     document.querySelectorAll('#toolbar [data-cat]').forEach(b => b.classList.toggle('on', b.dataset.cat === key));
     const p = $('palette');
-    if (!key) { p.hidden = true; if (CB.Tools.tool.type !== 'bulldoze') CB.Tools.setTool(null); return; }
+    if (!key) { p.hidden = true; p.innerHTML = ''; if (CB.Tools.tool.type !== 'bulldoze') CB.Tools.setTool(null); return; }
+    const cat = CATS.find(c => c.key === key);
+    if (cat.tabs && !UI.tab[key]) UI.tab[key] = cat.tabs[0][0];
+    if (CB.Tools.tool.type !== 'select') CB.Tools.setTool(null);
     renderPalette();
     p.hidden = false;
-    CB.Tools.setTool(null);
   };
+  function tabLocked(cat, tab) { return catItems(cat.key, tab).every(it => !CB.Sim.unlocked(it.unlock)); }
   function renderPalette() {
     const key = UI.cat; if (!key) return;
     const S = CB.Sim, cat = CATS.find(c => c.key === key);
-    const items = catItems(key);
+    const tab = cat.tabs ? UI.tab[key] : null;
+    const items = catItems(key, tab);
     const p = $('palette');
-    p.innerHTML = items.map((it, k) => {
+    const tabs = cat.tabs ? `<div class="ptabs" role="tablist">${cat.tabs.map(t => `<button role="tab" class="ptab ${t[0] === tab ? 'on' : ''} ${tabLocked(cat, t[0]) ? 'dim' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('')}</div>` : '';
+    p.innerHTML = tabs + `<div class="cards">` + items.map((it, k) => {
       const locked = !S.unlocked(it.unlock);
-      return `<button class="card ${locked ? 'locked' : ''}" data-k="${k}" title="${it.desc || it.name}">
-        ${locked ? `<span class="lock">${C.MILESTONES[it.unlock].name}</span>` : ''}
-        <div class="sw" style="background:${it.col}">${svg(it.icon)}</div>
-        <b>${it.name}</b><small>${locked ? C.MILESTONES[it.unlock].pop.toLocaleString() + ' residents' : it.cost}</small></button>`;
-    }).join('') + `<div class="hint">${cat.hint}</div>`;
+      return `<button class="card ${locked ? 'locked' : ''}" data-k="${k}" title="${(it.name + (it.desc ? ' — ' + it.desc : '')).replace(/"/g, '&quot;')}">
+        ${locked ? `<span class="lock">${C.MILESTONES[it.unlock].pop.toLocaleString()} pop</span>` : ''}
+        <div class="sw" style="${it.thumb ? 'background:#2a3038' : 'background:' + it.col}">${it.thumb || svg(it.icon)}</div>
+        <b>${it.name}</b><small>${locked ? C.MILESTONES[it.unlock].name : it.cost}</small></button>`;
+    }).join('') + `</div>`;
+    p.dataset.cat = key; p.dataset.tab = tab || '';
+    p.querySelectorAll('[data-tab]').forEach(el => el.addEventListener('click', () => { UI.tab[key] = el.dataset.tab; CB.Tools.setTool(null); renderPalette(); }));
     p.querySelectorAll('.card').forEach(el => el.addEventListener('click', () => {
       const it = items[+el.dataset.k];
+      if (!it) return;
       if (!S.unlocked(it.unlock)) { UI.toast('Unlocks at ' + C.MILESTONES[it.unlock].name + ' (' + C.MILESTONES[it.unlock].pop.toLocaleString() + ' residents)', 'bad'); return; }
-      const t = CB.Tools.tool;
-      const same = JSON.stringify(t) === JSON.stringify(it.tool);
+      const same = JSON.stringify(CB.Tools.tool) === JSON.stringify(it.tool);
       CB.Tools.setTool(same ? null : it.tool);
     }));
     markPalette();
   }
   function markPalette() {
-    const items = UI.cat ? catItems(UI.cat) : [];
+    const p = $('palette');
+    if (!UI.cat || p.hidden && !p.children.length) return;
+    const cat = CATS.find(c => c.key === UI.cat);
+    const items = catItems(UI.cat, cat && cat.tabs ? UI.tab[UI.cat] : null);
     const t = JSON.stringify(CB.Tools.tool);
-    document.querySelectorAll('#palette .card').forEach(el => el.classList.toggle('on', JSON.stringify(items[+el.dataset.k].tool) === t));
+    p.querySelectorAll('.card').forEach(el => { const it = items[+el.dataset.k]; el.classList.toggle('on', !!it && JSON.stringify(it.tool) === t); });
   }
   UI.onToolChange = function () {
     markPalette();
     $('bdz').classList.toggle('on', CB.Tools.tool.type === 'bulldoze');
-    if (CB.Tools.tool.type === 'bulldoze' && UI.cat) { UI.cat = null; $('palette').hidden = true; document.querySelectorAll('#toolbar [data-cat]').forEach(b => b.classList.remove('on')); }
+    if (CB.Tools.tool.type === 'bulldoze' && UI.cat) { UI.cat = null; $('palette').hidden = true; $('palette').innerHTML = ''; document.querySelectorAll('#toolbar [data-cat]').forEach(b => b.classList.remove('on')); }
   };
+
+  // ---------------- intersection editor ----------------
+  const DIRN = ['north', 'east', 'south', 'west'];
+  const CTRL = [['auto', 'Auto'], ['none', 'No control'], ['lights', 'Traffic lights'], ['stop', 'Stop signs'], ['allstop', 'All-way stop'], ['round', 'Roundabout']];
+  const TURN_BITS = [[4, 'L', 'Left'], [1, 'S', 'Straight'], [2, 'R', 'Right'], [8, 'U', 'U-turn']];
+  UI.junctionTile = -1;
+  function applyJunction() {
+    const Wd = CB.World;
+    Wd.updateJunctions(); Wd.roadVer++;
+    CB.Meshes.junctionsChanged();
+  }
+  UI.setJunctionCtrl = function (tile, ctrl) {
+    const Wd = CB.World, c = Wd.jcl[tile]; if (c < 0) return;
+    Wd.clusters[c].cfg.ctrl = ctrl;
+    applyJunction();
+  };
+  UI.openJunction = function (tile) {
+    UI.select(null);
+    UI.junctionTile = tile;
+    const Wd = CB.World, p = $('infoPanel');
+    const c = Wd.jcl[tile];
+    if (c < 0) { p.hidden = true; UI.junctionTile = -1; return; }
+    const cl = Wd.clusters[c], cfg = cl.cfg;
+    p.hidden = false;
+    const roads = [...new Set(cl.aps.map(ap => C.ROADS[Wd.road[ap.tile]].name))];
+    const ctrlNow = cl.ctrl;
+    const label = { none: 'No control', lights: 'Traffic lights', stop: 'Stop signs', allstop: 'All-way stop', round: 'Roundabout' };
+    let html = head('Intersection', roads.join(' × ')) +
+      `<div class="seg">${CTRL.map(o => `<button data-ctrl="${o[0]}" class="${cfg.ctrl === o[0] ? 'on' : ''}">${o[1]}${o[0] === 'auto' && cfg.ctrl === 'auto' ? ` <small>(${label[ctrlNow]})</small>` : ''}</button>`).join('')}</div>`;
+    html += junctionDiagram(cl);
+    if (ctrlNow === 'lights') {
+      const g = cfg.green || [12, 12];
+      html += `<div class="sec"><div class="lbl">Green time</div>
+        ${[['North–south', 0], ['East–west', 1]].map(([n, ax]) => `<div class="tax"><label>${n}</label><input type="range" min="5" max="30" value="${g[ax]}" data-green="${ax}"><b class="num">${g[ax]}s</b></div>`).join('')}</div>`;
+    }
+    if (ctrlNow === 'stop') {
+      html += `<div class="sec"><div class="lbl">Who stops</div>${cl.aps.map(ap => `<label class="row"><span>From the ${DIRN[(ap.d + 2) % 4]} · ${C.ROADS[Wd.road[ap.tile]].name}</span><input type="checkbox" data-stopk="${ap.key}" ${CB.Traffic.isStopFor(cl, ap.key) ? 'checked' : ''}></label>`).join('')}</div>`;
+    }
+    html += `<div class="sec"><div class="lbl">Lane arrows <span style="text-transform:none;letter-spacing:0;font-weight:500">· click to allow or forbid a turn</span></div>`;
+    for (const ap of cl.aps) {
+      const masks = cfg.lanes[ap.key] || [];
+      const avail = cl.avail[ap.d];
+      html += `<div class="appr"><div class="an">From the ${DIRN[(ap.d + 2) % 4]} <small>${C.ROADS[Wd.road[ap.tile]].name}</small></div><div class="lanes">` +
+        masks.map((m, k) => `<div class="lane" title="Lane ${k + 1} (${k === 0 ? 'rightmost' : k === masks.length - 1 ? 'leftmost' : 'middle'})">${TURN_BITS.map(([bit, l, nm]) => (avail & bit) ? `<button data-ap="${ap.key}" data-lane="${k}" data-bit="${bit}" class="${m & bit ? 'on' : ''}" title="${nm}">${l === 'L' ? '↰' : l === 'S' ? '↑' : l === 'R' ? '↱' : '↶'}</button>` : '').join('')}</div>`).reverse().join('') +
+        `</div></div>`;
+    }
+    html += `</div><div class="btns" style="margin-top:10px"><button class="btn" id="jreset">Reset lanes</button></div>`;
+    p.innerHTML = html;
+    bindClose(p, () => { UI.junctionTile = -1; p.hidden = true; });
+    p.querySelectorAll('[data-ctrl]').forEach(b => b.onclick = () => { cfg.ctrl = b.dataset.ctrl; applyJunction(); UI.openJunction(tile); });
+    p.querySelectorAll('[data-green]').forEach(inp => inp.oninput = () => { cfg.green = cfg.green || [12, 12]; cfg.green[+inp.dataset.green] = +inp.value; inp.nextElementSibling.textContent = inp.value + 's'; });
+    p.querySelectorAll('[data-stopk]').forEach(cb => cb.onchange = () => { cfg.stops[cb.dataset.stopk] = cb.checked; applyJunction(); UI.openJunction(tile); });
+    p.querySelectorAll('[data-ap]').forEach(btn => btn.onclick = () => {
+      const k = +btn.dataset.ap, lane = +btn.dataset.lane, bit = +btn.dataset.bit;
+      const arr = cfg.lanes[k]; if (!arr) return;
+      const nv = arr[lane] ^ bit;
+      if (!nv) { UI.toast('Every lane needs at least one direction', 'bad'); return; }
+      arr[lane] = nv;
+      applyJunction(); UI.openJunction(tile);
+    });
+    p.querySelector('#jreset').onclick = () => { cfg.lanes = {}; applyJunction(); UI.openJunction(tile); };
+  };
+  function junctionDiagram(cl) {
+    const Wd = CB.World;
+    const cx = 80, cy = 80, box = 26;
+    let g = `<rect x="${cx - box}" y="${cy - box}" width="${box * 2}" height="${box * 2}" fill="#3c3f44"/>`;
+    const st = cl.ctrl;
+    for (let d = 0; d < 4; d++) {
+      const aps = cl.aps.filter(a => a.d === (d + 2) % 4), exs = cl.exits.filter(e => e.d === d);
+      if (!aps.length && !exs.length) continue;
+      const fx = C.DX[d], fy = C.DY[d];
+      const x0 = cx + fx * box, y0 = cy + fy * box;
+      const w = 22;
+      const rx = fx ? (fx > 0 ? x0 : x0 - 50) : cx - w, ry = fy ? (fy > 0 ? y0 : y0 - 50) : cy - w;
+      g += `<rect x="${rx}" y="${ry}" width="${fx ? 50 : w * 2}" height="${fy ? 50 : w * 2}" fill="#4a4e55"/>`;
+      // approach arrows
+      for (const ap of aps) {
+        const m = (cl.cfg.lanes[ap.key] || []).reduce((a, b) => a | b, 0);
+        const lab = (m & 4 ? '↰' : '') + (m & 1 ? '↑' : '') + (m & 2 ? '↱' : '') + (m & 8 ? '↶' : '');
+        const tx = cx + fx * (box + 30) + (fy ? -fy * 10 : 0), ty = cy + fy * (box + 30) + (fx ? fx * 10 : 0) + 5;
+        const rot = [180, 270, 0, 90][d];
+        g += `<text x="${tx}" y="${ty}" fill="#fff" font-size="13" text-anchor="middle" transform="rotate(${rot} ${tx} ${ty - 5})">${lab}</text>`;
+        if (st === 'lights') g += `<circle cx="${cx + fx * (box + 6) + (fy ? -fy * 16 : 0)}" cy="${cy + fy * (box + 6) + (fx ? fx * 16 : 0)}" r="4" fill="#28e05a"/>`;
+        if ((st === 'stop' || st === 'allstop') && CB.Traffic.isStopFor(cl, ap.key)) g += `<polygon points="${oct(cx + fx * (box + 6) + (fy ? -fy * 16 : 0), cy + fy * (box + 6) + (fx ? fx * 16 : 0), 5)}" fill="#c8231c"/>`;
+      }
+    }
+    if (st === 'round') g += `<circle cx="${cx}" cy="${cy}" r="11" fill="#5d8c3c" stroke="#aeada6" stroke-width="2"/>`;
+    return `<svg class="jdia" viewBox="0 0 160 160">${g}</svg>`;
+  }
+  function oct(x, y, r) { const p = []; for (let k = 0; k < 8; k++) { const a = Math.PI / 8 + k * Math.PI / 4; p.push((x + Math.cos(a) * r).toFixed(1) + ',' + (y + Math.sin(a) * r).toFixed(1)); } return p.join(' '); }
 
   UI.setSpeed = function (s) {
     if (s > 0) UI.lastSpeed = s;
@@ -253,18 +438,17 @@
 
   PANELS.transit = function (p) {
     const X = CB.Transit, S = CB.Sim;
-    const busOK = S.unlocked(1), railOK = S.unlocked(3);
+    const busOK = S.unlocked(C.TRANSIT.bus.unlock), railOK = S.unlocked(C.TRANSIT.rail.unlock), tramOK = S.unlocked(C.TRANSIT.tram.unlock);
     p.innerHTML = head('Public transport', 'Buses and trains take cars off the road') +
       `<div class="row"><span>Riders last month</span><b data-v="riders"></b></div>
        <div class="row"><span>Trips by transit</span><b data-v="share"></b></div>
        <div class="row"><span>Waiting at stops</span><b data-v="waiting"></b></div>
-       <div class="btns" style="margin-top:8px"><button class="btn primary" id="nbus" ${busOK ? '' : 'disabled'}>New bus line</button><button class="btn primary" id="nrail" ${railOK ? '' : 'disabled'}>New metro line</button></div>
-       ${!busOK ? '<div class="sub" style="font-size:12px">Bus lines unlock at Village (250 residents).</div>' : ''}
-       ${busOK && !railOK ? '<div class="sub" style="font-size:12px">Trains and metro unlock at Small City (2,000 residents).</div>' : ''}
+       <div class="btns" style="margin-top:8px"><button class="btn primary" id="nbus" ${busOK ? '' : 'disabled'}>New bus line</button><button class="btn primary" id="ntram" ${tramOK ? '' : 'disabled'}>New streetcar line</button><button class="btn primary" id="nrail" ${railOK ? '' : 'disabled'}>New metro line</button></div>
        <div class="sec" id="lineList"></div>`;
     bindClose(p, () => UI.openPanel(null));
-    p.querySelector('#nbus').onclick = () => { UI.openCat('transit'); CB.Tools.setTool({ type: 'line', lt: 'bus' }); };
-    p.querySelector('#nrail').onclick = () => { UI.openCat('transit'); CB.Tools.setTool({ type: 'line', lt: 'rail' }); };
+    p.querySelector('#nbus').onclick = () => { UI.tab.transit = 'bus'; UI.openCat('transit'); CB.Tools.setTool({ type: 'line', lt: 'bus' }); };
+    p.querySelector('#ntram').onclick = () => { UI.tab.transit = 'tram'; UI.openCat('transit'); CB.Tools.setTool({ type: 'line', lt: 'tram' }); };
+    p.querySelector('#nrail').onclick = () => { UI.tab.transit = 'metro'; UI.openCat('transit'); CB.Tools.setTool({ type: 'line', lt: 'rail' }); };
     renderLines(p);
     updTransit(p);
   };
@@ -311,6 +495,8 @@
        <div class="row"><span>Average commute</span><b data-v="comm"></b></div>
        <div class="row"><span>Traffic flow</span><b data-v="flow"></b></div>
        <div class="row"><span>Vehicles on the road</span><b data-v="veh"></b></div>
+       <div class="row"><span>Cyclists / pedestrians</span><b data-v="soft"></b></div>
+       <div class="row"><span>How people get around</span><b data-v="modes"></b></div>
        <div class="row"><span>Cars that gave up (gridlock)</span><b data-v="stuck"></b></div>
        <div class="row"><span>Buildings</span><b data-v="bcount"></b></div></div>`;
     bindClose(p, () => UI.openPanel(null));
@@ -341,6 +527,9 @@
     sv(p, 'flow', Math.round(Tr.stats.flow * 100) + '%');
     sv(p, 'veh', U.num(Tr.stats.active));
     sv(p, 'stuck', U.num(Tr.stats.stuck));
+    sv(p, 'soft', U.num(Tr.stats.bikes) + ' / ' + U.num(Tr.stats.peds));
+    const M = Tr.mode, tot = M.car + M.transit + M.bike + M.walk || 1;
+    sv(p, 'modes', `🚗 ${Math.round(M.car / tot * 100)}%  🚌 ${Math.round(M.transit / tot * 100)}%  🚲 ${Math.round(M.bike / tot * 100)}%  🚶 ${Math.round(M.walk / tot * 100)}%`);
     sv(p, 'bcount', U.num(st.buildingCount));
     const hist = S.history.concat([{ pop: st.pop, money: S.money }]);
     spark(p.querySelector('#spPop'), hist.map(h => h.pop), '#5fcf5a');
@@ -397,6 +586,7 @@
 
   // ---------------- selection panels ----------------
   UI.select = function (b) {
+    UI.junctionTile = -1;
     UI.selected = b; UI.selVehicle = null; UI.selStop = null; UI.follow = false;
     clearPathRibbon();
     CB.Meshes.setSelection(b);
@@ -409,14 +599,13 @@
     UI.select(null);
     UI.selVehicle = v;
     const p = $('infoPanel'); p.hidden = false;
-    const names = { car: 'Car', suv: 'SUV', van: 'Moving van', truck: 'Delivery truck', bus: 'Bus', police: 'Police car', ambulance: 'Ambulance', fire: 'Fire truck', garbage: 'Garbage truck' };
+    const names = { tram: 'Streetcar', car: 'Car', suv: 'SUV', van: 'Moving van', truck: 'Delivery truck', bus: 'Bus', police: 'Police car', ambulance: 'Ambulance', fire: 'Fire truck', garbage: 'Garbage truck' };
     p.innerHTML = head(names[v.kind] || 'Vehicle', v.line ? v.line.name : v.purpose) +
       `<div class="row"><span>Status</span><b data-v="status"></b></div>
        <div class="row"><span>Speed</span><b data-v="spd"></b></div>
        <div class="row"><span>Road</span><b data-v="road"></b></div>
        <div class="row"><span>Lane</span><b data-v="lane"></b></div>
        ${v.line ? '<div class="row"><span>Passengers</span><b data-v="pax"></b></div>' : '<div class="row"><span>Time on the road</span><b data-v="trip"></b></div>'}
-       <div class="sec sub" style="font-size:12px;line-height:1.4">Each vehicle picks its route by weighing travel time against congestion, keeps a safe gap to the car ahead, picks its lane for the next turn and waits to enter busy junctions.</div>
        <div class="btns" style="margin-top:8px"><button class="btn primary" id="vfollow">Follow</button></div>`;
     bindClose(p, () => { UI.selVehicle = null; UI.follow = false; clearPathRibbon(); p.hidden = true; });
     p.querySelector('#vfollow').onclick = () => { UI.follow = !UI.follow; p.querySelector('#vfollow').textContent = UI.follow ? 'Stop following' : 'Follow'; };
@@ -440,18 +629,19 @@
     sv(p, 'spd', kmh + ' km/h');
     const rt = CB.World.road[v.cur];
     sv(p, 'road', rt ? C.ROADS[rt].name : '–');
-    sv(p, 'lane', rt && C.ROADS[rt].lanes > 1 ? (v.laneIn === 0 ? 'Right lane' : 'Left lane') : 'Single lane');
+    const nl = CB.World.lanesToward(v.cur, v.din).length;
+    sv(p, 'lane', nl > 1 ? 'Lane ' + (v.laneIn + 1) + ' of ' + nl + (v.laneIn === 0 ? ' (right)' : v.laneIn === nl - 1 ? ' (left)' : '') : 'Single lane');
     sv(p, 'trip', Math.round(CB.Traffic.time - v.born) + ' min');
-    if (v.line) sv(p, 'pax', (v.load || 0) + ' / ' + C.TRANSIT.bus.cap);
+    if (v.line) sv(p, 'pax', (v.load || 0) + ' / ' + C.TRANSIT[v.line.type].cap);
   }
   UI.selectStop = function (s) {
     UI.select(null);
     UI.selStop = s;
     const p = $('infoPanel'); p.hidden = false;
     const lines = CB.Transit.lines.filter(l => l.stops.includes(s.id));
-    p.innerHTML = head(s.name, s.type === 'bus' ? 'Bus stop' : (CB.World.rail[s.tile] === 2 ? 'Underground station' : 'Elevated station')) +
+    p.innerHTML = head(s.name, s.type === 'bus' ? 'Bus stop' : s.type === 'tram' ? 'Streetcar stop' : (CB.World.rail[s.tile] === 2 ? 'Underground station' : 'Elevated station')) +
       `<div class="row"><span>Waiting passengers</span><b data-v="wait"></b></div>
-       <div class="sec">${lines.length ? lines.map(l => `<div class="row"><span><span class="chip" style="background:${l.color}33;color:#fff">${l.name}</span></span><b>${l.vehicles} ${l.type === 'bus' ? 'buses' : 'trains'}</b></div>`).join('') : '<div class="sub">No line serves this stop yet.</div>'}</div>
+       <div class="sec">${lines.length ? lines.map(l => `<div class="row"><span><span class="chip" style="background:${l.color}33;color:#fff">${l.name}</span></span><b>${l.vehicles} ${({ bus: 'buses', tram: 'streetcars', rail: 'trains' })[l.type]}</b></div>`).join('') : '<div class="sub">No line serves this stop yet.</div>'}</div>
        <div class="btns" style="margin-top:10px"><button class="btn danger" id="sdel">Remove stop</button></div>`;
     bindClose(p, () => { UI.selStop = null; p.hidden = true; });
     p.querySelector('#sdel').onclick = () => { CB.Transit.removeStop(s); UI.selStop = null; p.hidden = true; UI.refreshTransit(); };
@@ -535,22 +725,31 @@
 
   // ---------------- goals ----------------
   const GOALS = [
-    ['Draw a road off the highway', () => countRoads() > 3],
+    ['Draw a road from the end of the highway', () => countRoads() > 3],
     ['Zone low density housing beside your road', () => hasZone(1)],
     ['Zone some commercial and industry', () => hasZone(4) && hasZone(6)],
-    ['Reach 60 residents', () => CB.Sim.stats.pop >= 60],
-    ['Build a Medical Clinic and a Fire Station', () => hasSvc('clinic') && hasSvc('fire')],
-    ['Add a Police Station and a Waste Transfer Station', () => hasSvc('police') && hasSvc('garbage')],
+    ['Reach 50 residents (Hamlet)', () => CB.Sim.milestone >= 1],
+    ['Build a Waste Transfer Station and a Medical Clinic', () => hasSvc('garbage') && hasSvc('clinic')],
+    ['Add bike lanes or a bike path', () => hasRoad(r => r.bike || !r.car)],
+    ['Reach 150 residents (Village)', () => CB.Sim.milestone >= 2],
+    ['Build a Police Station and a Fire Station', () => hasSvc('police') && hasSvc('fire')],
     ['Build an Elementary School', () => hasSvc('elem')],
-    ['Grow to a Village (250 residents)', () => CB.Sim.milestone >= 1],
-    ['Create a bus line with 3 or more stops', () => CB.Transit.lines.some(l => l.type === 'bus' && l.stops.length >= 3)],
-    ['Zone medium density housing', () => hasZone(2)],
-    ['Grow to a Town (800 residents)', () => CB.Sim.milestone >= 2],
-    ['Grow to a Small City (2,000 residents)', () => CB.Sim.milestone >= 3],
-    ['Build a metro or train line', () => CB.Transit.lines.some(l => l.type === 'rail')],
-    ['Grow to a City and zone high density housing', () => CB.Sim.milestone >= 4 && hasZone(3)],
-    ['Reach Metropolis (15,000 residents)', () => CB.Sim.milestone >= 6],
+    ['Lay a four-lane avenue', () => hasRoad(r => r.grp === 'medium')],
+    ['Change an intersection in the editor', () => CB.World.clusters.some(c => c.cfg.ctrl !== 'auto')],
+    ['Reach 300 residents and start a bus line', () => CB.Transit.lines.some(l => l.type === 'bus' && l.stops.length >= 3)],
+    ['Grow to a Town (600 residents)', () => CB.Sim.milestone >= 4],
+    ['Grow to a Large Town (1,200 residents)', () => CB.Sim.milestone >= 5],
+    ['Grow to a Small City (2,500 residents)', () => CB.Sim.milestone >= 6],
+    ['Build your first landmark', () => [...CB.Sim.buildings.values()].some(b => b.kind === 'svc' && C.SERVICES[b.svc].cat === 'landmarks')],
+    ['Reach Metropolis (15,000 residents)', () => CB.Sim.milestone >= 9],
   ];
+  let roadCache = { t: 0, set: new Set() };
+  function hasRoad(fn) {
+    const now = performance.now();
+    if (now - roadCache.t > 1500) { roadCache.t = now; roadCache.set = new Set(); const R = CB.World.road; for (let i = 0; i < R.length; i++) if (R[i]) roadCache.set.add(R[i]); }
+    for (const r of roadCache.set) if (fn(C.ROADS[r])) return true;
+    return false;
+  }
   let zoneCache = { t: 0, set: new Set() };
   function hasZone(z) {
     const now = performance.now();
@@ -558,7 +757,7 @@
     return zoneCache.set.has(z);
   }
   function hasSvc(k) { for (const b of CB.Sim.buildings.values()) if (b.svc === k) return true; return false; }
-  function countRoads() { const Wd = CB.World; let n = 0; for (let i = 0; i < Wd.road.length; i++) if (Wd.road[i] && Wd.road[i] !== 3 && Wd.conn[i]) { n++; if (n > 3) break; } return n; }
+  function countRoads() { const Wd = CB.World; let n = 0; for (let i = 0; i < Wd.road.length; i++) if (Wd.road[i] && C.ROADS[Wd.road[i]].grp !== 'highway' && Wd.conn[i]) { n++; if (n > 5) break; } return n; }
   function updGoals() {
     const g = $('goals');
     let done = 0; const st = GOALS.map(q => { const d = q[1](); return d; });
@@ -590,7 +789,7 @@
     for (const k in S.demand) {
       const el = $('dm_' + k); if (!el) continue;
       el.querySelector('i').style.height = Math.round(S.demand[k]) + '%';
-      const off = (k === 'rmed' && !S.unlocked(1)) || (k === 'rhigh' && !S.unlocked(4)) || (k === 'off' && !S.unlocked(3));
+      const off = (k === 'rmed' && !S.unlocked(C.ZONES[2].unlock)) || (k === 'rhigh' && !S.unlocked(C.ZONES[3].unlock)) || (k === 'off' && !S.unlocked(C.ZONES[7].unlock));
       el.classList.toggle('off', off);
     }
     const m = S.milestone, nx = C.MILESTONES[m + 1];
@@ -614,10 +813,11 @@
     if (UI.overlay && tick % 4 === 0) refreshOverlay();
     if (tick % 2 === 0) updGoals();
     if (tick % 8 === 0 && UI.cat) {
-      // refresh lock states after milestones
+      const cat = CATS.find(c => c.key === UI.cat);
       const locks = document.querySelectorAll('#palette .card.locked').length;
-      const items = catItems(UI.cat).filter(it => !S.unlocked(it.unlock)).length;
+      const items = catItems(UI.cat, cat.tabs ? UI.tab[UI.cat] : null).filter(it => !S.unlocked(it.unlock)).length;
       if (locks !== items) renderPalette();
     }
+    if (UI.junctionTile >= 0 && CB.World.jcl[UI.junctionTile] < 0) { $('infoPanel').hidden = true; UI.junctionTile = -1; }
   };
 })();

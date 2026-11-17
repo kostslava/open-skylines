@@ -1,5 +1,5 @@
 'use strict';
-// Arterial — input handling and build tools
+// Open Skylines — input handling and build tools
 (function () {
   const { C, U } = CB;
   const T = C.TILE;
@@ -19,8 +19,15 @@
     if (Tl.tool.type === 'svc') Tl.rot = 0;
     CB.UI.onToolChange();
   };
+  function junctionNear(i) {
+    const Wd = CB.World;
+    if (Wd.jcl[i] >= 0) return Wd.clusters[Wd.jcl[i]];
+    for (let d = 0; d < 4; d++) { const j = Wd.neighbor(i, d); if (j >= 0 && Wd.jcl[j] >= 0) return Wd.clusters[Wd.jcl[j]]; }
+    return null;
+  }
   function clearPreview() {
     const Mx = CB.Meshes;
+    Mx.setFlowArrows(null);
     Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null);
     CB.Gfx.uni.uBrushOn.value = 0;
     if (Tl.previewRibbon) { Mx.lineGroup.remove(Tl.previewRibbon); Tl.previewRibbon.geometry.dispose(); Tl.previewRibbon = null; }
@@ -34,10 +41,10 @@
   }
 
   // ---------------- path helpers ----------------
-  function lPath(a, b) {
+  function lPath(a, b, hf) {
     const ax = U.tx(a), ay = U.ty(a), bx = U.tx(b), by = U.ty(b);
     const out = [];
-    const horizFirst = Math.abs(bx - ax) >= Math.abs(by - ay);
+    const horizFirst = hf !== undefined ? hf : Math.abs(bx - ax) >= Math.abs(by - ay);
     let x = ax, y = ay;
     out.push(U.idx(x, y));
     const sx = Math.sign(bx - ax), sy = Math.sign(by - ay);
@@ -45,21 +52,76 @@
     else { while (y !== by) { y += sy; out.push(U.idx(x, y)); } while (x !== bx) { x += sx; out.push(U.idx(x, y)); } }
     return out;
   }
-  function roadEval(tiles, rt) {
+  const dirOf = (a, b) => { const dx = U.tx(b) - U.tx(a), dy = U.ty(b) - U.ty(a); return dy < 0 ? 0 : dx > 0 ? 1 : dy > 0 ? 2 : 3; };
+  const step = (i, d) => U.idx(U.tx(i) + C.DX[d], U.ty(i) + C.DY[d]);
+  // Lay out the strips of a road drag. Returns [{tiles, dirs}] — one strip, or two for dual carriageways.
+  function roadStrips(a, b, rt) {
+    const R = C.ROADS[rt];
+    const hf = Math.abs(U.tx(b) - U.tx(a)) >= Math.abs(U.ty(b) - U.ty(a));
+    const main = lPath(a, b, hf);
+    const dirs = main.map((t, k) => k + 1 < main.length ? dirOf(t, main[k + 1]) : (k > 0 ? dirOf(main[k - 1], t) : 1));
+    const strips = [{ tiles: main, dirs }];
+    if (R.w === 2) {
+      const left = d => (d + 3) % 4;
+      const a2 = step(a, left(dirs[0])), b2 = step(b, left(dirs[dirs.length - 1]));
+      if (!U.inWorld(U.tx(a2), U.ty(a2)) || !U.inWorld(U.tx(b2), U.ty(b2))) return strips;
+      const off = lPath(b2, a2, !hf); // reversed traversal = opposite flow
+      const od = off.map((t, k) => k + 1 < off.length ? dirOf(t, off[k + 1]) : (k > 0 ? dirOf(off[k - 1], t) : (dirs[0] + 2) % 4));
+      strips.push({ tiles: off, dirs: od });
+    }
+    return strips;
+  }
+  Tl.roadStrips = roadStrips;
+  function roadEval(strips, rt) {
     const Wd = CB.World, R = C.ROADS[rt];
     let cost = 0, bad = null;
-    const list = tiles.map(i => {
+    const list = [];
+    for (const st of strips) for (const i of st.tiles) {
       let ok = true, col = null, c = 0;
       if (!Wd.roadOK(i)) { ok = false; bad = U.inPlay(U.tx(i), U.ty(i)) ? 'Too steep here' : 'Outside the city limits'; }
       else if (Wd.bld[i]) { ok = false; bad = 'A building is in the way'; }
       else if (Wd.road[i] === rt) { col = [0.5, 0.7, 1.0]; }
-      else if (Wd.road[i]) { c = Math.max(0, R.cost - C.ROADS[Wd.road[i]].cost) + 5; col = [1, 0.85, 0.3]; }
-      else c = R.cost * (Wd.isWater(i) ? 3 : 1);
+      else if (Wd.road[i]) { c = Math.max(0, R.cost / R.w - C.ROADS[Wd.road[i]].cost / C.ROADS[Wd.road[i]].w) + 5; col = [1, 0.85, 0.3]; }
+      else c = R.cost / R.w * (Wd.isWater(i) ? 3 : 1);
       cost += c;
       const y = Wd.isWater(i) ? Wd.BRIDGE_H : undefined;
-      return { i, ok, col, y, h: 0.4 };
-    });
+      list.push({ i, ok, col, y, h: 0.4 });
+    }
     return { list, cost, bad };
+  }
+  function placeRoad(strips, rt) {
+    const Wd = CB.World, S = CB.Sim, R = C.ROADS[rt];
+    let changed = false;
+    for (const st of strips) {
+      const T2 = st.tiles;
+      for (let k = 0; k < T2.length; k++) {
+        const i = T2[k], d = st.dirs[k];
+        const axisLinked = Wd.linked(i, d) || Wd.linked(i, (d + 2) % 4);
+        const perpLinked = Wd.linked(i, (d + 1) % 4) || Wd.linked(i, (d + 3) % 4);
+        const crossing = Wd.road[i] && perpLinked && !axisLinked;
+        if (!crossing || C.GRP_RANK[R.grp] > C.GRP_RANK[C.ROADS[Wd.road[i]].grp]) {
+          if (Wd.road[i] !== rt || Wd.rdir[i] !== d) changed = true;
+          S.setRoad(i, rt);
+          if (!crossing) { Wd.rdir[i] = d; Wd.rpart[i] = R.w === 2 ? ((d + 3) % 4) + 1 : 0; }
+        }
+        if (k > 0 && !Wd.linked(T2[k - 1], dirOf(T2[k - 1], i))) { Wd.linkTiles(T2[k - 1], i); changed = true; }
+      }
+    }
+    // snap: connect the ends to a road that continues straight on
+    for (const st of strips) {
+      const A = st.tiles, n = A.length;
+      const ends = [[A[0], (st.dirs[0] + 2) % 4], [A[n - 1], st.dirs[n - 1]]];
+      for (const [t, d] of ends) {
+        const o = Wd.neighbor(t, d);
+        if (o >= 0 && Wd.road[o] && !Wd.linked(t, d) && (Wd.link[o] & (1 << ((d + 2) % 4) | 1 << d)) !== 0 && Wd.degree(o) <= 2) { Wd.linkTiles(t, o); changed = true; }
+      }
+    }
+    // dual carriageway ends: let vehicles turn around at a dead end
+    if (strips.length === 2) {
+      const A = strips[0].tiles, B = strips[1].tiles;
+      for (const [p, q] of [[A[0], B[B.length - 1]], [A[A.length - 1], B[0]]]) if (Wd.degree(p) <= 1 && Wd.degree(q) <= 1 && U.dist(p, q) === 1) Wd.linkTiles(p, q);
+    }
+    return changed;
   }
   function railEval(tiles, rr) {
     const Wd = CB.World, R = C.RAIL[rr];
@@ -134,7 +196,7 @@
       else if (Tl.tool.type !== 'select') Tl.setTool(null);
       else { CB.UI.select(null); CB.UI.closePanels(); }
     }
-    else if (k === 'b') Tl.setTool({ type: 'bulldoze' });
+    else if (k === 'b') { CB.UI.openCat(null); Tl.setTool(Tl.tool.type === 'bulldoze' ? null : { type: 'bulldoze' }); }
     else if (k === 'Enter' && Tl.tool.type === 'line') finishLine();
     else if (k === 'Backspace' && Tl.tool.type === 'line') { Tl.lineStops.pop(); refreshLinePreview(); }
   }
@@ -164,14 +226,20 @@
       return;
     }
     if (t.type === 'road' && Tl.drag) {
-      const tiles = lPath(Tl.drag.start, h ? h.i : Tl.drag.start);
-      const ev = roadEval(tiles, t.rt);
+      const strips = roadStrips(Tl.drag.start, h ? h.i : Tl.drag.start, t.rt);
+      const ev = roadEval(strips, t.rt);
       Tl.drag = null; clearPreview();
       if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return; }
       if (!spend(ev.cost)) return;
-      let changed = false;
-      for (const i of tiles) if (Wd.road[i] !== t.rt) { S.setRoad(i, t.rt); changed = true; }
-      if (changed) { S.networkChanged(); CB.UI.sfx('build'); }
+      if (placeRoad(strips, t.rt)) { S.networkChanged(); CB.UI.sfx('build'); }
+      return;
+    }
+    if (t.type === 'junction') {
+      if (!h || h.i < 0) return;
+      const cl = junctionNear(h.i);
+      if (!cl) { CB.UI.toast('Click on an intersection', 'bad'); return; }
+      if (t.apply) { CB.UI.setJunctionCtrl(cl.tiles[0], t.apply); CB.UI.sfx('click'); if (CB.UI.junctionTile >= 0) CB.UI.openJunction(cl.tiles[0]); }
+      else CB.UI.openJunction(cl.tiles[0]);
       return;
     }
     if (t.type === 'rail' && Tl.drag) {
@@ -225,7 +293,7 @@
     if (t.type === 'line') { lineClick(h.i); return; }
   }
   function stopCost(type, i) {
-    if (type === 'bus') return C.TRANSIT.bus.stopCost;
+    if (type !== 'rail') return C.TRANSIT[type].stopCost;
     return CB.World.rail[i] === 2 ? C.TRANSIT.rail.ugStopCost : C.TRANSIT.rail.stopCost;
   }
   function rectOf(a, b) {
@@ -241,14 +309,24 @@
     };
     const killStops = i => { for (const s of X.stops.filter(s => s.tile === i)) { X.removeStop(s); any = true; } };
     const killRail = i => { S.setRail(i, 0); net = true; any = true; };
-    const killRoad = i => { refund += C.ROADS[Wd.road[i]].cost * 0.5; S.setRoad(i, 0); net = true; any = true; };
+    const killRoad = i => {
+      const R = C.ROADS[Wd.road[i]]; if (!R) return;
+      refund += R.cost / R.w * 0.5;
+      if (i === Wd.outIn || i === Wd.outOut) return; // the highway to the outside world stays
+      Wd.unlinkAll(i); S.setRoad(i, 0); Wd.rdir[i] = 0; Wd.rpart[i] = 0; net = true; any = true;
+    };
     if (single) {
       if (!U.inPlay(r.x0, r.y0)) return;
       const i = U.idx(r.x0, r.y0);
       if (Wd.bld[i]) killB(i);
       else if (X.stops.some(s => s.tile === i)) killStops(i);
       else if (Wd.rail[i]) killRail(i);
-      else if (Wd.road[i]) killRoad(i);
+      else if (Wd.road[i]) {
+        // remove the whole cross-section of a dual carriageway
+        const p = Wd.rpart[i], rt = Wd.road[i];
+        killRoad(i);
+        if (p) { const j = Wd.neighbor(i, p - 1); if (j >= 0 && Wd.road[j] === rt && Wd.jcl[j] < 0) killRoad(j); }
+      }
     } else {
       for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
         if (!U.inPlay(x, y)) continue;
@@ -270,7 +348,7 @@
     let s = X.stopAtTile(i, type);
     if (!s) {
       const why = X.canPlaceStop(type, i);
-      if (why) { CB.UI.toast(type === 'bus' ? 'Click a road to add a stop' : 'Click on rail track to add a station', 'bad'); return; }
+      if (why) { CB.UI.toast(why, 'bad'); return; }
       if (!spend(stopCost(type, i))) return;
       s = X.addStop(type, i);
     }
@@ -280,8 +358,8 @@
     // check that the new stop is reachable
     if (L.length) {
       const prev = X.stopById(L[L.length - 1]);
-      const p = type === 'bus' ? CB.Traffic.findPath(prev.tile, s.tile, true) : CB.Traffic.findRailPath(prev.tile, s.tile);
-      if (!p) { CB.UI.toast(type === 'bus' ? 'No road connects these stops' : 'No track connects these stations', 'bad'); return; }
+      const p = CB.Transit.segPath(type, prev.tile, s.tile);
+      if (!p) { CB.UI.toast(type === 'rail' ? 'No track connects these stations' : type === 'tram' ? 'No tram track connects these stops' : 'No road connects these stops (check one-way streets)', 'bad'); return; }
     }
     L.push(s.id);
     CB.UI.sfx('click');
@@ -307,11 +385,11 @@
     const pts = [];
     const type = Tl.tool.lt;
     for (let k = 0; k < tiles.length - 1; k++) {
-      const p = type === 'bus' ? CB.Traffic.findPath(tiles[k], tiles[k + 1], true) : CB.Traffic.findRailPath(tiles[k], tiles[k + 1]);
+      const p = CB.Transit.segPath(type, tiles[k], tiles[k + 1]);
       if (!p) continue;
       for (const i of p) {
         const x = (U.tx(i) + 0.5) * T, z = (U.ty(i) + 0.5) * T;
-        const y = type === 'bus' ? Wd.roadH(x, z) + 2 : (Wd.rail[i] === 1 ? Wd.deckH(x, z) + 2 : Math.max(Wd.groundH(x, z), 0) + 2.5);
+        const y = type !== 'rail' ? Wd.roadH(x, z) + 2 : (Wd.rail[i] === 1 ? Wd.deckH(x, z) + 2 : Math.max(Wd.groundH(x, z), 0) + 2.5);
         pts.push(x, y, z);
       }
     }
@@ -340,10 +418,17 @@
     const h = Tl.hover, t = Tl.tool;
     if (!h || h.i < 0) { if (t.type !== 'select') { Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null); } Tl.tip = ''; return; }
     if (t.type === 'road') {
-      const tiles = Tl.drag ? lPath(Tl.drag.start, h.i) : [h.i];
-      const ev = roadEval(tiles, t.rt);
+      const strips = roadStrips(Tl.drag ? Tl.drag.start : h.i, h.i, t.rt);
+      const ev = roadEval(strips, t.rt);
       Mx.setGhostTiles(ev.list);
-      Tl.tip = (Tl.drag ? tiles.length + ' tiles · ' : '') + U.money(ev.cost) + (ev.bad ? ' · ' + ev.bad : '');
+      Mx.setFlowArrows(strips, t.rt);
+      const R = C.ROADS[t.rt];
+      Tl.tip = R.name + ' · ' + (Tl.drag ? strips[0].tiles.length + ' tiles · ' : '') + U.money(ev.cost) + (ev.bad ? ' · ' + ev.bad : (R.oneway ? ' · drag in the direction of travel' : ''));
+    } else if (t.type === 'junction') {
+      const cl = junctionNear(h.i);
+      Mx.setGhostTiles(cl ? cl.tiles.map(i => ({ i, ok: true, h: 0.6, col: [0.4, 0.8, 1] })) : []);
+      const nm = { lights: 'add traffic lights', stop: 'add stop signs', allstop: 'make it an all-way stop', round: 'make it a roundabout', none: 'remove all control', auto: 'reset to automatic' };
+      Tl.tip = cl ? (t.apply ? 'Click to ' + nm[t.apply] : 'Click to edit this intersection') : 'Hover an intersection';
     } else if (t.type === 'rail') {
       const tiles = Tl.drag ? lPath(Tl.drag.start, h.i) : [h.i];
       const ev = railEval(tiles, t.rr);
@@ -376,7 +461,7 @@
     } else if (t.type === 'stop') {
       const why = CB.Transit.canPlaceStop(t.st, h.i);
       Mx.setGhostTiles([{ i: h.i, ok: !why, y: t.st === 'rail' && Wd.rail[h.i] === 1 ? Wd.deckH(h.x, h.z) : undefined, h: 3 }]);
-      Tl.tip = why || ((t.st === 'bus' ? 'Bus stop' : 'Station') + ' · ' + U.money(stopCost(t.st, h.i)));
+      Tl.tip = why || (({ bus: 'Bus stop', tram: 'Streetcar stop', rail: 'Station' })[t.st] + ' · ' + U.money(stopCost(t.st, h.i)));
     } else if (t.type === 'line') {
       const X = CB.Transit;
       const s = X.stopAtTile(h.i, t.lt);
@@ -385,7 +470,7 @@
       const L = Tl.lineStops;
       if (s && L.length >= 2 && s.id === L[0]) Tl.tip = 'Click to finish the line';
       else if (s) Tl.tip = s.name + (L.length ? ' · add to line' : ' · start line here');
-      else Tl.tip = X.canPlaceStop(t.lt, h.i) ? (t.lt === 'bus' ? 'Click a road' : 'Click rail track') : 'New ' + (t.lt === 'bus' ? 'stop' : 'station') + ' · ' + U.money(stopCost(t.lt, h.i));
+      else Tl.tip = X.canPlaceStop(t.lt, h.i) || ('New ' + (t.lt === 'rail' ? 'station' : 'stop') + ' · ' + U.money(stopCost(t.lt, h.i)));
     } else {
       Tl.tip = '';
       if (h.i >= 0) {

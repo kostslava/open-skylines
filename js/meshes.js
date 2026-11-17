@@ -1,5 +1,5 @@
 'use strict';
-// Arterial — procedural geometry: buildings, roads, rail, trees, vehicles, previews, icons
+// Open Skylines — procedural geometry: buildings, roads, rail, trees, vehicles, previews, icons
 (function () {
   const { C, U } = CB;
   const T = C.TILE, W = C.W;
@@ -181,40 +181,190 @@
   }
 
   const GEN = {};
+  // ---- detail kit ----
+  function hip(gb, x0, z0, x1, z1, y, h, col) {
+    const w = x1 - x0, d = z1 - z0;
+    if (w >= d) {
+      const k = d / 2, xa = x0 + k, xb = x1 - k, zm = (z0 + z1) / 2;
+      gb.quad([x1, y, z0], [x0, y, z0], [xa, y + h, zm], [xb, y + h, zm], col);
+      gb.quad([x0, y, z1], [x1, y, z1], [xb, y + h, zm], [xa, y + h, zm], col);
+      gb.tri([x0, y, z0], [x0, y, z1], [xa, y + h, zm], col);
+      gb.tri([x1, y, z1], [x1, y, z0], [xb, y + h, zm], col);
+    } else {
+      const k = w / 2, za = z0 + k, zb = z1 - k, xm = (x0 + x1) / 2;
+      gb.quad([x0, y, z0], [x0, y, z1], [xm, y + h, zb], [xm, y + h, za], col);
+      gb.quad([x1, y, z1], [x1, y, z0], [xm, y + h, za], [xm, y + h, zb], col);
+      gb.tri([x1, y, z0], [x0, y, z0], [xm, y + h, za], col);
+      gb.tri([x0, y, z1], [x1, y, z1], [xm, y + h, zb], col);
+    }
+  }
+  function roofOn(gb, kind, x0, z0, x1, z1, y, col, wall, r) {
+    const o = 0.4;
+    if (kind === 'flat') { gb.box(x0 - 0.15, y, z0 - 0.15, x1 + 0.15, y + 0.5, z1 + 0.15, '#6d6a64'); return y + 0.5; }
+    const span = Math.min(x1 - x0, z1 - z0), h = span * (kind === 'steep' ? 0.62 : 0.36);
+    if (kind === 'hip') hip(gb, x0 - o, z0 - o, x1 + o, z1 + o, y, h, col);
+    else gb.gable(x0 - o, z0 - o, x1 + o, z1 + o, y, h, (x1 - x0) >= (z1 - z0), col, wall);
+    return y + h;
+  }
+  function door(gb, x, z, col) { gb.box(x - 0.55, 0, z - 0.12, x + 0.55, 2.15, z, col || '#5a3d2b'); }
+  function windowsFront(gb, x0, x1, z, y, n) {
+    const step = (x1 - x0) / n;
+    for (let k = 0; k < n; k++) { const cx = x0 + step * (k + 0.5); gb.box(cx - 0.55, y, z - 0.06, cx + 0.55, y + 1.2, z, '#9fc5d8', 9); gb.box(cx - 0.65, y - 0.12, z - 0.12, cx + 0.65, y, z, '#efefe8'); }
+  }
+  function chimney(gb, x, z, y0, y1, col) { gb.box(x - 0.45, y0, z - 0.45, x + 0.45, y1, z + 0.45, col || '#8a4b34'); gb.box(x - 0.55, y1, z - 0.55, x + 0.55, y1 + 0.2, z + 0.55, '#555'); }
+  function hedge(gb, x0, z0, x1, z1) { gb.box(x0, 0, z0, x1, 0.9, z1, '#3f6b30', 0, { top: '#4a7a36' }); }
+  function fence(gb, x0, z0, x1, z1, col) { gb.box(x0, 0, z0, x1, 1.0, z1, col || '#e8e2d4'); }
+  function bench(gb, x, z, rot) { if (rot) gb.box(x - 0.25, 0, z - 0.9, x + 0.25, 0.5, z + 0.9, '#7a5a3c'); else gb.box(x - 0.9, 0, z - 0.25, x + 0.9, 0.5, z + 0.25, '#7a5a3c'); }
+  function lampPost(gb, x, z) { gb.box(x - 0.07, 0, z - 0.07, x + 0.07, 3.4, z + 0.07, '#3a3d42'); gb.box(x - 0.22, 3.4, z - 0.22, x + 0.22, 3.75, z + 0.22, '#fff', 8); }
+  function pathStrip(gb, x0, z0, x1, z1, col) { gb.flat(x0, z0, x1, z1, 0.11, col || '#cdbf9a'); }
+  function bush(gb, x, z, s, col) { gb.cone(x, 0, z, 0.9 * s, 0.4 * s, 6, col || '#4a7a36', true); gb.cone(x, 0.05, z, 0.9 * s, 1.0 * s, 6, col || '#4a7a36'); }
+  function flowerBed(gb, x0, z0, x1, z1, r) { gb.box(x0, 0, z0, x1, 0.35, z1, '#6a4a32', 0, { top: '#4a7a36' }); for (let k = 0; k < 6; k++) { const x = x0 + 0.3 + r() * (x1 - x0 - 0.6), z = z0 + 0.3 + r() * (z1 - z0 - 0.6); gb.box(x - 0.15, 0.35, z - 0.15, x + 0.15, 0.55, z + 0.15, U.pick(['#e0503a', '#f2c230', '#d65aa0', '#f2f2f2', '#8a5ad8'], r)); } }
+  function pond(gb, x, z, rad) { gb.cyl(x, 0.0, z, rad + 0.4, 0.18, 14, '#a9a28c', 0, '#a9a28c'); gb.cyl(x, 0.0, z, rad, 0.2, 14, '#1d6f8a', 13, '#1d6f8a'); }
+  function grove(gb, x0, z0, x1, z1, n, r, conif) { for (let k = 0; k < n; k++) gb.tree(x0 + r() * (x1 - x0), 0, z0 + r() * (z1 - z0), 0.7 + r() * 0.5, U.pick(['#4f7d34', '#5c8a3a', '#3f6b30', '#2c5a2f', '#6a9440'], r), conif !== undefined ? conif : r() < 0.35); }
+  function windingPath(gb, pts, w, col) { for (let k = 0; k < pts.length - 1; k++) { const [ax, az] = pts[k], [bx, bz] = pts[k + 1]; const dx = bx - ax, dz = bz - az, l = Math.hypot(dx, dz) || 1, nx = -dz / l * w / 2, nz = dx / l * w / 2; gb.quad([ax + nx, 0.11, az + nz], [bx + nx, 0.11, bz + nz], [bx - nx, 0.11, bz - nz], [ax - nx, 0.11, az - nz], col || '#cdbf9a'); gb.quad([ax - nx, 0.11, az - nz], [bx - nx, 0.11, bz - nz], [bx + nx, 0.11, bz + nz], [ax + nx, 0.11, az + nz], col || '#cdbf9a'); } }
+  function swing(gb, x, z) { gb.box(x - 1.6, 0, z - 0.06, x - 1.5, 2.4, z + 0.06, '#c8392e'); gb.box(x + 1.5, 0, z - 0.06, x + 1.6, 2.4, z + 0.06, '#c8392e'); gb.box(x - 1.6, 2.4, z - 0.08, x + 1.6, 2.55, z + 0.08, '#c8392e'); for (const o of [-0.7, 0.7]) gb.box(x + o - 0.3, 0.6, z - 0.15, x + o + 0.3, 0.7, z + 0.15, '#333'); }
+  function slide(gb, x, z, col) { gb.box(x - 0.8, 0, z - 0.8, x + 0.8, 1.8, z + 0.8, col || '#2f86c9'); gb.box(x - 0.9, 1.8, z - 0.9, x + 0.9, 2.0, z + 0.9, '#e3a02b'); gb.quad([x + 0.5, 1.8, z + 0.8], [x - 0.5, 1.8, z + 0.8], [x - 0.5, 0.2, z + 3.2], [x + 0.5, 0.2, z + 3.2], '#e3a02b'); gb.quad([x - 0.5, 1.8, z + 0.8], [x + 0.5, 1.8, z + 0.8], [x + 0.5, 0.2, z + 3.2], [x - 0.5, 0.2, z + 3.2], '#e3a02b'); }
+  function statue(gb, x, z, s, col) { gb.box(x - 0.8 * s, 0, z - 0.8 * s, x + 0.8 * s, 1.2 * s, z + 0.8 * s, '#cfc8b8'); gb.box(x - 0.3 * s, 1.2 * s, z - 0.25 * s, x + 0.3 * s, 2.6 * s, z + 0.25 * s, col || '#6f8a7a'); gb.box(x - 0.2 * s, 2.6 * s, z - 0.2 * s, x + 0.2 * s, 3.0 * s, z + 0.2 * s, col || '#6f8a7a'); }
+  function fountain(gb, x, z, s) { gb.cyl(x, 0, z, 3 * s, 0.7, 16, '#b7b0a2', 0, '#1d6f8a'); gb.cyl(x, 0.7, z, 2.7 * s, 0.02, 16, '#1d6f8a', 13); gb.cyl(x, 0.7, z, 0.45 * s, 2.2 * s, 8, '#d8d2c4'); gb.cyl(x, 0.7 + 2.2 * s, z, 1.1 * s, 0.25, 8, '#d8d2c4'); }
+  function court(gb, x0, z0, x1, z1, col) { gb.flat(x0, z0, x1, z1, 0.12, col || '#c0603a'); const c = '#f2f2ec', lw = 0.15; gb.flat(x0 + 0.4, z0 + 0.4, x1 - 0.4, z0 + 0.4 + lw, 0.13, c); gb.flat(x0 + 0.4, z1 - 0.4 - lw, x1 - 0.4, z1 - 0.4, 0.13, c); gb.flat(x0 + 0.4, z0 + 0.4, x0 + 0.4 + lw, z1 - 0.4, 0.13, c); gb.flat(x1 - 0.4 - lw, z0 + 0.4, x1 - 0.4, z1 - 0.4, 0.13, c); gb.flat(x0 + 0.4, (z0 + z1) / 2 - lw / 2, x1 - 0.4, (z0 + z1) / 2 + lw / 2, 0.13, c); }
+
+  // ---- low density homes ----
+  const HOUSE_WALL = ['#efe9dc', '#e6dcc6', '#d9cbb0', '#c9d3d6', '#e8e1c4', '#cfd8cf', '#dad4cc', '#e3d2bd', '#f2efe6', '#c7b7a3', '#b8c7cf', '#e9d9c9', '#a8b8a0'];
+  const HOUSE_ROOF = ['#4b4f57', '#6b3e2e', '#3d4650', '#7a5a44', '#55504a', '#2f3640', '#5e3a33', '#704a3a', '#3c5060'];
+  const TRIM = ['#f4f1ea', '#e8e2d4', '#ffffff', '#3a3d42', '#2f4a5a'];
+  function houseBlock(gb, r, x0, z0, w, d, floors, roof, wall, rc, opts) {
+    opts = opts || {};
+    const H = floors * 2.9 + 0.3;
+    gb.box(x0, 0, z0, x0 + w, H, z0 + d, wall, 1);
+    gb.box(x0 - 0.05, 0, z0 - 0.05, x0 + w + 0.05, 0.45, z0 + d + 0.05, '#8d8a82');
+    const top = roofOn(gb, roof, x0, z0, x0 + w, z0 + d, H, rc, wall, r);
+    if (opts.door !== false) door(gb, x0 + (opts.doorX !== undefined ? opts.doorX : w / 2), z0, opts.doorCol);
+    if (opts.chimney) chimney(gb, x0 + w * 0.78, z0 + d * 0.5, H, top + 0.6, opts.chimneyCol);
+    return { H, top };
+  }
+  function driveway(gb, x0, x1, z1, car, r) { gb.flat(x0, 0.06, x1, z1, 0.1, '#9a9893'); if (car) parkedCar(gb, (x0 + x1) / 2, 2.6, true, r); }
   GEN.rlow = function (gb, b, r, LW, LD) {
     foundation(gb, LW, LD, b, U.pick(PAL.lawn, r));
-    const lvl = b.level;
-    const fl = (lvl >= 3 && r() < 0.65) || r() < 0.25 ? 2 : 1;
-    const hw = 5.8 + r() * 1.6 + lvl * 0.2, hd = 6.4 + r() * 1.8 + lvl * 0.35;
-    const x0 = (LW - hw) / 2 + (r() - 0.5) * 1.2, z0 = 3.2 + r() * 1.4;
-    const H = fl * 3.0 + 0.3;
-    const wall = U.pick(PAL.resWall, r), roof = U.pick(PAL.roof, r);
-    gb.box(x0, 0, z0, x0 + hw, H, z0 + hd, wall, 1);
-    const along = r() < 0.65;
-    gb.gable(x0 - 0.35, z0 - 0.35, x0 + hw + 0.35, z0 + hd + 0.35, H, 1.9 + r() * 1.1, along, roof, wall);
-    gb.box(x0 + hw / 2 - 0.55, 0, z0 - 0.1, x0 + hw / 2 + 0.55, 2.1, z0, '#5a3d2b');
-    // porch roof
-    if (r() < 0.5) gb.box(x0 + hw / 2 - 1.6, 2.6, z0 - 1.4, x0 + hw / 2 + 1.6, 2.8, z0, roof);
-    // garage
-    let gx = x0 + hw;
-    if (lvl >= 2 && gx + 3.0 < LW - 0.2) {
-      gb.box(gx, 0, z0 + 0.6, gx + 3.0, 2.8, z0 + 6.2, wall, 0, { top: roof });
-      gb.box(gx + 0.3, 0, z0 + 0.5, gx + 2.7, 2.3, z0 + 0.6, '#d8d8d4');
-      gb.flat(gx + 0.2, 0.1, gx + 2.8, z0 + 0.6, 0.1, '#9a9893');
-    } else {
-      gb.flat(x0 + hw / 2 - 0.6, 0.1, x0 + hw / 2 + 0.6, z0, 0.1, '#a9a49a');
+    const lvl = b.level, area = b.w * b.d;
+    const wall = U.pick(HOUSE_WALL, r), rc = U.pick(HOUSE_ROOF, r), trim = U.pick(TRIM, r);
+    const roofK = U.pick(['gable', 'gable', 'hip', 'hip', 'steep', 'flat'], r);
+    const doorCol = U.pick(['#5a3d2b', '#8c1c1c', '#25467a', '#2f5a3a', '#3a3d42', '#c8a040'], r);
+    if (area === 1) {
+      // cottage
+      const w = 6.2 + r() * 0.8, d = 5.6 + r() * 0.6, x0 = (LW - w) / 2, z0 = 2.4;
+      houseBlock(gb, r, x0, z0, w, d, 1, roofK === 'flat' ? 'gable' : roofK, wall, rc, { chimney: r() < 0.6, doorCol });
+      gb.box(x0 + w / 2 - 1.3, 2.4, z0 - 1.2, x0 + w / 2 + 1.3, 2.55, z0, trim);
+      gb.box(x0 + w / 2 - 1.2, 0, z0 - 1.15, x0 + w / 2 - 1.05, 2.4, z0 - 1.0, trim); gb.box(x0 + w / 2 + 1.05, 0, z0 - 1.15, x0 + w / 2 + 1.2, 2.4, z0 - 1.0, trim);
+      windowsFront(gb, x0 + 0.3, x0 + w / 2 - 1.3, z0, 1.0, 1); windowsFront(gb, x0 + w / 2 + 1.3, x0 + w - 0.3, z0, 1.0, 1);
+      pathStrip(gb, x0 + w / 2 - 0.5, 0.1, x0 + w / 2 + 0.5, z0, '#b5ada0');
+      hedge(gb, 0.3, 0.3, x0 + w / 2 - 0.9, 0.9); hedge(gb, x0 + w / 2 + 0.9, 0.3, LW - 0.3, 0.9);
+      if (r() < 0.7) yardTree(gb, LW - 1.4, LD - 1.4, r);
+      return;
     }
-    if (r() < 0.45) gb.box(x0 + hw * 0.7, H, z0 + hd * 0.4, x0 + hw * 0.7 + 0.8, H + 2.6, z0 + hd * 0.4 + 0.8, '#7a5a4a');
-    // backyard
-    const by = z0 + hd + 1.5;
-    if (lvl >= 2) {
-      gb.box(0.2, 0, LD - 0.4, LW - 0.2, 1.1, LD - 0.25, '#b49a78');
-      gb.box(0.2, 0, by, 0.35, 1.1, LD - 0.25, '#b49a78');
-      gb.box(LW - 0.35, 0, by, LW - 0.2, 1.1, LD - 0.25, '#b49a78');
+    const style = U.pick(area >= 6 ? ['estate', 'estate', 'modernvilla'] : area >= 4 ? ['ranchL', 'twostoryWide', 'duplex', 'modernvilla'] : area === 3 ? ['colonial', 'bungalow', 'modern'] : ['colonial', 'bungalow', 'modern', 'aframe', 'saltbox'], r);
+    if (style === 'colonial' || style === 'saltbox') {
+      const w = Math.min(LW - 2.6, 7.8 + r() * 1.2), d = 7.2 + r() * 1.5, x0 = 1.0 + r() * 0.6, z0 = 3.6 + r();
+      const hb = houseBlock(gb, r, x0, z0, w, d, 2, style === 'saltbox' ? 'steep' : (roofK === 'flat' ? 'hip' : roofK), wall, rc, { chimney: true, doorCol });
+      windowsFront(gb, x0 + 0.4, x0 + w - 0.4, z0, 1.0, 3); windowsFront(gb, x0 + 0.4, x0 + w - 0.4, z0, 3.9, 3);
+      gb.box(x0 + w / 2 - 1.1, 2.5, z0 - 1.3, x0 + w / 2 + 1.1, 2.65, z0, trim);
+      for (const o of [-1.0, 1.0]) gb.box(x0 + w / 2 + o - 0.1, 0, z0 - 1.25, x0 + w / 2 + o + 0.1, 2.5, z0 - 1.05, trim);
+      if (x0 + w + 3 < LW) driveway(gb, x0 + w + 0.4, LW - 0.4, z0 + 3, lvl >= 2 || r() < 0.5, r);
+      pathStrip(gb, x0 + w / 2 - 0.5, 0.1, x0 + w / 2 + 0.5, z0 - 1.2, '#b5ada0');
+    } else if (style === 'bungalow') {
+      const w = Math.min(LW - 1.6, 8.4), d = 8 + r() * 2, x0 = (LW - w) / 2, z0 = 4.2;
+      houseBlock(gb, r, x0, z0, w, d, 1, 'hip', wall, rc, { doorX: w * 0.35, doorCol, chimney: r() < 0.5 });
+      // deep porch with columns
+      gb.box(x0 - 0.2, 0, z0 - 2.2, x0 + w + 0.2, 0.45, z0, '#a59b8a');
+      gb.box(x0 - 0.3, 2.7, z0 - 2.4, x0 + w + 0.3, 2.95, z0, rc);
+      for (const cx of [x0 + 0.2, x0 + w / 2, x0 + w - 0.2]) gb.box(cx - 0.18, 0.45, z0 - 2.15, cx + 0.18, 2.7, z0 - 1.8, trim);
+      windowsFront(gb, x0 + w * 0.5, x0 + w - 0.4, z0, 1.0, 2);
+      bench(gb, x0 + w * 0.7, z0 - 1.2);
+    } else if (style === 'modern') {
+      const w = LW - 2.4, d = 8.5 + r() * 2, x0 = 1.2, z0 = 3.4;
+      const dark = r() < 0.5;
+      gb.box(x0, 0, z0, x0 + w * 0.62, 3.2, z0 + d, dark ? '#3a3d42' : '#ece9e2', 2);
+      gb.box(x0 + w * 0.3, 3.2, z0 + 0.8, x0 + w, 6.2, z0 + d, dark ? '#ece9e2' : '#5a6068', 2);
+      gb.box(x0 - 0.1, 3.15, z0 - 0.1, x0 + w * 0.62 + 0.1, 3.4, z0 + d + 0.1, '#2b2b30');
+      gb.box(x0 + w * 0.3 - 0.1, 6.2, z0 + 0.7, x0 + w + 0.1, 6.45, z0 + d + 0.1, '#2b2b30');
+      gb.box(x0 + w * 0.62, 0, z0 + 2, x0 + w, 2.8, z0 + d, '#8a6a4a');
+      door(gb, x0 + 1.4, z0, '#2b2b30');
+      gb.box(x0 + 2.4, 0.4, z0 - 0.06, x0 + w * 0.6, 2.8, z0, '#9fc5d8', 9);
+      driveway(gb, x0 + w * 0.65, LW - 0.4, z0 + 2, r() < 0.7, r);
+      if (lvl >= 3) gb.box(1.5, 0.0, LD - 5.5, 6.5, 0.18, LD - 2, '#1d6f8a', 13);
+    } else if (style === 'aframe') {
+      const w = 7, d = 8, x0 = (LW - w) / 2, z0 = 4;
+      gb.gable(x0, z0, x0 + w, z0 + d, 0, 7.5, false, rc, wall);
+      gb.tri([x0 + 0.6, 0.1, z0 - 0.02], [x0 + w - 0.6, 0.1, z0 - 0.02], [x0 + w / 2, 6.4, z0 - 0.02], '#9fc5d8', 9);
+      door(gb, x0 + w / 2, z0 - 0.03, '#5a3d2b');
+      gb.box(x0 - 0.5, 0, z0 - 2.5, x0 + w + 0.5, 0.4, z0, '#8a6a4a');
     }
-    if (lvl >= 4 && r() < 0.55) gb.box(2, 0.0, by + 1.5, 6, 0.18, by + 4.5, '#1d6f8a', 13);
-    else if (r() < 0.75) yardTree(gb, 2 + r() * 6, by + 2 + r() * (LD - by - 3.5), r);
-    if (r() < 0.5) yardTree(gb, 1 + r() * 1.2, 1.5, r);
+    if (style === 'ranchL') {
+      const x0 = 1.2, z0 = 3.4, w = LW - 6.5, d = 7;
+      houseBlock(gb, r, x0, z0, w, d, 1, roofK === 'flat' ? 'hip' : roofK, wall, rc, { doorX: w * 0.4, doorCol, chimney: true });
+      houseBlock(gb, r, x0, z0 + d, 6.5, LD - z0 - d - 3.5, 1, 'hip', wall, rc, { door: false });
+      windowsFront(gb, x0 + w * 0.5, x0 + w - 0.3, z0, 1.0, 3);
+      // attached garage
+      gb.box(x0 + w, 0, z0 + 0.6, LW - 0.8, 2.9, z0 + 7, wall, 0, { top: rc });
+      gb.box(x0 + w + 0.4, 0, z0 + 0.5, LW - 1.2, 2.3, z0 + 0.6, '#d8d8d4');
+      driveway(gb, x0 + w + 0.2, LW - 1.0, z0 + 0.6, true, r);
+      if (lvl >= 2) { gb.box(10, 0, LD - 7, LW - 2, 0.18, LD - 2.5, '#1d6f8a', 13); gb.flat(9.4, LD - 7.6, LW - 1.4, LD - 1.9, 0.08, '#d9d4c6'); }
+      else grove(gb, 9, LD - 7, LW - 2, LD - 2, 2, r);
+      fence(gb, 0.2, LD - 0.4, LW - 0.2, LD - 0.25, '#b49a78');
+    } else if (style === 'twostoryWide') {
+      const w = LW - 5, d = 9, x0 = 2.5, z0 = 4.5;
+      houseBlock(gb, r, x0, z0, w, d, 2, 'hip', wall, rc, { doorCol, chimney: true });
+      windowsFront(gb, x0 + 0.4, x0 + w - 0.4, z0, 1.0, 5); windowsFront(gb, x0 + 0.4, x0 + w - 0.4, z0, 3.9, 5);
+      gb.box(x0 + w / 2 - 2, 2.6, z0 - 1.6, x0 + w / 2 + 2, 2.8, z0, trim);
+      for (const o of [-1.8, 1.8]) gb.box(x0 + w / 2 + o - 0.15, 0, z0 - 1.5, x0 + w / 2 + o + 0.15, 2.6, z0 - 1.2, trim);
+      pathStrip(gb, x0 + w / 2 - 0.7, 0.1, x0 + w / 2 + 0.7, z0 - 1.5, '#b5ada0');
+      hedge(gb, 0.4, 0.4, x0 + w / 2 - 1.2, 1.1); hedge(gb, x0 + w / 2 + 1.2, 0.4, LW - 0.4, 1.1);
+      grove(gb, 1.5, LD - 5, LW - 1.5, LD - 1.5, 3, r);
+    } else if (style === 'duplex') {
+      for (const side of [0, 1]) {
+        const x0 = side ? LW / 2 + 0.05 : 1.5, w = LW / 2 - 1.55, z0 = 4;
+        const wl = side ? U.pick(HOUSE_WALL, r) : wall;
+        houseBlock(gb, r, x0, z0, w, 9, 2, 'gable', wl, rc, { doorX: side ? w - 1.5 : 1.5, doorCol });
+        windowsFront(gb, x0 + 2.5 * (side ? 0 : 1), x0 + w - 2.5 * side, z0, 1.0, 2); windowsFront(gb, x0 + 0.4, x0 + w - 0.4, z0, 3.9, 2);
+      }
+      fence(gb, LW / 2 - 0.05, 13, LW / 2 + 0.05, LD - 0.4);
+      yardTree(gb, 4, LD - 3, r); yardTree(gb, LW - 4, LD - 3, r);
+    } else if (style === 'estate' || style === 'modernvilla') {
+      const villa = style === 'modernvilla';
+      const cx = LW / 2, z0 = 8;
+      const mw = Math.min(LW - 6, 12), md = 9;
+      if (villa) {
+        gb.box(cx - mw / 2, 0, z0, cx + mw / 2, 3.4, z0 + md, '#f0ede6', 2);
+        gb.box(cx - mw / 2 - 2, 3.4, z0 + 1.5, cx + mw / 2 - 1, 6.8, z0 + md + 1.5, '#ece9e2', 2);
+        gb.box(cx - mw / 2 - 2.2, 6.8, z0 + 1.3, cx + mw / 2 - 0.8, 7.1, z0 + md + 1.7, '#2b2b30');
+        gb.box(cx - mw / 2, 3.35, z0 - 0.3, cx + mw / 2, 3.6, z0 + md, '#2b2b30');
+        gb.box(cx - mw / 2 + 1, 0.3, z0 - 0.06, cx + mw / 2 - 1, 3.0, z0, '#9fc5d8', 9);
+        gb.box(cx - 5, 0, z0 + md + 3, cx + 5, 0.18, z0 + md + 8, '#1d6f8a', 13);
+        gb.flat(cx - 5.8, z0 + md + 2.2, cx + 5.8, z0 + md + 8.8, 0.08, '#e3ddd0');
+      } else {
+        const hb = houseBlock(gb, r, cx - mw / 2, z0, mw, md, 2, 'hip', wall, rc, { doorCol, chimney: true });
+        houseBlock(gb, r, cx - mw / 2 - 4.5, z0 + 1.5, 4.5, md - 2, 1, 'hip', wall, rc, { door: false });
+        houseBlock(gb, r, cx + mw / 2, z0 + 1.5, 4.5, md - 2, 1, 'hip', wall, rc, { door: false });
+        windowsFront(gb, cx - mw / 2 + 0.4, cx + mw / 2 - 0.4, z0, 1.0, 5); windowsFront(gb, cx - mw / 2 + 0.4, cx + mw / 2 - 0.4, z0, 3.9, 5);
+        gb.box(cx - 2.2, 0, z0 - 2.2, cx + 2.2, 0.4, z0, '#cfc8b8');
+        for (const o of [-1.9, -0.65, 0.65, 1.9]) gb.box(cx + o - 0.2, 0.4, z0 - 2, cx + o + 0.2, 5.6, z0 - 1.6, '#f4f1ea');
+        gb.box(cx - 2.4, 5.6, z0 - 2.3, cx + 2.4, 6.0, z0, '#f4f1ea');
+        // circular drive with a fountain
+        gb.cyl(cx, 0.06, 4, 3.4, 0.05, 16, '#b5ada0', 0, '#b5ada0');
+        gb.cyl(cx, 0.11, 4, 1.6, 0.05, 12, '#5f9a40', 0, '#5f9a40');
+        statue(gb, cx, 4, 0.6, '#cfc8b8');
+        grove(gb, 1, LD - 8, 6, LD - 1, 3, r); grove(gb, LW - 6, LD - 8, LW - 1, LD - 1, 3, r);
+        flowerBed(gb, cx - 4, LD - 5, cx + 4, LD - 3, r);
+      }
+      hedge(gb, 0.3, 0.3, cx - 3.6, 0.9); hedge(gb, cx + 3.6, 0.3, LW - 0.3, 0.9);
+      parkedCar(gb, cx + 2.4, 5.2, false, r);
+    }
+    if (area === 3) {
+      // long lot: garden rows and a shed out back
+      gb.box(LW - 4.2, 0, LD - 4.6, LW - 1.2, 2.4, LD - 1.4, U.pick(['#8a6a4a', '#9c5a3c', '#cfd8cf'], r), 0, { top: rc });
+      for (let k = 0; k < 3; k++) gb.box(1.2, 0, LD - 9 + k * 2.1, 5.6, 0.3, LD - 8.1 + k * 2.1, '#6a4a32', 0, { top: '#4a7a36' });
+    }
+    if (area === 2 && r() < 0.8) { yardTree(gb, 1.5 + r() * 2, LD - 2.5 - r() * 3, r); if (r() < 0.5) bush(gb, LW - 1.8, LD - 2.2, 1); }
+    if (area >= 2 && lvl >= 2 && style !== 'ranchL' && style !== 'duplex') { fence(gb, 0.2, LD - 0.4, LW - 0.2, LD - 0.25, '#b49a78'); fence(gb, 0.2, LD * 0.55, 0.35, LD - 0.25, '#b49a78'); fence(gb, LW - 0.35, LD * 0.55, LW - 0.2, LD - 0.25, '#b49a78'); }
   };
   GEN.rmed = function (gb, b, r, LW, LD) {
     foundation(gb, LW, LD, b, r() < 0.5 ? U.pick(PAL.lawn, r) : PAL.paved);
@@ -551,17 +701,285 @@
     gb.cyl(cx, 102.2, cz, 0.5, 26, 6, '#cfcfcf', 0, null, 0.15);
     gb.box(cx - 0.4, 128, cz - 0.4, cx + 0.4, 129, cz + 0.4, '#f22', 7);
   };
-  SGEN.arch = function (gb, b, r, LW, LD) {
-    foundation(gb, LW, LD, b, '#d3cab8');
-    const st = '#ece6d8';
-    gb.box(4, 0, 11, 9, 36, 19, st);
-    gb.box(21, 0, 11, 26, 36, 19, st);
-    gb.box(3, 36, 10, 27, 44, 20, st);
-    gb.box(2.5, 44, 9.5, 27.5, 45, 20.5, '#cbc3b2');
-    gb.box(9, 30, 10.9, 21, 32, 11, '#d9b86a', 5);
-    gb.flat(13, 0.5, 17, 29.5, 0.11, '#b9b09c');
+  SGEN.recycle = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, PAL.conc2);
+    gb.box(2, 0, 6, 20, 10, 20, '#3f7a6a', 4, { top: '#56605c' });
+    gb.box(20, 0, 9, 27, 7, 18, '#6f9a8a', 1);
+    for (let k = 0; k < 4; k++) gb.box(3 + k * 4.2, 0, 5.9, 6.3 + k * 4.2, 5, 6, '#33383a');
+    for (let k = 0; k < 4; k++) gb.box(2.5 + k * 3.2, 0, 1.5, 5 + k * 3.2, 1.8, 4, U.pick(['#2f86c9', '#3aa36a', '#e3a02b', '#9aa3a8'], r));
+    gb.cyl(24, 7, 13, 1.2, 9, 8, '#c8ccd0');
+    gb.box(8, 10, 10, 14, 10.4, 12, '#3aa36a', 5);
   };
-
+  SGEN.firehq = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, PAL.paved);
+    gb.box(2, 0, 3.5, 26, 8.4, 17, '#9c3b2c', 1);
+    gb.box(1.8, 8.4, 3.3, 26.2, 9.0, 17.2, '#e8e2d6');
+    for (let k = 0; k < 5; k++) gb.box(3 + k * 4.6, 0, 3.4, 6.6 + k * 4.6, 4.5, 3.5, '#c43a2a');
+    gb.box(22, 0, 17, 27, 18, 22, '#8a3326', 1); gb.pyr(21.8, 16.8, 27.2, 22.2, 18, 2.5, '#3a3a3a');
+    gb.box(4, 5.4, 3.35, 24, 6.6, 3.45, '#f2d24a', 5);
+    for (let k = 0; k < 3; k++) gb.box(3 + k * 5, 0.1, 22, 4.7 + k * 5, 2.4, 28, '#c8231c');
+  };
+  // ---- parks ----
+  const grass = (gb, b, LW, LD, c) => foundation(gb, LW, LD, b, c || '#5f9a40');
+  SGEN.playground = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD); gb.flat(1, 1, 9, 9, 0.11, '#c9a87a');
+    swing(gb, 3.4, 2.6); slide(gb, 6.8, 4.5, U.pick(['#2f86c9', '#d9473c', '#3aa36a'], r));
+    gb.cyl(3, 0.1, 7, 1.0, 0.4, 10, '#e3a02b', 0, '#d8c4a0'); bench(gb, 8.4, 8.6, false); yardTree(gb, 1.2, 8.8, r);
+  };
+  SGEN.grove = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD, '#557f38');
+    windingPath(gb, [[0, 3], [3, 4.5], [6, 4], [10, 6.5]], 1.1, '#a8916a');
+    grove(gb, 0.5, 0.5, 9.5, 2.8, 3, r); grove(gb, 0.5, 6, 9.5, 9.5, 3, r); bench(gb, 5, 5.4, false);
+  };
+  SGEN.miniplaza = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#c9c0ae');
+    gb.flat(0.6, 0.6, 9.4, 9.4, 0.11, '#b8ad98');
+    statue(gb, 5, 5, 1.1, U.pick(['#6f8a7a', '#8a7a5a', '#5a6a8a'], r));
+    for (const [x, z] of [[1.5, 1.5], [8.5, 1.5], [1.5, 8.5], [8.5, 8.5]]) { gb.box(x - 0.8, 0, z - 0.8, x + 0.8, 0.6, z + 0.8, '#8f877a', 0, { top: '#4f7d34' }); bush(gb, x, z, 0.7); }
+    bench(gb, 5, 1.6, false); bench(gb, 5, 8.4, false); lampPost(gb, 2.5, 5); lampPost(gb, 7.5, 5);
+  };
+  SGEN.garden = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD);
+    for (let k = 0; k < 5; k++) for (let j = 0; j < 2; j++) gb.box(1 + j * 4.4, 0, 1.5 + k * 3.4, 4.4 + j * 4.4, 0.35, 3.6 + k * 3.4, '#6a4a32', 0, { top: U.pick(['#4a7a36', '#5c8a3a', '#7a9a3a', '#3f6b30'], r) });
+    gb.box(1, 0, LD - 3, 3.5, 2.2, LD - 1, '#8a6a4a', 0, { top: '#6b3e2e' });
+    fence(gb, 0.2, 0.2, LW - 0.2, 0.35, '#b49a78');
+    gb.cyl(7, 0.05, LD - 2, 0.6, 0.9, 8, '#2f6f9a');
+  };
+  SGEN.court = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD); court(gb, 1, 2, 9, 18, '#c0603a');
+    for (const z of [2.8, 17.2]) { gb.box(4.85, 0, z - 0.1, 5.15, 3.0, z + 0.1, '#666'); gb.box(4.4, 3.0, z - 0.1, 5.6, 3.8, z + 0.1, '#f2f2f2'); }
+    fence(gb, 0.6, 1.6, 0.7, 18.4, '#7a8a90'); fence(gb, 9.3, 1.6, 9.4, 18.4, '#7a8a90'); bench(gb, 0.4, 10, true);
+  };
+  SGEN.dogpark = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD, '#6a9a44');
+    fence(gb, 0.4, 0.4, LW - 0.4, 0.5, '#7a8a90'); fence(gb, 0.4, LD - 0.5, LW - 0.4, LD - 0.4, '#7a8a90'); fence(gb, 0.4, 0.4, 0.5, LD - 0.4, '#7a8a90'); fence(gb, LW - 0.5, 0.4, LW - 0.4, LD - 0.4, '#7a8a90');
+    for (let k = 0; k < 4; k++) gb.box(4 + k * 3, 0, 4.6, 4.3 + k * 3, 0.6 + (k % 2) * 0.4, 5.4, '#e3a02b');
+    gb.cyl(14, 0, 3, 0.9, 0.5, 10, '#3a7a9a'); yardTree(gb, 2, 2, r); yardTree(gb, LW - 2, LD - 2.5, r); bench(gb, 16, 7.8, false);
+  };
+  SGEN.benches = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD); pathStrip(gb, 0, 4.2, LW, 5.8, '#cdbf9a');
+    for (let k = 0; k < 4; k++) { yardTree(gb, 2.5 + k * 5, 2, r); bench(gb, 2.5 + k * 5, 3.6, false); }
+    for (let k = 0; k < 3; k++) { bush(gb, 5 + k * 5, 7.6, 0.9); } lampPost(gb, 5, 6.4); lampPost(gb, 15, 6.4);
+  };
+  SGEN.park = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD);
+    windingPath(gb, [[0.5, 9.5], [4, 6], [6, 4.5], [9.5, 0.5]], 1.3);
+    yardTree(gb, 2.5, 3, r); yardTree(gb, 7.2, 7.4, r); if (r() < 0.6) yardTree(gb, 2.6, 7.6, r);
+    bench(gb, 6.6, 2.4, false); flowerBed(gb, 6.5, 5.6, 8.5, 6.6, r);
+  };
+  SGEN.trail = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD, '#4f7a34');
+    windingPath(gb, [[0, 4], [5, 6], [9, 12], [14, 13], [17, 8], [20, 10]], 1.3, '#a8916a');
+    windingPath(gb, [[9, 12], [8, 17], [11, 20]], 1.1, '#a8916a');
+    grove(gb, 1, 9, 7, 19, 6, r, true); grove(gb, 12, 1, 19, 7, 6, r); grove(gb, 14, 15, 19, 19, 3, r);
+    bench(gb, 14, 11.6, false); gb.box(3, 0, 1.5, 4.5, 0.4, 2, '#6a5a4a');
+  };
+  SGEN.bigplay = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD); gb.flat(1, 1, 19, 19, 0.11, '#c9a87a');
+    // play tower
+    gb.box(8, 0, 8, 12, 3, 12, '#d9473c'); gb.box(7.6, 3, 7.6, 12.4, 3.3, 12.4, '#2f86c9'); gb.pyr(7.6, 7.6, 12.4, 12.4, 3.3, 2.4, '#e3a02b');
+    slide(gb, 10, 12.2, '#3aa36a'); swing(gb, 4, 3); swing(gb, 16, 3);
+    gb.cyl(4, 0.1, 15, 1.6, 0.5, 12, '#2f86c9', 0, '#d8c4a0'); gb.cyl(16, 0.1, 15, 1.2, 0.9, 6, '#8c4fc0');
+    for (let k = 0; k < 5; k++) gb.box(13 + k * 1.1, 0, 7.5, 13.5 + k * 1.1, 0.4 + k * 0.4, 8.5, '#e3a02b');
+    bench(gb, 2, 9, true); bench(gb, 18, 9, true); yardTree(gb, 1.5, 18.5, r); yardTree(gb, 18.5, 18.5, r);
+  };
+  SGEN.skate = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#b8b4ab');
+    gb.flat(1, 1, 19, 19, 0.11, '#a9a69f');
+    // half pipe
+    for (let k = 0; k < 6; k++) { const a0 = k / 6 * Math.PI / 2, a1 = (k + 1) / 6 * Math.PI / 2; for (const sgn of [1, -1]) { const z0 = 10 + sgn * (6 - Math.cos(a0) * 4), z1 = 10 + sgn * (6 - Math.cos(a1) * 4); gb.quad([4, 0.1 + Math.sin(a0) * 2.6 * 0 + (1 - Math.cos(a0)) * 2.6, z0], [16, (1 - Math.cos(a0)) * 2.6 + 0.1, z0], [16, (1 - Math.cos(a1)) * 2.6 + 0.1, z1], [4, (1 - Math.cos(a1)) * 2.6 + 0.1, z1], '#c9c5bb'); } }
+    gb.box(4, 0, 2, 16, 2.7, 4, '#9a968e'); gb.box(4, 0, 16, 16, 2.7, 18, '#9a968e');
+    gb.box(1.5, 0, 8, 3, 0.6, 12, '#7a7d80'); gb.box(17, 0, 9, 18.5, 0.9, 11, '#7a7d80');
+    gb.box(2, 0, 1.5, 2.2, 2.4, 1.7, '#3a3d42'); lampPost(gb, 18.5, 1.5); lampPost(gb, 1.5, 18.5);
+  };
+  SGEN.meadow = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD, '#6fa044');
+    windingPath(gb, [[10, 0], [9, 8], [12, 16], [10, 30]], 1.4);
+    for (let k = 0; k < 5; k++) { const x = 2 + r() * 5, z = 3 + k * 5.5; gb.box(x - 1, 0, z - 0.7, x + 1, 0.75, z + 0.7, '#8a6a4a'); }
+    for (let k = 0; k < 4; k++) { const x = 14 + r() * 4, z = 4 + k * 6.5; gb.flat(x - 1, z - 1, x + 1, z + 1, 0.12, U.pick(['#d9473c', '#2f86c9', '#e3a02b'], r)); }
+    grove(gb, 1, 24, 8, 29, 4, r); grove(gb, 14, 25, 19, 29, 3, r); pond(gb, 15, 12, 2.2);
+  };
+  SGEN.soccer = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD); field(gb, 1.5, 2, 18.5, 28);
+    for (const z of [2.3, 27.7]) { gb.box(7.5, 0, z - 0.1, 7.7, 2.2, z + 0.1, '#fff'); gb.box(12.3, 0, z - 0.1, 12.5, 2.2, z + 0.1, '#fff'); gb.box(7.5, 2.2, z - 0.1, 12.5, 2.4, z + 0.1, '#fff'); }
+    for (const z of [8, 15, 22]) gb.box(18.8, 0, z - 2, 19.8, 1.2, z + 2, '#7a8a90');
+    for (const [x, z] of [[0.6, 0.6], [19.4, 0.6], [0.6, 29.4], [19.4, 29.4]]) { gb.box(x - 0.15, 0, z - 0.15, x + 0.15, 9, z + 0.15, '#9a9a9a'); gb.box(x - 0.7, 9, z - 0.7, x + 0.7, 9.6, z + 0.7, '#fff', 8); }
+  };
+  SGEN.flowers = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD, '#649a44');
+    pathStrip(gb, 9.2, 0, 10.8, 20); pathStrip(gb, 0, 9.2, 20, 10.8);
+    for (const [x0, z0] of [[1.5, 1.5], [12, 1.5], [1.5, 12], [12, 12]]) { flowerBed(gb, x0, z0, x0 + 6.5, z0 + 2.4, r); flowerBed(gb, x0, z0 + 3.6, x0 + 6.5, z0 + 6, r); }
+    gb.box(8.5, 0, 8.5, 11.5, 3.5, 11.5, '#e8e4dc'); gb.pyr(8.2, 8.2, 11.8, 11.8, 3.5, 2.2, '#3f8a6a');
+  };
+  SGEN.woods = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD, '#4a7230');
+    windingPath(gb, [[0, 20], [8, 17], [15, 22], [22, 18], [30, 24], [40, 21]], 1.4, '#a8916a');
+    windingPath(gb, [[15, 22], [17, 30], [13, 40]], 1.2, '#a8916a'); windingPath(gb, [[22, 18], [25, 8], [21, 0]], 1.2, '#a8916a');
+    pond(gb, 31, 33, 3.5);
+    for (let k = 0; k < 45; k++) { const x = 1 + r() * 38, z = 1 + r() * 38; if (Math.abs(z - 20 - Math.sin(x * 0.2) * 2.5) < 2.5 || Math.hypot(x - 31, z - 33) < 5) continue; gb.tree(x, 0, z, 0.75 + r() * 0.55, U.pick(['#2c5a2f', '#36663a', '#3f6b30', '#4f7d34'], r), r() < 0.55); }
+    gb.box(8, 0, 17.6, 9.6, 0.5, 18.1, '#6a5a4a'); gb.box(34, 0, 28, 37, 2.6, 30.5, '#7a5a3c', 0, { top: '#5a3d28' });
+  };
+  SGEN.grandplaza = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#cfc6b2');
+    for (let k = 0; k < 6; k++) gb.flat(1 + k * 4.7, 1, 1.3 + k * 4.7, 29, 0.115, '#b8ad98');
+    fountain(gb, 15, 15, 1.6);
+    for (const [x, z] of [[4, 4], [26, 4], [4, 26], [26, 26]]) { statue(gb, x, z, 1, '#8a7a5a'); }
+    for (let k = 0; k < 6; k++) { yardTree(gb, 2 + k * 5.2, 9.5, r); yardTree(gb, 2 + k * 5.2, 20.5, r); }
+    for (let k = 0; k < 4; k++) { bench(gb, 6 + k * 6, 11.4, false); bench(gb, 6 + k * 6, 18.6, false); lampPost(gb, 3 + k * 8, 15); }
+  };
+  SGEN.lakepark = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD);
+    gb.cyl(22, 0, 15, 11, 0.16, 20, '#1d6f8a', 13, '#1d6f8a');
+    gb.cyl(22, 0, 15, 11.6, 0.12, 20, '#a9a28c', 0, '#a9a28c');
+    gb.box(10, 0.1, 14, 16, 0.5, 16, '#8a6a4a'); gb.box(8, 0, 12.5, 11, 2.6, 17.5, '#7a5a3c', 0, { top: '#6b3e2e' });
+    windingPath(gb, [[0, 3], [10, 2.5], [22, 2.5], [36, 4], [40, 10]], 1.3); windingPath(gb, [[0, 27], [14, 28], [30, 28], [40, 22]], 1.3);
+    grove(gb, 1, 6, 8, 25, 7, r); grove(gb, 35, 14, 39, 27, 5, r);
+    gb.box(25, 0.1, 18, 27, 0.9, 19, '#f2f2f2'); gb.box(19, 0.1, 10, 21, 0.9, 11, '#e3a02b');
+  };
+  SGEN.zen = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#d9d2c0');
+    for (let k = 0; k < 12; k++) gb.flat(2, 2 + k * 1.1, 17, 2.4 + k * 1.1, 0.115, '#c9c1ad');
+    for (const [x, z, sc] of [[6, 6, 1.4], [11, 9, 1], [14, 5, 0.8]]) gb.cone(x, 0, z, 1.1 * sc, 1.3 * sc, 6, '#7a7d80');
+    pond(gb, 22, 22, 4);
+    gb.box(18, 0.6, 21.5, 26, 0.9, 22.5, '#b0382c');
+    gb.box(3, 0, 20, 9, 3, 26, '#6a4a32'); gb.gable(2.4, 19.4, 9.6, 26.6, 3, 2.4, true, '#2f3640', '#6a4a32');
+    for (const x of [24, 27]) gb.box(x, 0, 3, x + 0.4, 4, 3.4, '#b0382c'); gb.box(23.5, 4, 2.8, 28, 4.5, 3.6, '#b0382c');
+    for (let k = 0; k < 6; k++) gb.tree(13 + r() * 14, 0, 8 + r() * 8, 0.65, U.pick(['#b04a6a', '#c96a8a', '#4f7d34'], r), false);
+  };
+  SGEN.sports = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD);
+    field(gb, 2, 2, 24, 38);
+    court(gb, 27, 2, 38, 13, '#3a7aa0'); court(gb, 27, 15, 38, 26, '#3a8a5a');
+    gb.cyl(32.5, 0.1, 33, 5, 0.2, 16, '#c0603a', 0, '#c0603a'); gb.cyl(32.5, 0.15, 33, 3.6, 0.2, 16, '#5f9a40', 0, '#5f9a40');
+    gb.box(0.5, 0, 12, 1.8, 2.5, 28, '#c9c5bb'); gb.box(24.5, 0, 14, 26, 3.4, 26, '#e0ddd5', 1);
+    for (const [x, z] of [[1, 1], [25, 1], [1, 39], [25, 39]]) { gb.box(x - 0.2, 0, z - 0.2, x + 0.2, 12, z + 0.2, '#9a9a9a'); gb.box(x - 1, 12, z - 1, x + 1, 12.8, z + 1, '#fff', 8); }
+  };
+  SGEN.amphi = function (gb, b, r, LW, LD) {
+    grass(gb, b, LW, LD);
+    const cx = 15, cz = 26;
+    for (let k = 0; k < 6; k++) { const rr = 6 + k * 2; for (let s = 0; s < 10; s++) { const a0 = Math.PI + s / 10 * Math.PI, a1 = Math.PI + (s + 1) / 10 * Math.PI; gb.quad([cx + Math.cos(a1) * rr, k * 0.6 + 0.6, cz + Math.sin(a1) * rr], [cx + Math.cos(a0) * rr, k * 0.6 + 0.6, cz + Math.sin(a0) * rr], [cx + Math.cos(a0) * (rr + 2), k * 0.6 + 0.6, cz + Math.sin(a0) * (rr + 2)], [cx + Math.cos(a1) * (rr + 2), k * 0.6 + 0.6, cz + Math.sin(a1) * (rr + 2)], '#cfc8b8'); } }
+    gb.box(cx - 7, 0, cz + 1, cx + 7, 1.2, cz + 7, '#a59b8a');
+    gb.box(cx - 7, 1.2, cz + 6, cx + 7, 7, cz + 7, '#e8e4dc'); gb.box(cx - 7.4, 7, cz + 1, cx + 7.4, 7.5, cz + 7.5, '#3c5060');
+    grove(gb, 1, 1, 29, 6, 8, r); windingPath(gb, [[0, 9], [15, 7.5], [30, 9]], 1.4);
+  };
+  // ---- landmarks (code & AI themed) ----
+  SGEN.claude = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#e8dccb');
+    const st = '#d97757', cr = '#f0e6d8';
+    // arch made of segments
+    const cx = 15, cz = 15, R0 = 9, R1 = 12.5, seg = 14;
+    for (let k = 0; k < seg; k++) {
+      const a0 = Math.PI * k / seg, a1 = Math.PI * (k + 1) / seg;
+      const p = (a, rr, z) => [cx + Math.cos(a) * rr, Math.sin(a) * rr * 2.1 + 0.4, z];
+      for (const z of [cz - 2.5, cz + 2.5]) { gb.quad(p(a0, R0, z), p(a1, R0, z), p(a1, R1, z), p(a0, R1, z), st); gb.quad(p(a1, R0, z), p(a0, R0, z), p(a0, R1, z), p(a1, R1, z), st); }
+      gb.quad(p(a0, R1, cz - 2.5), p(a1, R1, cz - 2.5), p(a1, R1, cz + 2.5), p(a0, R1, cz + 2.5), st);
+      gb.quad(p(a1, R0, cz - 2.5), p(a0, R0, cz - 2.5), p(a0, R0, cz + 2.5), p(a1, R0, cz + 2.5), cr);
+    }
+    // the spark on top: eight rays
+    const sy = R1 * 2.1 + 4;
+    for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2, L = k % 2 ? 2.6 : 4; gb.box(cx - 0.35, sy - 0.35, cz - 0.35, cx + 0.35, sy + 0.35, cz + 0.35, st, 5); gb.quad([cx, sy, cz - 0.4], [cx, sy, cz + 0.4], [cx + Math.cos(a) * L, sy + Math.sin(a) * L, cz + 0.05], [cx + Math.cos(a) * L, sy + Math.sin(a) * L, cz - 0.05], st, 5); gb.quad([cx, sy, cz + 0.4], [cx, sy, cz - 0.4], [cx + Math.cos(a) * L, sy + Math.sin(a) * L, cz - 0.05], [cx + Math.cos(a) * L, sy + Math.sin(a) * L, cz + 0.05], st, 5); }
+    gb.flat(13, 0.5, 17, 29.5, 0.11, '#c9b9a0');
+    for (const x of [4, 26]) { yardTree(gb, x, 4, r); yardTree(gb, x, 26, r); }
+  };
+  SGEN.vscode = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, PAL.paved);
+    const blue = '#1f8ad2', dark = '#0e5c99', H = 70;
+    // the logo seen from above: a folded ribbon. Built as three extruded slabs.
+    gb.box(19, 0, 4, 25, H, 26, blue, 2, { vb: 0 });                    // right bar (tall)
+    const slant = (x0, z0, x1, z1, w, h, col) => { const dx = x1 - x0, dz = z1 - z0, l = Math.hypot(dx, dz), nx = -dz / l * w / 2, nz = dx / l * w / 2; const A = [x0 + nx, 0, z0 + nz], B = [x1 + nx, 0, z1 + nz], Cc = [x1 - nx, 0, z1 - nz], D = [x0 - nx, 0, z0 - nz]; const up = p => [p[0], h, p[2]]; gb.quad(A, B, up(B), up(A), col, 2); gb.quad(Cc, D, up(D), up(Cc), col, 2); gb.quad(B, Cc, up(Cc), up(B), col, 2); gb.quad(D, A, up(A), up(D), col, 2); gb.quad(up(A), up(B), up(Cc), up(D), col); };
+    slant(20, 6, 6, 18, 4.5, H * 0.72, dark);
+    slant(20, 24, 6, 12, 4.5, H * 0.72, blue);
+    gb.box(4, 0, 12, 8, H * 0.5, 18, dark, 2);
+    gb.box(18.8, H, 3.8, 25.2, H + 1, 26.2, '#16486e');
+    gb.box(21.5, H + 1, 14, 22.5, H + 9, 15, '#ccc'); gb.box(21.6, H + 9, 14.1, 22.4, H + 9.6, 14.9, '#f22', 7);
+  };
+  SGEN.octocat = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#c9c0ae');
+    const k = '#24292f', cx = 10, cz = 10;
+    gb.cyl(cx, 0, cz, 6, 1.2, 16, '#8f877a', 0, '#b8ad98');
+    gb.cyl(cx, 1.2, cz, 2.6, 6, 12, k, 0, k, 2.2);            // body
+    gb.cyl(cx, 7.2, cz, 3.6, 4.5, 14, k, 0, k, 3.2);          // head
+    gb.cone(cx - 2.3, 11.4, cz, 1.3, 2.6, 6, k); gb.cone(cx + 2.3, 11.4, cz, 1.3, 2.6, 6, k); // ears
+    gb.box(cx - 2.4, 8.2, cz - 3.5, cx + 2.4, 10.6, cz - 3.0, '#f4c7a8');                    // face
+    gb.box(cx - 1.4, 9.2, cz - 3.6, cx - 0.8, 10, cz - 3.45, k); gb.box(cx + 0.8, 9.2, cz - 3.6, cx + 1.4, 10, cz - 3.45, k);
+    for (let t = 0; t < 5; t++) { const a = Math.PI * 0.15 + t / 4 * Math.PI * 0.7; const x1 = cx + Math.cos(a) * 4.8, z1 = cz + Math.sin(a) * 4.8 * -1; gb.box(Math.min(cx, x1) - 0.4, 1.2, Math.min(cz, z1) - 0.4, Math.max(cx, x1) + 0.4, 2.0, Math.max(cz, z1) + 0.4, k); }
+    for (let t = 0; t < 6; t++) bench(gb, 3 + t * 2.8, 18, false);
+  };
+  SGEN.duck = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#c9c0ae');
+    pond(gb, 15, 15, 12);
+    const y = '#f5c518', cx = 15, cz = 15;
+    gb.addThree(new THREE.SphereGeometry(7, 14, 10), new THREE.Matrix4().makeScale(1.35, 0.8, 1).setPosition(cx, 4.5, cz), y);
+    gb.addThree(new THREE.SphereGeometry(4.2, 12, 10), new THREE.Matrix4().setPosition(cx - 6, 12, cz), y);
+    gb.addThree(new THREE.ConeGeometry(2, 3.4, 8), new THREE.Matrix4().makeRotationZ(Math.PI / 2).setPosition(cx - 11, 11.4, cz), '#f08a1c');
+    gb.addThree(new THREE.SphereGeometry(0.6, 6, 6), new THREE.Matrix4().setPosition(cx - 9, 13.4, cz - 2.4), '#111');
+    gb.addThree(new THREE.SphereGeometry(0.6, 6, 6), new THREE.Matrix4().setPosition(cx - 9, 13.4, cz + 2.4), '#111');
+    gb.addThree(new THREE.ConeGeometry(2.6, 4, 6), new THREE.Matrix4().makeRotationZ(-Math.PI / 2.6).setPosition(cx + 9.5, 7, cz), y);
+  };
+  SGEN.terminal = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#3a3d42');
+    gb.box(4, 0, 8, 16, 52, 12, '#0d0f12');
+    gb.box(5.2, 30, 7.94, 7.2, 31.6, 8, '#3cff6a', 5); gb.box(7.4, 29.6, 7.94, 8.9, 32, 8, '#3cff6a', 5); // >
+    gb.box(9.6, 29.6, 7.94, 12.6, 30.2, 8, '#3cff6a', 5); // _
+    for (let k = 0; k < 8; k++) gb.box(5, 36 + k * 1.6, 7.94, 5 + 2 + r() * 8, 36.6 + k * 1.6, 8, '#2ad15a', 5);
+    gb.box(3.6, 52, 7.6, 16.4, 52.6, 12.4, '#2b2f36');
+  };
+  SGEN.stack = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, PAL.paved);
+    const cols = ['#f48024', '#bcbbbb', '#f48024', '#e0e0e0', '#f48024'];
+    let y = 0;
+    for (let k = 0; k < 14; k++) { const ox = Math.sin(k * 0.9) * 2.2, oz = Math.cos(k * 1.3) * 1.6, h = 5 + (k % 3); gb.box(4 + ox, y, 4 + oz, 16 + ox, y + h - 0.6, 16 + oz, k % 2 ? '#e8e6e0' : '#f48024', 2); gb.box(4.2 + ox, y + h - 0.6, 4.2 + oz, 15.8 + ox, y + h, 15.8 + oz, '#3a3d42'); y += h; }
+    gb.box(9.5, y, 9.5, 10.5, y + 10, 10.5, '#ccc'); gb.box(9.6, y + 10, 9.6, 10.4, y + 10.6, 10.4, '#f22', 7);
+  };
+  SGEN.neural = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#c9c0ae');
+    const cx = 15, cz = 15, cy = 22, R0 = 13;
+    gb.cyl(cx, 0, cz, 3, 9, 10, '#d8d4cb', 0, null, 1.6);
+    const pts = [];
+    for (let k = 0; k < 26; k++) { const yy = 1 - (k + 0.5) / 26 * 2, rr = Math.sqrt(1 - yy * yy), a = k * 2.399; pts.push([cx + Math.cos(a) * rr * R0, cy + yy * R0, cz + Math.sin(a) * rr * R0]); }
+    for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) {
+      const p = pts[i], q = pts[j], d = Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+      if (d > 9.5) continue;
+      const m = new THREE.Matrix4(), dir = new THREE.Vector3(q[0] - p[0], q[1] - p[1], q[2] - p[2]);
+      const quat = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir.clone().normalize());
+      m.compose(new THREE.Vector3((p[0] + q[0]) / 2, (p[1] + q[1]) / 2, (p[2] + q[2]) / 2), quat, new THREE.Vector3(1, d, 1));
+      gb.addThree(new THREE.CylinderGeometry(0.12, 0.12, 1, 4), m, '#8fa3b5');
+    }
+    for (const p of pts) gb.box(p[0] - 0.7, p[1] - 0.7, p[2] - 0.7, p[0] + 0.7, p[1] + 0.7, p[2] + 0.7, U.pick(['#9fd3ff', '#d97757', '#b276f2'], r), 5);
+  };
+  SGEN.python = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, PAL.paved);
+    const H = 90;
+    for (const [cx, col, ph] of [[10, '#3776ab', 0], [20, '#ffd43b', Math.PI]]) {
+      for (let k = 0; k < 30; k++) { const y = k * H / 30, a = ph + k * 0.42, ox = Math.cos(a) * 1.8, oz = Math.sin(a) * 1.8; gb.box(cx - 3.2 + ox, y, 15 - 3.2 + oz, cx + 3.2 + ox, y + H / 30 + 0.05, 15 + 3.2 + oz, col, 2); }
+      gb.cone(cx, H, 15, 3.6, 7, 8, col);
+    }
+    gb.box(10, 36, 13.5, 20, 38, 16.5, '#d8d4cb'); gb.box(10, 62, 13.5, 20, 64, 16.5, '#d8d4cb');
+  };
+  SGEN.tux = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#d9d4c6');
+    const cx = 15, cz = 15, k = '#1a1a1a', w = '#f6f6f2', o = '#f2a81d';
+    gb.cyl(cx, 0, cz, 8, 0.8, 16, '#b8ad98', 0, '#cfc6b2');
+    gb.addThree(new THREE.SphereGeometry(5.5, 14, 10), new THREE.Matrix4().makeScale(1, 1.35, 0.9).setPosition(cx, 8, cz), k);
+    gb.addThree(new THREE.SphereGeometry(4.4, 12, 10), new THREE.Matrix4().makeScale(1, 1.25, 0.6).setPosition(cx, 7.5, cz - 2.3), w);
+    gb.addThree(new THREE.SphereGeometry(3.6, 12, 10), new THREE.Matrix4().setPosition(cx, 16.5, cz), k);
+    gb.addThree(new THREE.SphereGeometry(0.8, 8, 6), new THREE.Matrix4().setPosition(cx - 1.3, 17.2, cz - 3.1), w);
+    gb.addThree(new THREE.SphereGeometry(0.8, 8, 6), new THREE.Matrix4().setPosition(cx + 1.3, 17.2, cz - 3.1), w);
+    gb.addThree(new THREE.ConeGeometry(1.0, 2.2, 6), new THREE.Matrix4().makeRotationX(-Math.PI / 2).setPosition(cx, 15.6, cz - 4), o);
+    gb.box(cx - 3.6, 0.8, cz - 3.4, cx - 0.6, 1.6, cz - 0.6, o); gb.box(cx + 0.6, 0.8, cz - 3.4, cx + 3.6, 1.6, cz - 0.6, o);
+    for (let t = 0; t < 8; t++) { const a = t / 8 * Math.PI * 2; yardTree(gb, cx + Math.cos(a) * 12, cz + Math.sin(a) * 12, r); }
+  };
+  SGEN.whale = function (gb, b, r, LW, LD) {
+    foundation(gb, LW, LD, b, '#2a6f9a');
+    gb.flat(1, 1, LW - 1, LD - 1, 0.12, '#1d6f8a');
+    const cx = 20, cz = 15, bl = '#2496ed';
+    gb.addThree(new THREE.SphereGeometry(8, 16, 10), new THREE.Matrix4().makeScale(2, 0.7, 1).setPosition(cx, 3, cz), bl);
+    gb.addThree(new THREE.ConeGeometry(4, 6, 6), new THREE.Matrix4().makeRotationZ(Math.PI / 2).setPosition(cx + 18, 4, cz), bl);
+    gb.box(cx - 8, 6, cz - 5, cx + 8, 7, cz + 5, '#1a74c0');
+    const cc = ['#d9473c', '#2f86c9', '#3aa36a', '#e3a02b', '#8c4fc0', '#f2f2f2'];
+    for (let lx = 0; lx < 4; lx++) for (let lz = 0; lz < 2; lz++) for (let ly = 0; ly < 1 + ((lx + lz) % 3); ly++) gb.box(cx - 7.6 + lx * 3.9, 7 + ly * 2.6, cz - 4.6 + lz * 4.6, cx - 4.0 + lx * 3.9, 9.5 + ly * 2.6, cz - 0.4 + lz * 4.6, U.pick(cc, r));
+    gb.box(cx - 14.6, 5, cz - 3.2, cx - 14, 6, cz - 2.4, '#111'); gb.box(cx - 14.6, 5, cz + 2.4, cx - 14, 6, cz + 3.2, '#111');
+  };
   M.genBuilding = function (gb, b) {
     const r = U.rng(b.seed + b.level * 977);
     lotFrame(gb, b);
@@ -583,7 +1001,7 @@
   // ======================================================================
   const COL = {
     asph: '#3c3f44', asphHw: '#35383c', walk: '#aeada6', curb: '#8e8d87', white: '#e6e6df', yellow: '#dfb33a',
-    barrier: '#b9b6ad', deck: '#a9a69e', ballast: '#5a5650', rail: '#9095a0', sleeper: '#6a5f55',
+    barrier: '#b9b6ad', deck: '#a9a69e', dirt: '#8a7458', bike: '#3f7a4e', ballast: '#5a5650', rail: '#9095a0', sleeper: '#6a5f55',
   };
   function genRoadTile(gb, i) {
     const Wd = CB.World;
@@ -594,6 +1012,7 @@
     const P = (lx, dy, lz) => [X0 + lx, base(lx, lz) + dy, Z0 + lz];
     const flatQ = (x0, z0, x1, z1, dy, col) => gb.quad(P(x0, dy, z1), P(x1, dy, z1), P(x1, dy, z0), P(x0, dy, z0), col, 14);
     const slab = (x0, z0, x1, z1, top, col, sideCol) => {
+      if (x1 < x0) [x0, x1] = [x1, x0]; if (z1 < z0) [z0, z1] = [z1, z0];
       flatQ(x0, z0, x1, z1, top, col);
       const sc = sideCol || COL.curb, lo = -0.4;
       gb.quad(P(x1, lo, z0), P(x0, lo, z0), P(x0, top, z0), P(x1, top, z0), sc);
@@ -601,64 +1020,209 @@
       gb.quad(P(x0, lo, z0), P(x0, lo, z1), P(x0, top, z1), P(x0, top, z0), sc);
       gb.quad(P(x1, lo, z1), P(x1, lo, z0), P(x1, top, z0), P(x1, top, z1), sc);
     };
-    const h = U.hash(x, y, 3) * 0.04 - 0.02;
-    const asph = rt === 3 ? COL.asphHw : COL.asph;
-    const ac = lc(asph); const asphC = [ac[0] + h * ac[0], ac[1] + h * ac[1], ac[2] + h * ac[2]].map(v => Math.pow(Math.max(0, v), 1 / 2.2));
-    flatQ(0, 0, T, T, 0.16, asphC);
-    const sw = R.sidewalk;
+    // strip frame: u across (0 = left when facing direction f), v along (0 = behind, 10 = ahead)
+    const FU = (f, u, v) => f === 0 ? [u, T - v] : f === 1 ? [v, u] : f === 2 ? [T - u, v] : [T - v, T - u];
+    const fq = (f, u0, v0, u1, v1, dy, col) => { const a = FU(f, u0, v0), b = FU(f, u1, v1); flatQ(Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1]), dy, col); };
+    const fs = (f, u0, v0, u1, v1, top, col, side) => { const a = FU(f, u0, v0), b = FU(f, u1, v1); slab(a[0], a[1], b[0], b[1], top, col, side); };
     const con = d => (m & (1 << d)) !== 0;
-    if (sw > 0) {
-      if (!con(0)) slab(0, 0, T, sw, 0.32, COL.walk);
-      if (!con(1)) slab(T - sw, 0, T, T, 0.32, COL.walk);
-      if (!con(2)) slab(0, T - sw, T, T, 0.32, COL.walk);
-      if (!con(3)) slab(0, 0, sw, T, 0.32, COL.walk);
-      if (con(0) && con(1)) slab(T - sw, 0, T, sw, 0.32, COL.walk);
-      if (con(1) && con(2)) slab(T - sw, T - sw, T, T, 0.32, COL.walk);
-      if (con(2) && con(3)) slab(0, T - sw, sw, T, 0.32, COL.walk);
-      if (con(3) && con(0)) slab(0, 0, sw, sw, 0.32, COL.walk);
-    } else {
-      // highway guard rails
-      if (!con(0)) slab(0, 0.1, T, 0.35, 0.9, COL.barrier);
-      if (!con(1)) slab(T - 0.35, 0, T - 0.1, T, 0.9, COL.barrier);
-      if (!con(2)) slab(0, T - 0.35, T, T - 0.1, 0.9, COL.barrier);
-      if (!con(3)) slab(0.1, 0, 0.35, T, 0.9, COL.barrier);
-    }
-    const ns = con(0) && con(2) && !con(1) && !con(3);
-    const ew = con(1) && con(3) && !con(0) && !con(2);
+    const h = U.hash(x, y, 3) * 0.04 - 0.02;
+    const surf = R.surf === 'dirt' ? COL.dirt : R.grp === 'highway' ? COL.asphHw : COL.asph;
+    const ac = lc(surf); const asphC = [ac[0] * (1 + h), ac[1] * (1 + h), ac[2] * (1 + h)].map(v => Math.pow(Math.max(0, v), 1 / 2.2));
     const mk = 0.19;
-    const line = (x0, z0, x1, z1, col) => flatQ(x0, z0, x1, z1, mk, col);
-    if (ns || ew) {
-      const L = (a0, b0, a1, b1, col) => ns ? line(a0, b0, a1, b1, col) : line(b0, a0, b1, a1, col);
-      const c = T / 2;
-      if (rt === 1) { L(c - 0.08, 0.6, c + 0.08, 4.0, COL.white); L(c - 0.08, 5.6, c + 0.08, 9.0, COL.white); }
-      else if (rt === 2) {
-        L(c - 0.26, 0, c - 0.1, T, COL.yellow); L(c + 0.1, 0, c + 0.26, T, COL.yellow);
-        for (const o of [-2.05, 2.05]) { L(c + o - 0.07, 0.8, c + o + 0.07, 3.8, COL.white); L(c + o - 0.07, 5.8, c + o + 0.07, 8.8, COL.white); }
-      } else {
-        if (ns) slab(c - 0.25, 0, c + 0.25, T, 0.95, COL.barrier); else slab(0, c - 0.25, T, c + 0.25, 0.95, COL.barrier);
-        for (const o of [-2.5, 2.5]) { L(c + o - 0.07, 0.8, c + o + 0.07, 4.2, COL.white); L(c + o - 0.07, 5.8, c + o + 0.07, 9.2, COL.white); }
-        for (const o of [-4.6, 4.6]) L(c + o - 0.08, 0, c + o + 0.08, T, COL.white);
-      }
-    }
+    const jc = Wd.jcl[i];
     let deg = 0; for (let d = 0; d < 4; d++) if (con(d)) deg++;
-    if (deg >= 3 && rt !== 3) {
+    const ns = con(0) || con(2), ew = con(1) || con(3);
+    const straight = deg <= 2 && !(ns && ew);
+    if (!R.car) {
+      // bike / foot path: grass verge with a paved ribbon along each connection
+      flatQ(0, 0, T, T, 0.12, '#6b9444');
+      const pc = R.key === 'bikepath' ? '#7a4a3c' : '#c9c1ad', hw = R.key === 'bikepath' ? 1.6 : 1.3;
+      const c = T / 2;
+      flatQ(c - hw, c - hw, c + hw, c + hw, 0.18, pc);
+      if (con(0)) flatQ(c - hw, 0, c + hw, c, 0.18, pc);
+      if (con(2)) flatQ(c - hw, c, c + hw, T, 0.18, pc);
+      if (con(1)) flatQ(c, c - hw, T, c + hw, 0.18, pc);
+      if (con(3)) flatQ(0, c - hw, c, c + hw, 0.18, pc);
+      if (!deg) flatQ(c - hw, 1, c + hw, T - 1, 0.18, pc);
+      if (R.key === 'bikepath') { if (con(0) || con(2)) flatQ(c - 0.06, 1, c + 0.06, 4, 0.2, COL.white); if (con(1) || con(3)) flatQ(1, c - 0.06, 4, c + 0.06, 0.2, COL.white); }
+      else if (U.hash(x, y, 9) < 0.5) gb.tree(X0 + 1.4, base(1.4, 1.4), Z0 + 1.4, 0.7, '#4f7d34', false);
+      addBridge();
+      return;
+    }
+    flatQ(0, 0, T, T, 0.16, asphC);
+    if (jc >= 0) {
+      // junction tile: sidewalks on closed edges and corners, crosswalks where traffic enters
+      const sw = Math.max(1.2, R.side);
+      for (let d = 0; d < 4; d++) {
+        if (con(d)) continue;
+        if (d === 0) slab(0, 0, T, sw, 0.32, COL.walk); else if (d === 2) slab(0, T - sw, T, T, 0.32, COL.walk);
+        else if (d === 1) slab(T - sw, 0, T, T, 0.32, COL.walk); else slab(0, 0, sw, T, 0.32, COL.walk);
+      }
+      const cs = 1.1;
+      if (con(0) && con(1)) slab(T - cs, 0, T, cs, 0.32, COL.walk);
+      if (con(1) && con(2)) slab(T - cs, T - cs, T, T, 0.32, COL.walk);
+      if (con(2) && con(3)) slab(0, T - cs, cs, T, 0.32, COL.walk);
+      if (con(3) && con(0)) slab(0, 0, cs, cs, 0.32, COL.walk);
       for (let d = 0; d < 4; d++) {
         if (!con(d)) continue;
-        for (let s = sw + 0.3; s < T - sw - 0.4; s += 1.0) {
-          if (d === 0) line(s, 0.35, s + 0.5, 2.0, COL.white);
-          else if (d === 2) line(s, T - 2.0, s + 0.5, T - 0.35, COL.white);
-          else if (d === 1) line(T - 2.0, s, T - 0.35, s + 0.5, COL.white);
-          else line(0.35, s, 2.0, s + 0.5, COL.white);
+        const o = Wd.neighbor(i, d); if (o < 0 || Wd.jcl[o] === jc) continue;
+        if (C.ROADS[Wd.road[o]].grp === 'highway') continue;
+        for (let s = 1.4; s < T - 1.6; s += 1.0) {
+          if (d === 0) flatQ(s, 0.3, s + 0.5, 2.1, mk, COL.white); else if (d === 2) flatQ(s, T - 2.1, s + 0.5, T - 0.3, mk, COL.white);
+          else if (d === 1) flatQ(T - 2.1, s, T - 0.3, s + 0.5, mk, COL.white); else flatQ(0.3, s, 2.1, s + 0.5, mk, COL.white);
         }
       }
+      const cl = Wd.clusters[jc];
+      if (cl && cl.ctrl === 'round' && cl.tiles[0] === i) {
+        const cx = (cl.cx - x) * T, cz = (cl.cy - y) * T, rr = cl.tiles.length > 1 ? 4.2 : 2.1;
+        const yb = base(Math.min(T, Math.max(0, cx)), Math.min(T, Math.max(0, cz)));
+        gb.cyl(X0 + cx, yb + 0.1, Z0 + cz, rr + 0.3, 0.3, 16, COL.curb, 0, COL.curb);
+        gb.cyl(X0 + cx, yb + 0.1, Z0 + cz, rr, 0.32, 16, '#5d8c3c', 0, '#5d8c3c');
+        gb.tree(X0 + cx, yb + 0.4, Z0 + cz, cl.tiles.length > 1 ? 1 : 0.6, '#4f7d34', false);
+      }
+    } else {
+      // regular strip
+      let f = Wd.rdir[i];
+      if (straight) { if (ns && (f % 2 !== 0)) f = con(0) ? 0 : 2; if (ew && (f % 2 !== 1)) f = con(1) ? 1 : 3; }
+      if (!straight) {
+        const sw = R.side;
+        if (sw > 0) {
+          if (!con(0)) slab(0, 0, T, sw, 0.32, COL.walk);
+          if (!con(1)) slab(T - sw, 0, T, T, 0.32, COL.walk);
+          if (!con(2)) slab(0, T - sw, T, T, 0.32, COL.walk);
+          if (!con(3)) slab(0, 0, sw, T, 0.32, COL.walk);
+          const cs = Math.min(sw, 1.6);
+          if (con(0) && con(1)) slab(T - cs, 0, T, cs, 0.32, COL.walk);
+          if (con(1) && con(2)) slab(T - cs, T - cs, T, T, 0.32, COL.walk);
+          if (con(2) && con(3)) slab(0, T - cs, cs, T, 0.32, COL.walk);
+          if (con(3) && con(0)) slab(0, 0, cs, cs, 0.32, COL.walk);
+        }
+      } else {
+        const L = R.L, sw = R.side, bw = L.bw;
+        const pair = R.w === 2, one = R.oneway;
+        const endA = !con((f + 2) % 4), endB = !con(f); // closed behind / ahead
+        // outer right side (and left too for single strips)
+        const sides = pair ? [1] : [0, 1];
+        for (const sd of sides) {
+          const u0 = sd ? T - sw : 0, u1 = sd ? T : sw;
+          if (sw > 0) {
+            if (R.grp === 'highway') { fq(f, u0, 0, u1, T, 0.2, '#6b6b66'); fs(f, sd ? T - 0.35 : 0.1, 0, sd ? T - 0.1 : 0.35, T, 0.9, COL.barrier); }
+            else {
+              fs(f, u0, 0, u1, T, 0.32, COL.walk);
+              if (R.trees) { const p = FU(f, sd ? T - sw / 2 : sw / 2, 5); gb.tree(X0 + p[0], base(p[0], p[1]) + 0.3, Z0 + p[1], 0.62, U.pick(['#4f7d34', '#5c8a3a', '#3f6b30'], () => U.hash(x, y, sd)), false); }
+            }
+          }
+          if (bw > 0) {
+            const b0 = sd ? T - sw - bw : sw, b1 = b0 + bw;
+            fq(f, b0, 0, b1, T, mk - 0.01, COL.bike);
+            if (R.bike === 2) fs(f, sd ? b0 : b1 - 0.35, 0, sd ? b0 + 0.35 : b1, T, 0.3, COL.walk);
+            else fq(f, sd ? b0 - 0.05 : b1 - 0.1, 0, sd ? b0 + 0.1 : b1 + 0.05, T, mk, COL.white);
+            const p = FU(f, (b0 + b1) / 2, 5); // bike symbol dot
+            flatQ(p[0] - 0.25, p[1] - 0.25, p[0] + 0.25, p[1] + 0.25, mk + 0.005, COL.white);
+          }
+        }
+        if (pair) {
+          // inner half of the median
+          const m0 = 0, m1 = L.med;
+          if (R.med === 'paint') fq(f, 0, 0, 0.14, T, mk, COL.yellow);
+          else if (R.med === 'barrier') fs(f, 0, 0, Math.max(0.3, m1), T, 0.95, COL.barrier);
+          else if (R.med === 'curb') fs(f, m0, 0, m1, T, 0.3, COL.walk);
+          else { fs(f, m0, 0, m1, T, 0.3, '#5d8c3c', COL.curb); if (R.med === 'trees' && (x + y) % 2 === 0) { const p = FU(f, 0.2, 5); gb.tree(X0 + p[0], base(p[0], p[1]) + 0.3, Z0 + p[1], 0.7, '#4f7d34', false); } }
+          // lane dividers
+          const ls = L.fwd.length;
+          for (let j = 0; j < ls - 1; j++) { const u = T / 2 + (L.fwd[j] + L.fwd[j + 1]) / 2; dash(f, u); }
+          if (R.grp !== 'highway' && ls) { const u = T - sw - bw - 0.1; fq(f, u - 0.06, 0, u + 0.06, T, mk, COL.white); }
+          if (R.tram) for (const o of L.fwd.slice(-1)) tramRails(f, T / 2 + o);
+        } else if (R.surf !== 'dirt') {
+          if (one) {
+            for (let j = 0; j < L.fwd.length - 1; j++) dash(f, T / 2 + (L.fwd[j] + L.fwd[j + 1]) / 2);
+          } else {
+            const mx = L.medX;
+            if (R.med === 'curb') fs(f, mx - L.med / 2, 0.6, mx + L.med / 2, T - 0.6, 0.3, COL.walk);
+            else if (R.grp === 'highway') { dash(f, mx); }
+            else { fq(f, mx - 0.2, 0, mx - 0.07, T, mk, COL.yellow); fq(f, mx + 0.07, 0, mx + 0.2, T, mk, COL.yellow); }
+            for (let j = 0; j < L.fwd.length - 1; j++) dash(f, T / 2 + (L.fwd[j] + L.fwd[j + 1]) / 2);
+            for (let j = 0; j < L.back.length - 1; j++) dash(f, T / 2 - (L.back[j] + L.back[j + 1]) / 2);
+            if (R.tram) { tramRails(f, T / 2 + L.fwd[0]); tramRails(f, T / 2 - L.back[0]); }
+          }
+        }
+        // closed ends get a sidewalk cap
+        if (sw > 0 && R.grp !== 'highway') { if (endA) fs(f, 0, 0, T, sw, 0.32, COL.walk); if (endB) fs(f, 0, T - sw, T, T, 0.32, COL.walk); }
+        if (one && !pair && ((x + y) % 3 === 0)) flowArrow(f, T / 2 + L.fwd[0], 4);
+      }
+      // lane arrows & stop lines on junction approaches
+      const aps = M.apInfo && M.apInfo.get(i);
+      if (aps) for (const ap of aps) approachMarks(ap);
     }
-    if (bridge) {
+    addBridge();
+
+    function dash(f, u) { fq(f, u - 0.07, 0.8, u + 0.07, 3.8, mk, COL.white); fq(f, u - 0.07, 5.8, u + 0.07, 8.8, mk, COL.white); }
+    function tramRails(f, u) { for (const o of [-0.72, 0.72]) fq(f, u + o - 0.06, 0, u + o + 0.06, T, mk + 0.02, COL.rail); }
+    function flowArrow(f, u, v) {
+      fq(f, u - 0.12, v, u + 0.12, v + 1.6, mk, COL.white);
+      const a = FU(f, u - 0.55, v + 1.6), b = FU(f, u + 0.55, v + 1.6), c = FU(f, u, v + 2.5);
+      gb.tri(P(a[0], mk, a[1]), P(b[0], mk, b[1]), P(c[0], mk, c[1]), COL.white, 14);
+      gb.tri(P(b[0], mk, b[1]), P(a[0], mk, a[1]), P(c[0], mk, c[1]), COL.white, 14);
+    }
+    function approachMarks(ap) {
+      const f = ap.d, lanes = Wd.lanesToward(i, f);
+      const cl = Wd.clusters[ap.cl], cfg = cl.cfg, masks = cfg.lanes[ap.key] || [];
+      // stop line
+      const L = R.L, uR = T - R.side - L.bw, uL = R.w === 2 ? L.med : (R.oneway ? R.side + L.bw : L.medX);
+      fq(f, Math.min(uL, uR), 9.0, Math.max(uL, uR), 9.45, mk + 0.01, COL.white);
+      for (let k = 0; k < lanes.length; k++) {
+        const u = T / 2 + lanes[k], mm = masks[k] || 0, v0 = 5.4, v1 = 7.4;
+        const W2 = (a0, b0, a1, b1) => fq(f, a0, b0, a1, b1, mk + 0.01, COL.white);
+        const tri = (pa, pb, pc) => { const A = FU(f, pa[0], pa[1]), B = FU(f, pb[0], pb[1]), Cc = FU(f, pc[0], pc[1]); gb.tri(P(A[0], mk + 0.01, A[1]), P(B[0], mk + 0.01, B[1]), P(Cc[0], mk + 0.01, Cc[1]), COL.white, 14); gb.tri(P(B[0], mk + 0.01, B[1]), P(A[0], mk + 0.01, A[1]), P(Cc[0], mk + 0.01, Cc[1]), COL.white, 14); };
+        W2(u - 0.09, v0, u + 0.09, v1);
+        if (mm & 1) { W2(u - 0.09, v1, u + 0.09, 8.0); tri([u - 0.42, 8.0], [u + 0.42, 8.0], [u, 8.7]); }
+        if (mm & 2) { W2(u, v1 - 0.18, u + 0.75, v1); tri([u + 0.75, v1 - 0.45], [u + 0.75, v1 + 0.27], [u + 1.25, v1 - 0.09]); }
+        if (mm & 4) { W2(u - 0.75, v1 - 0.18, u, v1); tri([u - 0.75, v1 - 0.45], [u - 0.75, v1 + 0.27], [u - 1.25, v1 - 0.09]); }
+        if (mm & 8) { W2(u - 0.6, v1 - 0.18, u, v1); W2(u - 0.69, v0 + 0.4, u - 0.51, v1); }
+      }
+      // signal pole / stop sign at the right-hand corner
+      const pc = FU(f, T - 0.45, 9.4), px = X0 + pc[0], pz = Z0 + pc[1], py = base(pc[0], pc[1]) + 0.3;
+      if (cl.ctrl === 'lights') {
+        gb.box(px - 0.12, py, pz - 0.12, px + 0.12, py + 4.6, pz + 0.12, '#3a3d42');
+        const hp = M.signalPos(ap);
+        gb.box(hp[0] - 0.3, hp[1] - 0.75, hp[2] - 0.3, hp[0] + 0.3, hp[1] + 0.75, hp[2] + 0.3, '#1d1f22');
+      } else if ((cl.ctrl === 'stop' || cl.ctrl === 'allstop') && CB.Traffic.isStopFor(cl, ap.key)) {
+        gb.box(px - 0.06, py, pz - 0.06, px + 0.06, py + 2.3, pz + 0.06, '#9a9a9a');
+        gb.cyl(px, py + 2.3, pz, 0.42, 0.08, 8, '#c8231c', 5, '#c8231c');
+        gb.cyl(px, py + 2.3, pz, 0.42, 0.08, 8, '#c8231c', 5, '#c8231c');
+        gb.box(px - 0.4, py + 2.0, pz - 0.4, px + 0.4, py + 2.8, pz + 0.4, '#c8231c', 5);
+      } else if (cl.ctrl === 'round') {
+        gb.box(px - 0.05, py, pz - 0.05, px + 0.05, py + 2.0, pz + 0.05, '#9a9a9a');
+        gb.box(px - 0.35, py + 2.0, pz - 0.35, px + 0.35, py + 2.6, pz + 0.35, '#2f6fd0', 5);
+      }
+    }
+    function addBridge() {
+      if (!bridge) return;
       const y0 = Wd.BRIDGE_H;
       gb.box(X0, y0 - 1.3, Z0, X0 + T, y0 + 0.1, Z0 + T, COL.deck, 0, { skip: 16, bottom: true });
       const g = Math.min(Wd.groundH(X0 + 5, Z0 + 5), -0.5);
       if ((x + y) % 2 === 0) gb.box(X0 + 4.1, g - 1, Z0 + 4.1, X0 + 5.9, y0 - 1.3, Z0 + 5.9, COL.deck);
     }
   }
+  // world position of the signal head for a junction approach
+  M.signalPos = function (ap) {
+    const Wd = CB.World, i = ap.tile, f = ap.d;
+    const FU = (u, v) => f === 0 ? [u, T - v] : f === 1 ? [v, u] : f === 2 ? [T - u, v] : [T - v, T - u];
+    const p = FU(T - 0.45, 9.4), x = U.tx(i) * T + p[0], z = U.ty(i) * T + p[1];
+    return [x, Wd.roadH(x, z) + 4.2, z];
+  };
+  M.junctionsChanged = function () {
+    const Wd = CB.World;
+    const old = M.apInfo || new Map();
+    M.apInfo = new Map();
+    for (const cl of Wd.clusters) for (const ap of cl.aps) {
+      ap.cl = cl.id;
+      if (!M.apInfo.has(ap.tile)) M.apInfo.set(ap.tile, []);
+      M.apInfo.get(ap.tile).push(ap);
+    }
+    for (const t of new Set([...old.keys(), ...M.apInfo.keys()])) M.markInfra(t);
+    for (const cl of Wd.clusters) for (const t of cl.tiles) M.markInfra(t);
+  };
 
   function genRailTile(gb, i) {
     const Wd = CB.World;
@@ -725,7 +1289,7 @@
       const m = Wd.roadMask(i);
       let side = -1;
       for (let d = 0; d < 4; d++) if (!(m & (1 << d))) { side = d; break; }
-      const sw = Wd.road[i] ? C.ROADS[Wd.road[i]].sidewalk : 1.8;
+      const sw = Wd.road[i] ? Math.max(1.2, C.ROADS[Wd.road[i]].side) : 1.8;
       // local frame: side is "back"
       const f = side < 0 ? 0 : side;
       const o = [[X0, Z0], [X0 + T, Z0], [X0 + T, Z0 + T], [X0, Z0 + T]][f];
@@ -780,8 +1344,11 @@
       M.chunks.push({ cx, cy, infra: null, bld: null, infraDirty: true, bldDirty: true, ids: new Set() });
     }
     M.cons = new Map();
-    initTrees(); initLamps(); initVehicles(); initGhosts(); initIcons();
+    initTrees(); initLamps(); initVehicles(); initGhosts(); initIcons(); initSignals();
     M.lineGroup = new THREE.Group(); G.scene.add(M.lineGroup);
+    M.flowGroup = new THREE.Group(); G.scene.add(M.flowGroup);
+    M.junctionsChanged();
+    CB.Traffic.setColors(['#2f86c9', '#d9473c', '#2b2b30', '#e3a02b', '#3aa36a', '#eeeeee'].map(lc), ['#d9473c', '#2f86c9', '#e3a02b', '#3aa36a', '#8c4fc0', '#f2f2f2', '#2b2b30', '#c45a1c'].map(lc));
   };
   M.chunkAt = (x, y) => M.chunks[Math.floor(y / CS) * CW + Math.floor(x / CS)];
   M.markInfra = function (i) {
@@ -871,7 +1438,24 @@
     if (M.lampsDirty) { M.lampsDirty = false; rebuildLamps(); }
     M.updateConstruction();
   };
+  // flow arrows while previewing a road drag
+  M.setFlowArrows = function (strips, rt) {
+    const g = M.flowGroup; if (!g) return;
+    while (g.children.length) { const c = g.children.pop(); c.geometry.dispose(); }
+    if (!strips) return;
+    const R = C.ROADS[rt]; if (!R.oneway && R.w !== 2 && R.fwd === R.back) return;
+    const Wd = CB.World, gb = new GB();
+    for (const st of strips) for (let k = 0; k < st.tiles.length; k += 2) {
+      const i = st.tiles[k], d = st.dirs[k], cx = (U.tx(i) + 0.5) * T, cz = (U.ty(i) + 0.5) * T, y = Wd.roadH(cx, cz) + 1.2;
+      const fx = C.DX[d], fz = C.DY[d], rx = -fz, rz = fx;
+      gb.tri([cx + fx * 3, y, cz + fz * 3], [cx - fx * 1.5 + rx * 2, y, cz - fz * 1.5 + rz * 2], [cx - fx * 1.5 - rx * 2, y, cz - fz * 1.5 - rz * 2], '#ffffff');
+      gb.tri([cx + fx * 3, y, cz + fz * 3], [cx - fx * 1.5 - rx * 2, y, cz - fz * 1.5 - rz * 2], [cx - fx * 1.5 + rx * 2, y, cz - fz * 1.5 + rz * 2], '#ffffff');
+    }
+    const mesh = new THREE.Mesh(gb.geometry(), new THREE.MeshBasicMaterial({ color: 0xffe066, transparent: true, opacity: 0.9, depthTest: false }));
+    mesh.renderOrder = 9; g.add(mesh);
+  };
   M.rebuildAll = function () {
+    M.junctionsChanged();
     for (const ch of M.chunks) { ch.infraDirty = true; ch.bldDirty = true; }
     M.treesDirty = true; M.lampsDirty = true;
   };
@@ -974,13 +1558,13 @@
       const rt = Wd.road[i]; if (!rt) continue;
       const x = U.tx(i), y = U.ty(i);
       if ((x + y) % 2) continue;
-      if (rt === 3) continue;
+      if (C.ROADS[rt].grp === 'highway' || !C.ROADS[rt].car || CB.World.jcl[i] >= 0) continue;
       const m = Wd.roadMask(i);
       let side = -1;
       const pref = (x + y) % 4 === 0 ? [0, 1, 2, 3] : [2, 3, 0, 1];
       for (const d of pref) if (!(m & (1 << d))) { side = d; break; }
       if (side < 0) continue;
-      const sw = C.ROADS[rt].sidewalk;
+      const sw = Math.max(0.8, C.ROADS[rt].side);
       const cx = (x + 0.5) * T, cz = (y + 0.5) * T;
       const off = T / 2 - sw * 0.45;
       const px = cx + C.DX[side] * off, pz = cz + C.DY[side] * off;
@@ -1070,6 +1654,24 @@
         gb.box(2.6, 1.7, -1.17, 3.62, 2.5, 1.17, '#fff', 9);
         gb.box(-3.6, 0.6, -1.2, 1.7, 3.2, 1.2, '#2f7a3b');
         wheels([-2.5, 2.7], 1.05); break;
+      case 'tram':
+        gb.box(-6.8, 0.35, -1.25, 6.8, 3.0, 1.25, '#fff');
+        gb.box(-6.5, 1.3, -1.27, 6.5, 2.5, 1.27, '#fff', 9);
+        gb.box(6.75, 1.2, -1.1, 6.95, 2.7, 1.1, '#fff', 9); gb.box(-6.95, 1.2, -1.1, -6.75, 2.7, 1.1, '#fff', 9);
+        gb.box(-6.8, 3.0, -1.0, 6.8, 3.2, 1.0, '#d0d0d0');
+        gb.box(-0.6, 3.2, -0.05, 0.6, 4.3, 0.05, '#333'); gb.box(-1.2, 4.25, -0.4, 1.2, 4.35, 0.4, '#333');
+        gb.box(6.9, 0.6, -0.9, 6.96, 0.9, -0.5, '#fff', 6); gb.box(6.9, 0.6, 0.5, 6.96, 0.9, 0.9, '#fff', 6);
+        break;
+      case 'bike':
+        gb.box(-0.85, 0.0, -0.04, 0.85, 0.7, 0.04, '#222');
+        gb.box(-0.15, 0.7, -0.17, 0.25, 1.35, 0.17, '#fff');
+        gb.box(-0.05, 1.35, -0.12, 0.2, 1.65, 0.12, '#e8c4a0');
+        break;
+      case 'ped':
+        gb.box(-0.12, 0, -0.17, 0.12, 0.85, 0.17, '#3a3f4a');
+        gb.box(-0.15, 0.85, -0.24, 0.15, 1.45, 0.24, '#fff');
+        gb.box(-0.11, 1.45, -0.11, 0.11, 1.72, 0.11, '#e8c4a0');
+        break;
       case 'train':
         gb.box(-6.9, 0.6, -1.4, 6.9, 3.6, 1.4, '#fff');
         gb.box(-6.4, 1.7, -1.42, 6.4, 2.9, 1.42, '#fff', 9);
@@ -1081,12 +1683,12 @@
     }
     return gb.geometry();
   }
-  M.VEH_KINDS = ['car', 'suv', 'van', 'truck', 'bus', 'police', 'ambulance', 'fire', 'garbage', 'train'];
+  M.VEH_KINDS = ['car', 'suv', 'van', 'truck', 'bus', 'tram', 'police', 'ambulance', 'fire', 'garbage', 'train', 'bike', 'ped'];
   function initVehicles() {
     const G = CB.Gfx;
     M.veh = {};
     const cars = G.settings.cars;
-    const caps = { car: cars, suv: Math.ceil(cars * 0.6), van: 80, truck: Math.ceil(cars * 0.5), bus: 200, police: 80, ambulance: 60, fire: 60, garbage: 120, train: 600 };
+    const caps = { car: cars, suv: Math.ceil(cars * 0.6), van: 80, truck: Math.ceil(cars * 0.5), bus: 200, tram: 120, police: 80, ambulance: 60, fire: 60, garbage: 120, train: 600, bike: Math.ceil(cars * 0.7), ped: Math.ceil(cars * 0.7) };
     for (const k of M.VEH_KINDS) {
       const g = vehGeom(k);
       const mesh = new THREE.InstancedMesh(g, G.mats.city, caps[k]);
@@ -1104,16 +1706,36 @@
     for (const k of M.VEH_KINDS) { const v = M.veh[k]; G.scene.remove(v.mesh); G.cityMeshes.delete(v.mesh); v.mesh.geometry.dispose(); v.mesh.dispose(); }
     initVehicles();
   };
-  M.beginVehicles = function () { for (const k of M.VEH_KINDS) M.veh[k].n = 0; };
-  M.pushVehicle = function (kind, x, y, z, dx, dz, col, pitch) {
-    const v = M.veh[kind]; if (v.n >= v.cap) return false;
+  M.beginVehicles = function () { for (const k of M.VEH_KINDS) M.veh[k].n = 0; M.sigN = 0; };
+  // traffic light heads (dynamic)
+  const SIG_COLS = [lc('#ff2a1a'), lc('#ffb000'), lc('#28e05a')];
+  function initSignals() {
+    const G = CB.Gfx, gb = new GB();
+    gb.box(-0.22, -0.22, -0.22, 0.22, 0.22, 0.22, '#fff', 5);
+    M.sig = new THREE.InstancedMesh(gb.geometry(), G.mats.city, 4000);
+    M.sig.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(4000 * 3), 3);
+    M.sig.frustumCulled = false; M.sig.count = 0;
+    G.scene.add(M.sig); G.cityMeshes.add(M.sig);
+    M.sigN = 0;
+  }
+  M.pushSignal = function (x, y, z, st) {
+    if (M.sigN >= 4000) return;
+    const j = M.sigN++, a = M.sig.instanceMatrix.array, e = j * 16;
+    const yy = y + (st === 2 ? -0.48 : st === 1 ? 0 : 0.48);
+    a.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, yy, z, 1], e);
+    const c = SIG_COLS[st], ca = M.sig.instanceColor.array;
+    ca[j * 3] = c[0]; ca[j * 3 + 1] = c[1]; ca[j * 3 + 2] = c[2];
+  };
+  M.pushVehicle = function (kind, x, y, z, dx, dz, col, pitch, ws) {
+    const v = M.veh[kind]; if (!v || v.n >= v.cap) return false;
+    ws = ws || 1;
     const j = v.n++;
     const a = v.mesh.instanceMatrix.array, e = j * 16;
     const p = pitch || 0, cp = Math.cos(p), sp = Math.sin(p);
     // forward (dx, sp, dz) with pitch, up approx
     a[e] = dx * cp; a[e + 1] = sp; a[e + 2] = dz * cp; a[e + 3] = 0;
     a[e + 4] = -dx * sp; a[e + 5] = cp; a[e + 6] = -dz * sp; a[e + 7] = 0;
-    a[e + 8] = -dz; a[e + 9] = 0; a[e + 10] = dx; a[e + 11] = 0;
+    a[e + 8] = -dz * ws; a[e + 9] = 0; a[e + 10] = dx * ws; a[e + 11] = 0;
     a[e + 12] = x; a[e + 13] = y; a[e + 14] = z; a[e + 15] = 1;
     const c = v.mesh.instanceColor.array;
     if (col) { c[j * 3] = col[0]; c[j * 3 + 1] = col[1]; c[j * 3 + 2] = col[2]; }
@@ -1121,6 +1743,7 @@
     return true;
   };
   M.endVehicles = function () {
+    M.sig.count = M.sigN; if (M.sigN) { M.sig.instanceMatrix.needsUpdate = true; M.sig.instanceColor.needsUpdate = true; }
     for (const k of M.VEH_KINDS) {
       const v = M.veh[k];
       v.mesh.count = v.n;
