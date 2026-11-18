@@ -77,6 +77,30 @@ if (mat > 0 && uDetail > 0.5) {
   } else if (mat == 10) { // wood planks
     float v = (hasUv ? wuv.y : vWP.z) / 0.16; float k = fadeK(vec2(v));
     c *= mix(0.95, (0.85 + 0.15 * smoothstep(0.0, 0.08, fract(v))) * (0.88 + 0.2 * hh(vec2(floor(v), 3.0))), k) * (0.92 + 0.1 * vn(wuv * vec2(6.0, 0.6)));
+  } else if (mat == 13) { // asphalt: aggregate, wear, patches and cracks
+    vec2 p = vWP.xz;
+    float g = hh(floor(p * 11.0)) * fadeK(p * 11.0);
+    float n = vn(p * 0.21) * 0.55 + vn(p * 1.4) * 0.3 + vn(p * 5.0) * 0.15;
+    c *= 0.84 + 0.2 * n + 0.12 * (g - 0.5);
+    vec2 pc = floor(p / vec2(4.3, 2.9) + vec2(0.0, floor(p.x / 4.3) * 0.37));
+    c *= 1.0 - 0.11 * step(0.9, hh(pc)) * fadeK(p * 0.5);
+    float crk = abs(vn(p * 0.5 + 7.0) - 0.5) + 0.004 * vn(p * 9.0);
+    c *= 1.0 - 0.4 * (1.0 - smoothstep(0.0, 0.014, crk)) * fadeK(p * 1.6) * smoothstep(0.5, 0.65, vn(p * 0.09 + 3.0));
+    c = mix(c, c * vec3(0.7, 0.68, 0.66), smoothstep(0.78, 0.95, vn(p * 0.33 + 11.0)) * 0.5); // oil and tyre stains
+    gRough = 0.93;
+  } else if (mat == 14) { // concrete sidewalk slabs
+    vec2 p = vWP.xz / 1.5; vec2 f = fract(p); float k = fadeK(p);
+    float j = smoothstep(0.0, 0.035, f.x) * smoothstep(1.0, 0.965, f.x) * smoothstep(0.0, 0.035, f.y) * smoothstep(1.0, 0.965, f.y);
+    c *= mix(0.96, 0.8 + 0.2 * j, k) * (0.92 + 0.1 * hh(floor(p))) * (0.93 + 0.1 * vn(vWP.xz * 0.8)) * (0.97 + 0.05 * hh(floor(vWP.xz * 14.0)) * fadeK(vWP.xz * 14.0));
+    gRough = 0.9;
+  } else if (mat == 15) { // packed dirt and gravel
+    vec2 p = vWP.xz;
+    c *= 0.78 + 0.26 * vn(p * 0.55) + 0.14 * vn(p * 2.7);
+    float k = fadeK(p * 6.0);
+    c = mix(c, c * 1.4 + 0.04, step(0.82, hh(floor(p * 6.0))) * 0.55 * k);
+    c *= 1.0 - 0.28 * step(0.86, hh(floor(p * 6.0) + 3.0)) * k;
+    c = mix(c, c * vec3(0.82, 0.86, 0.7), smoothstep(0.6, 0.85, vn(p * 0.2 + 5.0)) * 0.6); // weedy patches
+    gRough = 1.0;
   } else if (mat == 11) { // gravel
     c *= 0.82 + 0.3 * hh(floor(vWP.xz * 6.0)) * fadeK(vWP.xz * 6.0) + 0.1 * vn(vWP.xz);
     gRough = 1.0;
@@ -116,10 +140,13 @@ if (st >= 1 && st <= 4) {
   }
   diffuseColor.rgb = mix(diffuseColor.rgb, refl, win);
   gWin = win;
-  float lit = step(r, uLit);
+  float lit = step(r, uLit * 1.4);
   if (st == 3) lit = step(0.1, uLit);
-  gEmis = litc * win * lit * uNight * (0.28 + 0.42 * hh(id * 3.1 + 1.7));
-} else if (st == 14) { gEmis = diffuseColor.rgb * vec3(1.0, 0.8, 0.55) * 0.5 * uNight; }
+  gEmis = litc * win * lit * uNight * (0.45 + 0.55 * hh(id * 3.1 + 1.7));
+} else if (st == 14) {
+  if (mat == 0 && uDetail > 0.5 && dot(diffuseColor.rgb, vec3(0.33)) > 0.35) diffuseColor.rgb *= 0.74 + 0.26 * smoothstep(0.15, 0.6, vn(vWP.xz * 1.9)); // worn paint
+  gEmis = diffuseColor.rgb * vec3(1.0, 0.8, 0.55) * 0.5 * uNight;
+}
 else if (st == 5) { gEmis = diffuseColor.rgb * (0.25 + 1.6 * uNight); }
 else if (st == 16) { diffuseColor.rgb = vec3(0.55, 0.57, 0.6); }
 else if (st == 17) { diffuseColor.rgb = vec3(0.025, 0.026, 0.03); }
@@ -129,6 +156,19 @@ else if (st == 6) { diffuseColor.rgb = vec3(0.95, 0.93, 0.8); gEmis = vec3(1.0, 
 else if (st == 7) { diffuseColor.rgb = vec3(0.5, 0.03, 0.03); gEmis = vec3(1.0, 0.06, 0.04) * (0.25 + 1.8 * uNight); }
 else if (st == 8) { diffuseColor.rgb = vec3(0.9, 0.85, 0.7); gEmis = vec3(1.0, 0.78, 0.45) * 3.5 * uNight; }
 else if (st == 9) { diffuseColor.rgb = vec3(0.04, 0.055, 0.07); gWin = 0.8; }
+else if (st == 10) {
+  // building glass: one random state per pane (cells ~1.4 m across, one per storey)
+  vec2 wid = vec2(floor((vWP.x + vWP.z * 1.37) / 1.4), floor(vWP.y / 2.8));
+  float r = hh(wid + floor(vWP.xz / 23.0) * 3.7);
+  float lit = step(r, min(0.95, uLit * 1.9));
+  float warm = hh(wid * 1.9 + 5.3);
+  vec3 litc = mix(vec3(1.0, 0.72, 0.38), vec3(0.95, 0.9, 0.8), step(0.8, warm));
+  float g = fract(vWP.y / 2.8);
+  vec3 refl = vec3(0.045, 0.06, 0.08) + vec3(0.06, 0.08, 0.11) * smoothstep(0.3, 0.9, g);
+  diffuseColor.rgb = mix(refl, litc * 0.35, lit * uNight * 0.6);
+  gWin = 0.8 * (1.0 - lit * uNight);
+  gEmis = litc * lit * uNight * (0.55 + 0.6 * hh(wid * 3.1 + 1.7)) * (0.75 + 0.25 * smoothstep(0.0, 0.6, g));
+}
 else if (st == 11) { diffuseColor.rgb = vec3(0.03); }
 else if (st == 12) { diffuseColor.rgb = vec3(0.20, 0.13, 0.08); }
 else if (st == 13) { diffuseColor.rgb = vec3(0.12, 0.30, 0.38); gWin = 1.0; }

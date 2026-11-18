@@ -24,15 +24,17 @@
   const gS = new Float32Array(NS), from_ = new Int32Array(NS), seen = new Uint32Array(NS), closed = new Uint32Array(NS);
   let gen = 1;
   const heap = new U.Heap();
-  function search(src, dst, step, vmax) {
-    if (src === dst) return [src];
+  // sd / dd (optional): the direction of travel the vehicle must have when leaving src / arriving at dst
+  function search(src, dst, step, vmax, sd, dd) {
+    const anyD = dd === undefined || dd === null;
+    if (src === dst && (anyD || sd === dd)) return [src];
     gen++;
     if (gen > 4e9) { gen = 1; seen.fill(0); closed.fill(0); }
     heap.clear();
     const Wd = CB.World;
     const dx0 = U.tx(dst), dy0 = U.ty(dst);
     const hf = i => (Math.abs(U.tx(i) - dx0) + Math.abs(U.ty(i) - dy0)) * T / vmax;
-    const s0 = src * 5 + 4;
+    const s0 = src * 5 + (sd === undefined || sd === null ? 4 : sd);
     gS[s0] = 0; seen[s0] = gen; from_[s0] = -1; heap.push(s0, hf(src));
     let found = -1, it = 0;
     while (heap.size) {
@@ -40,7 +42,7 @@
       if (closed[cs] === gen) continue;
       closed[cs] = gen;
       const cur = (cs / 5) | 0, cd = cs - cur * 5;
-      if (cur === dst) { found = cs; break; }
+      if (cur === dst && (anyD || cd === dd) && cs !== s0) { found = cs; break; }
       if (++it > 120000) break;
       for (let d = 0; d < 4; d++) {
         const r = step(cur, cd, d);
@@ -109,6 +111,18 @@
     const hit = pathCache.get(key);
     if (hit && (isStatic || Tr.time - hit.t < 25)) return hit.p;
     const p = search(src, dst, isStatic ? stepStatic : stepLive, 30);
+    if (pathCache.size > 5000) pathCache.clear();
+    pathCache.set(key, { p, t: Tr.time });
+    return p;
+  };
+  // path that leaves src heading sd and reaches dst heading dd (so a bus pulls up on the right side of the road)
+  Tr.findPathDir = function (src, sd, dst, dd, tram) {
+    const Wd = CB.World;
+    if (!Wd.road[src] || !Wd.road[dst]) return null;
+    if (cacheVer !== Wd.roadVer) { pathCache.clear(); cacheVer = Wd.roadVer; }
+    const key = (tram ? 't' : 'd') + (src * N + dst) + ':' + sd + ':' + dd;
+    if (pathCache.has(key)) return pathCache.get(key).p;
+    const p = search(src, dst, tram ? stepTram : stepStatic, tram ? 12 : 30, sd, dd);
     if (pathCache.size > 5000) pathCache.clear();
     pathCache.set(key, { p, t: Tr.time });
     return p;
@@ -253,7 +267,12 @@
     } else if (ix === -ox && iz === -oz) { v.cx = cx + ix * T * 0.4; v.cz = cz + iz * T * 0.4; v.turn = 2; }
     else {
       v.cx = cx + rix * offI + rox * offO; v.cz = cz + riz * offI + roz * offO; v.turn = 1;
+
       if (round) { const right = (ox === -riz && oz === rix) || (rox === -ix && roz === -iz); if (!right) { v.cx = cx + (rix + ix) * 2.6; v.cz = cz + (riz + iz) * 2.6; } }
+    }
+    if (!cl && prev >= 0 && next >= 0 && v.turn !== 2 && Wd.isBent(cur)) { // smooth curved road
+      const q = Wd.bendSeg(cur, v.din, v.dout, offI, offO);
+      v.ex = q[0]; v.ez = q[1]; v.cx = q[2]; v.cz = q[3]; v.xx = q[4]; v.xz = q[5];
     }
     const a = Math.hypot(v.cx - v.ex, v.cz - v.ez), b = Math.hypot(v.xx - v.cx, v.xz - v.cz), c = Math.hypot(v.xx - v.ex, v.xz - v.ez);
     v.len = Math.max(0.5, (a + b + c) / 2);
@@ -343,16 +362,115 @@
   };
   function isPublic(b) { return b && b.kind === 'svc' && (C.SERVICES[b.svc].cat === 'parks' || C.SERVICES[b.svc].cat === 'landmarks'); }
   Tr.isPublic = isPublic;
-  // a visitor milling about inside a park or plaza
+  // ---- park visitors: walk the paths, sit on benches, swing, slide, shoot hoops, picnic ----
   function startVisit(a, b, secs) {
     a.visit = { b, until: Tr.time + secs };
+    const P = CB.Meshes.parkSpots(b);
+    a.kid = P.spots.some(q => q.kid) && Math.random() < 0.4;
     nextWander(a);
   }
+  function walkTo(a, tx, tz, pause) {
+    a.ph = { c: curve(a.x, a.z, (a.x + tx) / 2, (a.z + tz) / 2, tx, tz), t: 0, out: false, wander: true, pause: pause || 0 };
+  }
+  function releaseSpot(a) { if (a.doing && a.doing.spot && a.doing.spot.busy === a) a.doing.spot.busy = null; if (a.target && a.target.busy === a) a.target.busy = null; a.doing = null; a.target = null; }
+  Tr.releaseSpot = releaseSpot;
   function nextWander(a) {
-    const b = a.visit.b;
-    const x0 = b.x * T + 1.5, z0 = b.y * T + 1.5, x1 = (b.x + b.fw) * T - 1.5, z1 = (b.y + b.fh) * T - 1.5;
-    const tx = x0 + Math.random() * (x1 - x0), tz = z0 + Math.random() * (z1 - z0);
-    a.ph = { c: curve(a.x, a.z, (a.x + tx) / 2, (a.z + tz) / 2, tx, tz), t: 0, out: false, wander: true, pause: Math.random() * 4 };
+    const b = a.visit.b, P = CB.Meshes.parkSpots(b);
+    a.pose = null; a.yo = 0;
+    // keep following a path to its end
+    if (a.walk) {
+      const w = a.walk; w.k += w.dir;
+      if (w.k >= 0 && w.k < w.pts.length) { const p = w.pts[w.k]; walkTo(a, p[0] + w.ox, p[1] + w.oz, 0); return; }
+      a.walk = null;
+    }
+    const r = Math.random();
+    const free = P.spots.filter(q => !q.busy && (a.kid ? q.kid : !q.kid || q.a === 'watch'));
+    if (free.length && (r < 0.62 || !P.paths.length)) {
+      const q = U.pick(free); q.busy = a; a.target = q;
+      const ap = q.a === 'slide' ? [q.x - q.ax * 1.1, q.z - q.az * 1.1] : [q.x, q.z];
+      walkTo(a, ap[0], ap[1], 0);
+      return;
+    }
+    if (P.paths.length && r < 0.92) {
+      // join the nearest point of a path and walk it, keeping a little to one side
+      const pts = U.pick(P.paths);
+      let k = 0, bd = Infinity; pts.forEach((p, j) => { const d = (p[0] - a.x) ** 2 + (p[1] - a.z) ** 2; if (d < bd) { bd = d; k = j; } });
+      const dir = k === 0 ? 1 : k === pts.length - 1 ? -1 : (Math.random() < 0.5 ? 1 : -1), side = (Math.random() - 0.5) * 0.9;
+      a.walk = { pts, k, dir, ox: side, oz: side * 0.7 };
+      walkTo(a, pts[k][0] + side, pts[k][1] + side * 0.7, 0);
+      return;
+    }
+    if (P.play && P.area) { a.doing = { type: 'play', until: Tr.time + 15 + Math.random() * 20, t0: Tr.time }; return; }
+    const ar = P.area || [b.x * T + 1.5, b.y * T + 1.5, (b.x + b.fw) * T - 1.5, (b.y + b.fh) * T - 1.5];
+    walkTo(a, ar[0] + Math.random() * (ar[2] - ar[0]), ar[1] + Math.random() * (ar[3] - ar[1]), 1 + Math.random() * 3);
+  }
+  // reached a spot: start the activity
+  function beginActivity(a, q) {
+    const dur = q.a === 'sit' || q.a === 'ground' || q.a === 'fish' ? 20 + Math.random() * 30 : 12 + Math.random() * 18;
+    a.doing = { type: q.a, spot: q, t0: Tr.time, until: Tr.time + dur, ph: Math.random() * 6 };
+    a.target = null;
+  }
+  const ballPos = [];
+  // advance an activity; sets position, facing, pose and height
+  function stepActivity(a, dt) {
+    const d = a.doing, q = d.spot, t = Tr.time - d.t0;
+    a.pose = 'ped'; a.yo = 0;
+    switch (d.type) {
+      case 'sit': a.x = q.x; a.z = q.z; a.hx = q.fx; a.hz = q.fz; a.pose = 'sit'; a.yo = q.y || 0; break;
+      case 'ground': a.x = q.x; a.z = q.z; a.hx = q.fx; a.hz = q.fz; a.pose = 'sit'; a.yo = -0.4; break;
+      case 'fish': a.x = q.x; a.z = q.z; a.hx = q.fx; a.hz = q.fz; a.pose = 'sit'; a.yo = 0.05; break;
+      case 'look': case 'watch': case 'tend': {
+        const sway = Math.sin(t * 0.5 + d.ph) * 0.35;
+        a.x = q.x; a.z = q.z; a.hx = q.fx * Math.cos(sway) - q.fz * Math.sin(sway); a.hz = q.fz * Math.cos(sway) + q.fx * Math.sin(sway);
+        if (d.type === 'tend') a.yo = -0.25 + 0.12 * Math.sin(t * 1.3 + d.ph);
+        break;
+      }
+      case 'swing': {
+        const th = 0.75 * Math.sin(t * 2.3 + d.ph), L = 1.85;
+        a.x = q.x + q.fx * Math.sin(th) * L; a.z = q.z + q.fz * Math.sin(th) * L; a.hx = q.fx; a.hz = q.fz;
+        a.pose = 'sit'; a.yo = 0.6 + (1 - Math.cos(th)) * L - 0.47;
+        break;
+      }
+      case 'slide': { // climb the ladder, sit at the top, slide down, walk back round
+        const c = (t + d.ph) % 6.5, lx = q.x - q.ax * 0.85, lz = q.z - q.az * 0.85;
+        if (c < 1.8) { const u = c / 1.8; a.x = lx; a.z = lz; a.yo = u * 1.7; a.hx = q.ax; a.hz = q.az; }
+        else if (c < 2.4) { a.x = q.x; a.z = q.z; a.yo = 1.7 - 0.47 + 0.05; a.pose = 'sit'; a.hx = q.ax; a.hz = q.az; }
+        else if (c < 3.5) { const u = (c - 2.4) / 1.1; a.x = q.x + q.ax * (0.8 + 2.5 * u); a.z = q.z + q.az * (0.8 + 2.5 * u); a.yo = 1.66 - 1.41 * u - 0.42; a.pose = 'sit'; a.hx = q.ax; a.hz = q.az; }
+        else { const u = (c - 3.5) / 3.0, sx = -q.az, sz = q.ax; const px = q.x + q.ax * 3.6, pz = q.z + q.az * 3.6;
+          const w = u < 0.5 ? u * 2 : 1, v = u < 0.5 ? 0 : (u - 0.5) * 2;
+          a.x = px + sx * 1.3 * w - q.ax * 4.5 * v; a.z = pz + sz * 1.3 * w - q.az * 4.5 * v; a.hx = u < 0.5 ? sx : -q.ax; a.hz = u < 0.5 ? sz : -q.az; a.pose = ((c * 3) | 0) % 2 ? 'ped' : 'ped2'; }
+        break;
+      }
+      case 'sand': a.x = q.x; a.z = q.z; a.hx = Math.cos(d.ph + t * 0.2); a.hz = Math.sin(d.ph + t * 0.2); a.pose = 'sit'; a.yo = -0.38; break;
+      case 'skate': { // back and forth across the half pipe
+        const u = Math.sin(t * 0.9 + d.ph), off = u * 5.4, h = Math.max(0, Math.abs(off) - 2) / 4;
+        a.x = q.cx + q.ax * off; a.z = q.cz + q.az * off; const dir = Math.cos(t * 0.9 + d.ph) >= 0 ? 1 : -1; a.hx = q.ax * dir; a.hz = q.az * dir; a.yo = (1 - Math.cos(Math.min(1, h) * Math.PI / 2)) * 2.6 + 0.1;
+        break;
+      }
+      case 'hoop': { // dribble, jump, shoot; the ball arcs to the rim and comes back
+        const c = (t + d.ph) % 3.6, dx = q.rx - q.x, dz = q.rz - q.z, dl = Math.hypot(dx, dz) || 1;
+        a.x = q.x; a.z = q.z; a.hx = dx / dl; a.hz = dz / dl;
+        if (c > 0.7 && c < 1.1) a.yo = Math.sin((c - 0.7) / 0.4 * Math.PI) * 0.35;
+        let bx, by, bz;
+        if (c < 0.85) { bx = q.x + a.hx * 0.45; bz = q.z + a.hz * 0.45; by = 0.15 + Math.abs(Math.sin(c * 9)) * 0.85; if (c > 0.7) by = 1.9 + a.yo; }
+        else if (c < 1.8) { const u = (c - 0.85) / 0.95; bx = q.x + dx * u; bz = q.z + dz * u; by = 2.2 + (3.15 - 2.2) * u + Math.sin(u * Math.PI) * 1.8; }
+        else if (c < 2.3) { const u = (c - 1.8) / 0.5; bx = q.rx; bz = q.rz; by = 3.15 - u * u * 3.0; }
+        else { const u = (c - 2.3) / 1.3; bx = q.rx - dx * u; bz = q.rz - dz * u; by = 0.15 + Math.abs(Math.sin(u * Math.PI * 2)) * 0.5 * (1 - u); }
+        ballPos.push(bx, by, bz, a.visit.b.baseY + 0.1);
+        break;
+      }
+      case 'play': { // chase around the pitch
+        const P = CB.Meshes.parkSpots(a.visit.b), ar = P.area;
+        if (!d.go || d.go.t >= 1) { const tx = ar[0] + Math.random() * (ar[2] - ar[0]), tz = ar[1] + Math.random() * (ar[3] - ar[1]); d.go = { c: curve(a.x, a.z, (a.x + tx) / 2, (a.z + tz) / 2, tx, tz), t: 0 }; }
+        d.go.t = Math.min(1, d.go.t + 4.2 * dt / d.go.c.len);
+        evalCurve(d.go.c, d.go.t, tmp); a.x = tmp[0]; a.z = tmp[1]; a.hx = tmp[2]; a.hz = tmp[3];
+        a.pose = ((t * 4) | 0) % 2 ? 'ped' : 'ped2';
+        if (d.ball === undefined) d.ball = Math.random() < 0.35;
+        if (d.ball) ballPos.push(a.x + a.hx * 0.55, 0.13 + Math.abs(Math.sin(t * 6)) * 0.05, a.z + a.hz * 0.55, a.visit.b.baseY + 0.1);
+        break;
+      }
+      default: a.x = q.x; a.z = q.z;
+    }
   }
   Tr.spawnVisitors = function (b, n, secs) {
     if (!CB.Sim.buildings.has(b.id)) return;
@@ -365,6 +483,7 @@
     }
   };
   let BIKE_COLS = [[1, 1, 1]], PED_COLS = [[1, 1, 1]];
+  const BALL_COL = [0.78, 0.18, 0.04];
   Tr.setColors = function (b, p) { BIKE_COLS = b; PED_COLS = p; };
   function softOff(a, i, d) {
     const R = C.ROADS[CB.World.road[i]];
@@ -602,14 +721,20 @@
     // cyclists & pedestrians: simple, no collisions
     const sdone = [];
     let nb = 0, np = 0;
+    ballPos.length = 0;
     for (const a of Tr.soft) {
       if (a.kind === 'bike') nb++; else np++;
+      if (a.doing) {
+        if (Tr.time > a.doing.until || (a.visit && Tr.time > a.visit.until) || !CB.Sim.buildings.has(a.visit.b.id)) { releaseSpot(a); a.pose = null; a.yo = 0; if (a.visit && Tr.time > a.visit.until) { sdone.push(a); continue; } nextWander(a); }
+        else { stepActivity(a, dt); continue; }
+      }
       if (a.ph) {
         if (a.ph.pause > 0 && a.ph.t >= 1) { a.ph.pause -= dt; continue; }
         a.ph.t = Math.min(1, a.ph.t + (a.ph.wander ? 1.6 : a.sp * 0.6) * dt / a.ph.c.len);
         if (a.ph.t < 1) { evalCurve(a.ph.c, a.ph.t, tmp); a.x = tmp[0]; a.z = tmp[1]; a.hx = tmp[2]; a.hz = tmp[3]; continue; }
         if (a.ph.wander) {
-          if (a.visit && Tr.time > a.visit.until) { sdone.push(a); continue; }
+          if (a.visit && Tr.time > a.visit.until) { releaseSpot(a); sdone.push(a); continue; }
+          if (a.target) { beginActivity(a, a.target); a.ph = null; continue; }
           if (!a.ph.pause || a.ph.pause <= 0) nextWander(a);
           continue;
         }
@@ -638,6 +763,7 @@
     }
     if (sdone.length) {
       const set = new Set(sdone);
+      for (const a of sdone) releaseSpot(a);
       Tr.soft = Tr.soft.filter(a => !set.has(a));
       for (const a of sdone) if (a.onArrive) a.onArrive(Tr.time - a.born, true);
     }
@@ -658,7 +784,7 @@
       else { if (v.loop && v.onBroken) v.onBroken(v); else if (v.onArrive) v.onArrive(v, false); }
     }
     Tr.vehicles = keep;
-    Tr.soft = Tr.soft.filter(a => { for (let s = a.seg; s < a.path.length; s++) if (!Wd.road[a.path[s]] && !Wd.pmask[a.path[s]]) return false; return true; });
+    Tr.soft = Tr.soft.filter(a => { if (a.visit) { if (CB.Sim.buildings.has(a.visit.b.id)) return true; releaseSpot(a); return false; } for (let s = a.seg; s < a.path.length; s++) if (!Wd.road[a.path[s]] && !Wd.pmask[a.path[s]]) return false; return true; });
   };
   Tr.clearAll = function () { Tr.vehicles = []; Tr.soft = []; Tr.queue = []; Tr.load.fill(0); };
 
@@ -671,15 +797,18 @@
       const y = Wd.roadH(v.x, v.z);
       const ya = Wd.roadH(v.x + v.hx * 2, v.z + v.hz * 2), yb = Wd.roadH(v.x - v.hx * 2, v.z - v.hz * 2);
       const pitch = Math.atan2(ya - yb, 4);
-      const ws = U.clamp(v.lw / 2.7, 0.78, 1);
-      Mx.pushVehicle(v.kind, v.x, y + 0.05, v.z, v.hx, v.hz, v.col, pitch, ws);
+      Mx.pushVehicle(v.kind, v.x, y + 0.05, v.z, v.hx, v.hz, v.col, pitch, 1);
     }
     for (const a of Tr.soft) {
-      const y = Wd.roadH(a.x, a.z) + 0.2;
+      const inPark = !!a.visit;
+      const y = inPark ? a.visit.b.baseY + 0.1 : Wd.roadH(a.x, a.z) + 0.2;
+      const sc = a.kid ? 0.62 : 1;
+      if (a.pose) { Mx.pushVehicle(a.pose, a.x, y + (a.yo || 0), a.z, a.hx, a.hz, a.col, 0, 1, sc); continue; }
       const moving = !a.ph || a.ph.t < 1;
-      const step = moving ? ((a.ph ? a.ph.t * a.ph.c.len * 3 : a.seg * T + a.t * a.len) / (a.kind === 'ped' ? 0.55 : 0.9)) | 0 : 0;
-      Mx.pushVehicle(step % 2 ? a.kind + '2' : a.kind, a.x, y, a.z, a.hx, a.hz, a.col, 0, 1);
+      const step = moving ? ((a.ph ? a.ph.t * a.ph.c.len * 3 : a.seg * T + a.t * a.len) / (a.kind === 'ped' ? 0.55 * sc : 0.9)) | 0 : 0;
+      Mx.pushVehicle(step % 2 ? a.kind + '2' : a.kind, a.x, y, a.z, a.hx, a.hz, a.col, 0, 1, sc);
     }
+    for (let k = 0; k < ballPos.length; k += 4) Mx.pushVehicle('ball', ballPos[k], ballPos[k + 3] + ballPos[k + 1], ballPos[k + 2], 1, 0, BALL_COL, 0, 1);
     // traffic light heads
     for (const cl of Wd.clusters) {
       if (cl.ctrl !== 'lights') continue;

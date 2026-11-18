@@ -9,16 +9,18 @@
     Tl.tool = t || { type: 'select' };
     Tl.drag = null;
     Tl.lineStops = [];
+    Tl.curve = null;
     clearPreview();
     const isZone = Tl.tool.type === 'zone' || Tl.tool.type === 'dezone';
     CB.Gfx.uni.uGrid.value = isZone ? 1 : 0;
     CB.Meshes.updateZoneTex(isZone);
     Tl.zoneView = isZone;
-    const transitTool = Tl.tool.type === 'line' || Tl.tool.type === 'stop' || Tl.tool.type === 'rail';
-    CB.Transit.showRibbons(transitTool || CB.UI.overlay === 'transit');
+    const transitTool = Tl.tool.type === 'line' || Tl.tool.type === 'stop' || Tl.tool.type === 'rail' || Tl.tool.type === 'lineEdit';
+    CB.Transit.showRibbons(transitTool || CB.UI.overlay === 'transit', Tl.tool.type === 'lineEdit' ? CB.Transit.lineById(Tl.tool.line) : null);
     if (Tl.tool.type === 'svc') Tl.rot = 0;
     CB.UI.onToolChange();
   };
+  Tl.setRoadMode = function (m) { Tl.roadMode = m; Tl.curve = null; Tl.drag = null; Tl.needHover = true; if (CB.UI.onRoadMode) CB.UI.onRoadMode(); };
   function junctionNear(i) {
     const Wd = CB.World;
     if (Wd.jcl[i] >= 0) return Wd.clusters[Wd.jcl[i]];
@@ -28,7 +30,7 @@
   function clearPreview() {
     const Mx = CB.Meshes;
     Mx.setFlowArrows(null);
-    Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null);
+    Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null); Mx.setGhostModel(null);
     CB.Gfx.uni.uBrushOn.value = 0;
     if (Tl.previewRibbon) { Mx.lineGroup.remove(Tl.previewRibbon); Tl.previewRibbon.geometry.dispose(); Tl.previewRibbon = null; }
     Tl.tip = '';
@@ -54,22 +56,155 @@
   }
   const dirOf = (a, b) => { const dx = U.tx(b) - U.tx(a), dy = U.ty(b) - U.ty(a); return dy < 0 ? 0 : dx > 0 ? 1 : dy > 0 ? 2 : 3; };
   const step = (i, d) => U.idx(U.tx(i) + C.DX[d], U.ty(i) + C.DY[d]);
-  // Lay out the strips of a road drag. Returns [{tiles, dirs}] — one strip, or two for dual carriageways.
-  function roadStrips(a, b, rt) {
-    const R = C.ROADS[rt];
-    const hf = Math.abs(U.tx(b) - U.tx(a)) >= Math.abs(U.ty(b) - U.ty(a));
-    const main = lPath(a, b, hf);
-    const dirs = main.map((t, k) => k + 1 < main.length ? dirOf(t, main[k + 1]) : (k > 0 ? dirOf(main[k - 1], t) : 1));
-    const strips = [{ tiles: main, dirs }];
-    if (R.w === 2) {
-      const left = d => (d + 3) % 4;
-      const a2 = step(a, left(dirs[0])), b2 = step(b, left(dirs[dirs.length - 1]));
-      if (!U.inWorld(U.tx(a2), U.ty(a2)) || !U.inWorld(U.tx(b2), U.ty(b2))) return strips;
-      const off = lPath(b2, a2, !hf); // reversed traversal = opposite flow
-      const od = off.map((t, k) => k + 1 < off.length ? dirOf(t, off[k + 1]) : (k > 0 ? dirOf(off[k - 1], t) : (dirs[0] + 2) % 4));
-      strips.push({ tiles: off, dirs: od });
+  // ---------------- road planning ----------------
+  // Single-strip roads snap to tile centres. Dual carriageways snap to grid corners: the drag line is the
+  // median, with one one-way strip on each side (traffic keeps right). Drags are L-shaped, or quadratic
+  // curves in curve mode (click start, click a bend point, click the end).
+  Tl.roadMode = 'straight';
+  Tl.curve = null;
+  const isDual = rt => C.ROADS[rt].w === 2;
+  function snapPt(p, dual) {
+    if (dual) return { x: Math.round(p.x / T), y: Math.round(p.z / T) };
+    return { x: Math.floor(p.x / T) + 0.5, y: Math.floor(p.z / T) + 0.5 };
+  }
+  function cutLoops(pts) {
+    const out = [], seenAt = new Map();
+    for (const p of pts) {
+      const k = p[0] * 4096 + p[1];
+      if (seenAt.has(k)) { const j = seenAt.get(k); for (let q = j + 1; q < out.length; q++) seenAt.delete(out[q][0] * 4096 + out[q][1]); out.length = j + 1; continue; }
+      seenAt.set(k, out.length); out.push(p);
     }
-    return strips;
+    return out;
+  }
+  // 4-connected lattice walk (off = 0.5: tile centres, 0: grid corners)
+  function latticeL(A, B, off) {
+    const ax = Math.round(A.x - off), ay = Math.round(A.y - off), bx = Math.round(B.x - off), by = Math.round(B.y - off);
+    const out = [[ax, ay]], hf = Math.abs(bx - ax) >= Math.abs(by - ay);
+    let x = ax, y = ay; const sx = Math.sign(bx - ax), sy = Math.sign(by - ay);
+    if (hf) { while (x !== bx) { x += sx; out.push([x, y]); } while (y !== by) { y += sy; out.push([x, y]); } }
+    else { while (y !== by) { y += sy; out.push([x, y]); } while (x !== bx) { x += sx; out.push([x, y]); } }
+    return out;
+  }
+  // Follow a quadratic curve with octilinear moves only (straight runs and clean 45 degree staircases):
+  // the renderer smooths those into an even curve, where arbitrary slopes would come out wavy.
+  // sampled quadratic curve, optionally offset sideways by s tiles (+ = right of travel)
+  function sampleCurve(A, Cp, B, s) {
+    const n = 400, cv = [];
+    for (let k = 0; k <= n; k++) {
+      const t = k / n, u = 1 - t;
+      let x = u * u * A.x + 2 * u * t * Cp.x + t * t * B.x, y = u * u * A.y + 2 * u * t * Cp.y + t * t * B.y;
+      if (s) {
+        let tx = 2 * u * (Cp.x - A.x) + 2 * t * (B.x - Cp.x), ty = 2 * u * (Cp.y - A.y) + 2 * t * (B.y - Cp.y);
+        if (Math.abs(tx) + Math.abs(ty) < 1e-6) { tx = B.x - A.x; ty = B.y - A.y; }
+        const l = Math.hypot(tx, ty) || 1, k = (Math.abs(tx) + Math.abs(ty)) / l; // wider on diagonals so the two staircases never touch
+        x += -ty / l * s * k; y += tx / l * s * k;
+      }
+      cv.push([x, y]);
+    }
+    if (s) { // first and last tile centres sit half a tile inside the end points
+      const cum = [0];
+      for (let k = 1; k <= n; k++) cum.push(cum[k - 1] + Math.hypot(cv[k][0] - cv[k - 1][0], cv[k][1] - cv[k - 1][1]));
+      let a = 0, b = n;
+      while (a < n && cum[a] < 0.5) a++;
+      while (b > a && cum[n] - cum[b] < 0.5) b--;
+      return cv.slice(a, b + 1);
+    }
+    return cv;
+  }
+  function latticeCurve(A, Cp, B, off) { return latticeFollow(sampleCurve(A, Cp, B, 0), off); }
+  function latticeFollow(cv, off) {
+    const n = cv.length - 1, B = { x: cv[n][0], y: cv[n][1] }, A = { x: cv[0][0], y: cv[0][1] };
+    const end = [Math.round(B.x - off), Math.round(B.y - off)];
+    let p = [Math.round(A.x - off), Math.round(A.y - off)];
+    const out = [p.slice()];
+    let k = 0, lastX = null;
+    const D = (q, x, y) => Math.hypot(q[0] - x, q[1] - y);
+    for (let guard = 0; guard < 3000; guard++) {
+      if (p[0] === end[0] && p[1] === end[1]) break;
+      const px = p[0] + off, py = p[1] + off;
+      while (k < n && D(cv[k + 1], px, py) <= D(cv[k], px, py) + 1e-9) k++;
+      let j = k; while (j < n && D(cv[j], px, py) < 2.5) j++;
+      let dx, dy;
+      if (Math.abs(end[0] - p[0]) + Math.abs(end[1] - p[1]) <= 3 || j >= n) { dx = end[0] - p[0]; dy = end[1] - p[1]; }
+      else { dx = cv[j][0] - px; dy = cv[j][1] - py; }
+      const oct = Math.round(Math.atan2(dy, dx) / (Math.PI / 4));
+      let sx = Math.round(Math.cos(oct * Math.PI / 4)), sy = Math.round(Math.sin(oct * Math.PI / 4));
+      if (dx === 0 && dy === 0) break;
+      let step;
+      if (!sx || !sy) step = [sx, sy];
+      else step = lastX ? [0, sy] : [sx, 0];
+      if (Math.abs(end[0] - p[0]) + Math.abs(end[1] - p[1]) <= 3) { // never step away from the end
+        if (step[0] && Math.sign(step[0]) !== Math.sign(end[0] - p[0])) step = [0, Math.sign(end[1] - p[1])];
+        else if (step[1] && Math.sign(step[1]) !== Math.sign(end[1] - p[1])) step = [Math.sign(end[0] - p[0]), 0];
+      }
+      p = [p[0] + step[0], p[1] + step[1]]; lastX = step[0] !== 0;
+      out.push(p.slice());
+    }
+    return cutLoops(out);
+  }
+  // tiles beside a corner-lattice polyline: s = +1 right-hand side, -1 left-hand side
+  function offsetStrip(V, s) {
+    const n = V.length, D = [];
+    for (let k = 0; k < n - 1; k++) D.push([V[k + 1][0] - V[k][0], V[k + 1][1] - V[k][1]]);
+    const rt = d => [-d[1], d[0]];
+    const O = [];
+    for (let k = 0; k < n; k++) {
+      const a = D[Math.max(0, k - 1)], b = D[Math.min(n - 2, k)];
+      let o;
+      if (k === 0) o = rt(b); else if (k === n - 1) o = rt(a);
+      else if (a[0] === b[0] && a[1] === b[1]) o = rt(a);
+      else { const ra = rt(a), rb = rt(b); o = [ra[0] + rb[0], ra[1] + rb[1]]; }
+      O.push([V[k][0] + s * 0.5 * o[0], V[k][1] + s * 0.5 * o[1]]);
+    }
+    const tiles = [];
+    for (let k = 0; k < n - 1; k++) {
+      const [ax, ay] = O[k], [bx, by] = O[k + 1], m = Math.max(2, Math.ceil(Math.hypot(bx - ax, by - ay) * 8));
+      for (let q = 0; q < m; q++) {
+        const t = (q + 0.5) / m, x = Math.floor(ax + (bx - ax) * t), y = Math.floor(ay + (by - ay) * t);
+        const l = tiles[tiles.length - 1];
+        if (!l || l[0] !== x || l[1] !== y) tiles.push([x, y]);
+      }
+    }
+    return cutLoops(tiles);
+  }
+  function toStrip(pts) {
+    const tiles = [];
+    for (const [x, y] of pts) { if (!U.inWorld(x, y)) return null; tiles.push(U.idx(x, y)); }
+    for (let k = 1; k < tiles.length; k++) if (U.dist(tiles[k - 1], tiles[k]) !== 1) return null;
+    const dirs = tiles.map((t, k) => k + 1 < tiles.length ? dirOf(t, tiles[k + 1]) : (k > 0 ? dirOf(tiles[k - 1], t) : 1));
+    return { tiles, dirs };
+  }
+  // plan from world points a -> b (optionally bending through c). Returns { strips, bad }
+  function planRoad(rt, a, b, c) {
+    const dual = isDual(rt), off = dual ? 0 : 0.5;
+    const A = snapPt(a, dual), B = snapPt(b, dual);
+    let V;
+    if (c) V = latticeCurve(A, { x: c.x / T, y: c.z / T }, B, off);
+    else V = latticeL(A, B, off);
+    if (!dual) { const st = toStrip(V); return st ? { strips: [st] } : { strips: [], bad: 'Outside the map' }; }
+    if (V.length < 2) { // a single click: a short stub eastwards
+      V = [V[0], [V[0][0] + 1, V[0][1]]];
+    }
+    let fp, rp;
+    if (c && V.length > 2) { // curves: each carriageway follows its own offset of the curve
+      const Cp = { x: c.x / T, y: c.z / T };
+      for (const o of [0.5, 0.56, 0.62, 0.7]) { // widen the offset a little if the two staircases bump into each other
+        fp = latticeFollow(sampleCurve(A, Cp, B, o), 0.5);
+        rp = latticeFollow(sampleCurve(A, Cp, B, -o), 0.5).reverse();
+        const fs = new Set(fp.map(q => q[0] * 4096 + q[1]));
+        if (!rp.some(q => fs.has(q[0] * 4096 + q[1]))) break;
+      }
+    } else { fp = offsetStrip(V, 1); rp = offsetStrip(V, -1).reverse(); }
+    const f = toStrip(fp), r = toStrip(rp);
+    if (!f || !r) return { strips: [], bad: 'Outside the map' };
+    const used = new Set(f.tiles);
+    if (r.tiles.some(t => used.has(t))) return { strips: [f, r], bad: 'Curve is too tight for a dual road' };
+    return { strips: [f, r] };
+  }
+  // straight drag between two tiles (used by the demo city and tests)
+  function roadStrips(a, b, rt) {
+    const P = i => isDual(rt) ? { x: U.tx(i) * T, z: U.ty(i) * T } : { x: (U.tx(i) + 0.5) * T, z: (U.ty(i) + 0.5) * T };
+    return planRoad(rt, P(a), P(b)).strips;
   }
   Tl.roadStrips = roadStrips;
   // ---- half-tile paths ----
@@ -147,12 +282,35 @@
         Wd.linkTiles(t, o); changed = true;
       }
     }
+    // a U-turn link across a median is only for dead ends: drop it once the road continues
+    const touched = new Set();
+    for (const st of strips) for (const t of st.tiles) { touched.add(t); for (let d = 0; d < 4; d++) { const o = Wd.neighbor(t, d); if (o >= 0) touched.add(o); } }
+    for (const t of touched) for (let d = 0; d < 4; d++) {
+      if (!Wd.linked(t, d) || !Wd.isUturnLink(t, d)) continue;
+      const o = Wd.neighbor(t, d);
+      if (Wd.degree(t) > 2 || Wd.degree(o) > 2) { Wd.unlinkTiles(t, o); changed = true; }
+    }
     // dual carriageway ends: let vehicles turn around at a dead end
     if (strips.length === 2) {
       const A = strips[0].tiles, B = strips[1].tiles;
       for (const [p, q] of [[A[0], B[B.length - 1]], [A[A.length - 1], B[0]]]) if (Wd.degree(p) <= 1 && Wd.degree(q) <= 1 && U.dist(p, q) === 1) Wd.linkTiles(p, q);
     }
     return changed;
+  }
+  function buildRoad(plan, rt) {
+    const S = CB.Sim;
+    clearPreview();
+    if (plan.bad) { CB.UI.toast(plan.bad, 'bad'); return false; }
+    const ev = roadEval(plan.strips, rt);
+    if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return false; }
+    if (!spend(ev.cost)) return false;
+    if (placeRoad(plan.strips, rt)) { S.networkChanged(); markAround(plan.strips.flatMap(q => q.tiles)); CB.UI.sfx('build'); }
+    return true;
+  }
+  // curves are smoothed over a few tiles, so redraw a little further out than the tiles that changed
+  function markAround(tiles) {
+    const Mx = CB.Meshes;
+    for (const t of tiles) for (const [ox, oy] of [[-3, 0], [3, 0], [0, -3], [0, 3]]) { const x = U.tx(t) + ox, y = U.ty(t) + oy; if (U.inWorld(x, y)) Mx.markInfra(U.idx(x, y)); }
   }
   function railEval(tiles, rr) {
     const Wd = CB.World, R = C.RAIL[rr];
@@ -216,6 +374,7 @@
     const k = keyName(e);
     const S = CB.Sim;
     if (k === 'r' && Tl.tool.type === 'svc') { Tl.rot = (Tl.rot + 1) % 4; Tl.needHover = true; return; }
+    if (k === 'c' && Tl.tool.type === 'road') { Tl.setRoadMode(Tl.roadMode === 'curve' ? 'straight' : 'curve'); return; }
     CB.Gfx.cam.keys[k] = true;
     if (e.key === 'Shift') CB.Gfx.cam.keys.Shift = true;
     if (k === ' ') { e.preventDefault(); CB.UI.setSpeed(S.speed === 0 ? (CB.UI.lastSpeed || 1) : 0); }
@@ -224,6 +383,7 @@
     else if (k === '3') CB.UI.setSpeed(4);
     else if (k === 'Escape') {
       if (Tl.tool.type === 'line' && Tl.lineStops.length) { Tl.lineStops = []; refreshLinePreview(); }
+      else if (Tl.tool.type === 'road' && Tl.curve) Tl.curve = null;
       else if (Tl.tool.type !== 'select') Tl.setTool(null);
       else { CB.UI.select(null); CB.UI.closePanels(); }
     }
@@ -233,13 +393,15 @@
   }
   function onRightClick() {
     if (Tl.tool.type === 'line' && Tl.lineStops.length) { Tl.lineStops.pop(); refreshLinePreview(); }
+    else if (Tl.tool.type === 'road' && Tl.curve) { if (Tl.curve.c) Tl.curve.c = null; else Tl.curve = null; }
     else if (Tl.tool.type !== 'select' && !mouse.moved) Tl.setTool(null);
   }
 
   function onDown() {
     const h = Tl.hover; if (!h || h.i < 0) return;
     const t = Tl.tool.type;
-    if (t === 'road' || t === 'rail' || t === 'zone' || t === 'dezone' || t === 'bulldoze') Tl.drag = { start: h.i };
+    if (t === 'road' && Tl.roadMode === 'curve') return; // curve mode works with clicks
+    if (t === 'road' || t === 'rail' || t === 'zone' || t === 'dezone' || t === 'bulldoze') Tl.drag = { start: h.i, p: { x: h.x, z: h.z } };
     if (t === 'path') Tl.drag = { start: h.i, f: fcellAt(h) };
   }
   function onUp() {
@@ -257,13 +419,19 @@
       CB.UI.select(null);
       return;
     }
+    if (t.type === 'road' && Tl.roadMode === 'curve') {
+      if (!h || h.i < 0 || mouse.moved) return;
+      const p = { x: h.x, z: h.z };
+      if (!Tl.curve) { Tl.curve = { a: p }; CB.UI.sfx('click'); return; }
+      if (!Tl.curve.c) { Tl.curve.c = p; CB.UI.sfx('click'); return; }
+      const plan = planRoad(t.rt, Tl.curve.a, p, Tl.curve.c);
+      if (buildRoad(plan, t.rt)) Tl.curve = { a: p }; // keep drawing from the end, like a pen tool
+      return;
+    }
     if (t.type === 'road' && Tl.drag) {
-      const strips = roadStrips(Tl.drag.start, h ? h.i : Tl.drag.start, t.rt);
-      const ev = roadEval(strips, t.rt);
-      Tl.drag = null; clearPreview();
-      if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return; }
-      if (!spend(ev.cost)) return;
-      if (placeRoad(strips, t.rt)) { S.networkChanged(); CB.UI.sfx('build'); }
+      const plan = planRoad(t.rt, Tl.drag.p, h ? { x: h.x, z: h.z } : Tl.drag.p);
+      Tl.drag = null;
+      buildRoad(plan, t.rt);
       return;
     }
     if (t.type === 'path' && Tl.drag) {
@@ -329,15 +497,24 @@
       return;
     }
     if (t.type === 'stop') {
-      const why = CB.Transit.canPlaceStop(t.st, h.i);
+      const side = stopSide(t.st, h);
+      const why = CB.Transit.canPlaceStop(t.st, h.i, side);
       if (why) { CB.UI.toast(why, 'bad'); return; }
       const cost = stopCost(t.st, h.i);
       if (!spend(cost)) return;
-      CB.Transit.addStop(t.st, h.i);
+      CB.Transit.addStop(t.st, h.i, null, side);
       CB.UI.sfx('build');
       return;
     }
-    if (t.type === 'line') { lineClick(h.i); return; }
+    if (t.type === 'line') { lineClick(h); return; }
+    if (t.type === 'lineEdit') { lineEditClick(h); return; }
+  }
+  // which side of the road the cursor is on (rail stations have no side)
+  function stopSide(type, h) { return type === 'rail' || !CB.World.road[h.i] ? undefined : CB.Transit.sideAt(h.i, h.x, h.z); }
+  // the stop under the cursor: the one on the hovered side first, then any on that tile
+  function stopUnder(type, h) {
+    const X = CB.Transit, side = stopSide(type, h);
+    return X.stopAtTile(h.i, type, side) || null;
   }
   function stopCost(type, i) {
     if (type !== 'rail') return C.TRANSIT[type].stopCost;
@@ -370,12 +547,7 @@
       else if (Wd.pmask[i]) killPath(i);
       else if (X.stops.some(s => s.tile === i)) killStops(i);
       else if (Wd.rail[i]) killRail(i);
-      else if (Wd.road[i]) {
-        // remove the whole cross-section of a dual carriageway
-        const p = Wd.rpart[i], rt = Wd.road[i];
-        killRoad(i);
-        if (p) { const j = Wd.neighbor(i, p - 1); if (j >= 0 && Wd.road[j] === rt && Wd.jcl[j] < 0) killRoad(j); }
-      }
+      else if (Wd.road[i]) { const seg = roadSegment(i); for (const t of seg) killRoad(t); markAround(seg); } // the whole segment, both carriageways
     } else {
       for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
         if (!U.inPlay(x, y)) continue;
@@ -392,15 +564,42 @@
     if (any) { CB.Meshes.updateZoneTex(false); CB.UI.sfx('demolish'); }
   }
 
+  // the stretch of road between two intersections (both strips of a dual carriageway)
+  function roadSegment(i) {
+    const Wd = CB.World;
+    if (!Wd.road[i]) return [];
+    if (Wd.jcl[i] >= 0) return [i];
+    const out = [i], seen = new Set(out), q = [i];
+    const add = j => { if (j >= 0 && !seen.has(j) && Wd.road[j] && Wd.jcl[j] < 0 && j !== Wd.outIn && j !== Wd.outOut) { seen.add(j); out.push(j); q.push(j); } };
+    while (q.length && out.length < 3000) {
+      const t = q.pop();
+      for (let d = 0; d < 4; d++) {
+        if (!Wd.linked(t, d)) continue;
+        const j = Wd.neighbor(t, d);
+        if (C.ROADS[Wd.road[t]].w !== 2 && Wd.isUturnLink(t, d)) continue;
+        add(j);
+      }
+      // partner strip of a dual carriageway
+      const R = C.ROADS[Wd.road[t]];
+      if (R.w === 2) for (let d = 0; d < 4; d++) {
+        if (d % 2 === Wd.rdir[t] % 2) continue;
+        const j = Wd.neighbor(t, d);
+        if (j >= 0 && Wd.road[j] === Wd.road[t] && Wd.rdir[j] === (Wd.rdir[t] + 2) % 4) add(j);
+      }
+    }
+    return out;
+  }
+  Tl.roadSegment = roadSegment;
+
   // ---------------- transit lines ----------------
-  function lineClick(i) {
-    const X = CB.Transit, type = Tl.tool.lt;
-    let s = X.stopAtTile(i, type);
+  function lineClick(h) {
+    const X = CB.Transit, type = Tl.tool.lt, i = h.i, side = stopSide(type, h);
+    let s = stopUnder(type, h);
     if (!s) {
-      const why = X.canPlaceStop(type, i);
+      const why = X.canPlaceStop(type, i, side);
       if (why) { CB.UI.toast(why, 'bad'); return; }
       if (!spend(stopCost(type, i))) return;
-      s = X.addStop(type, i);
+      s = X.addStop(type, i, null, side);
     }
     const L = Tl.lineStops;
     if (L.length >= 2 && s.id === L[0]) { finishLine(); return; }
@@ -408,12 +607,33 @@
     // check that the new stop is reachable
     if (L.length) {
       const prev = X.stopById(L[L.length - 1]);
-      const p = CB.Transit.segPath(type, prev.tile, s.tile);
+      const p = CB.Transit.segPath(type, prev, s);
       if (!p) { CB.UI.toast(type === 'rail' ? 'No track connects these stations' : type === 'tram' ? 'No tram track connects these stops' : 'No road connects these stops (check one-way streets)', 'bad'); return; }
     }
     L.push(s.id);
     CB.UI.sfx('click');
     refreshLinePreview();
+  }
+  // edit an existing line: click a stop on it to drop it, click anywhere else on a road to add a stop there
+  function lineEditClick(h) {
+    const X = CB.Transit, l = X.lineById(Tl.tool.line); if (!l) { Tl.setTool(null); return; }
+    const type = l.type, side = stopSide(type, h);
+    let s = stopUnder(type, h);
+    if (s && l.stops.includes(s.id)) {
+      if (!X.removeFromLine(l, s)) { CB.UI.toast('A line needs at least two stops', 'bad'); return; }
+      CB.UI.toast(s.name + ' removed from ' + l.name, 'good'); CB.UI.sfx('click');
+    } else {
+      if (!s) {
+        const why = X.canPlaceStop(type, h.i, side);
+        if (why) { CB.UI.toast(why, 'bad'); return; }
+        if (!spend(stopCost(type, h.i))) return;
+        s = X.addStop(type, h.i, null, side);
+      }
+      if (!X.insertStop(l, s)) { CB.UI.toast('That stop cannot be reached from this line', 'bad'); return; }
+      CB.UI.toast(s.name + ' added to ' + l.name, 'good'); CB.UI.sfx('build');
+    }
+    X.showRibbons(true, l);
+    CB.UI.refreshTransit();
   }
   function finishLine() {
     const X = CB.Transit;
@@ -425,12 +645,11 @@
     else { CB.UI.toast(l.name + ' created with ' + l.stops.length + ' stops.', 'good'); CB.UI.sfx('build'); }
     CB.UI.refreshTransit();
   }
-  function refreshLinePreview(hoverTile) {
+  function refreshLinePreview(hoverStop) {
     const Mx = CB.Meshes, X = CB.Transit, Wd = CB.World;
     if (Tl.previewRibbon) { Mx.lineGroup.remove(Tl.previewRibbon); Tl.previewRibbon.geometry.dispose(); Tl.previewRibbon = null; }
-    const L = Tl.lineStops.map(id => X.stopById(id)).filter(Boolean);
-    const tiles = L.map(s => s.tile);
-    if (hoverTile !== undefined && hoverTile >= 0 && tiles.length) tiles.push(hoverTile);
+    const tiles = Tl.lineStops.map(id => X.stopById(id)).filter(Boolean);
+    if (hoverStop && tiles.length) tiles.push(hoverStop);
     if (tiles.length < 2) return;
     const pts = [];
     const type = Tl.tool.lt;
@@ -450,7 +669,8 @@
   // test hook: perform a tool action from tile a to tile b as if the player dragged
   Tl._simulate = function (tool, a, b) {
     Tl.setTool(tool);
-    const mk = i => ({ i, tx: U.tx(i), ty: U.ty(i), x: (U.tx(i) + 0.5) * T, z: (U.ty(i) + 0.5) * T });
+    const corner = tool.type === 'road' && isDual(tool.rt) ? 0.01 : 0.5;
+    const mk = i => ({ i, tx: U.tx(i), ty: U.ty(i), x: (U.tx(i) + corner) * T, z: (U.ty(i) + corner) * T });
     Tl.hover = mk(a);
     mouse.moved = false;
     onDown();
@@ -458,6 +678,9 @@
     onUp();
   };
 
+  // test hook: build a road from world point a to b, optionally bending through c
+  Tl._road = function (rt, a, b, c) { return buildRoad(planRoad(rt, a, b, c), rt); };
+  Tl._plan = planRoad;
   Tl._simulateAt = function (tool, ax, az, bx, bz) {
     Tl.setTool(tool);
     const mk = (x, z) => { const tx = Math.floor(x / T), ty = Math.floor(z / T); return { i: U.idx(tx, ty), tx, ty, x, z }; };
@@ -473,14 +696,18 @@
       Tl.hover = G.pick(mouse.x, mouse.y);
     }
     const h = Tl.hover, t = Tl.tool;
-    if (!h || h.i < 0) { if (t.type !== 'select') { Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null); } Tl.tip = ''; return; }
+    if (!h || h.i < 0) { if (t.type !== 'select') { Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null); Mx.setGhostModel(null); } Tl.tip = ''; return; }
     if (t.type === 'road') {
-      const strips = roadStrips(Tl.drag ? Tl.drag.start : h.i, h.i, t.rt);
+      const hp = { x: h.x, z: h.z }, cv = Tl.roadMode === 'curve';
+      const plan = cv ? (Tl.curve ? planRoad(t.rt, Tl.curve.a, hp, Tl.curve.c) : planRoad(t.rt, hp, hp)) : planRoad(t.rt, Tl.drag ? Tl.drag.p : hp, hp);
+      const strips = plan.strips;
       const ev = roadEval(strips, t.rt);
-      Mx.setGhostTiles(ev.list);
+      Mx.setGhostTiles(ev.list.map(g => Object.assign(g, { h: 0.12, road: true })));
       Mx.setFlowArrows(strips, t.rt);
-      const R = C.ROADS[t.rt];
-      Tl.tip = R.name + ' · ' + (Tl.drag ? strips[0].tiles.length + ' tiles · ' : '') + U.money(ev.cost) + (ev.bad ? ' · ' + ev.bad : (R.oneway ? ' · drag in the direction of travel' : ''));
+      if (cv && Tl.curve && Tl.curve.c) Mx.setRing(Tl.curve.c.x, Tl.curve.c.z, 2.2); else Mx.setRing(null);
+      const R = C.ROADS[t.rt], bad = plan.bad || ev.bad;
+      const hint = cv ? (!Tl.curve ? 'click the start' : !Tl.curve.c ? 'click where the road should bend' : 'click the end') : (R.oneway ? 'drag in the direction of travel' : 'drag to build');
+      Tl.tip = R.name + ' · ' + (strips.length && strips[0].tiles.length > 1 ? strips[0].tiles.length + ' tiles · ' : '') + U.money(ev.cost) + ' · ' + (bad || hint) + ' · C: ' + (cv ? 'straight' : 'curved') + ' mode';
     } else if (t.type === 'path') {
       const cells = Tl.drag ? lPathF(Tl.drag.f, fcellAt(h)) : [fcellAt(h)];
       const ev = pathEval(cells, t.pk);
@@ -505,9 +732,16 @@
       if (t.type === 'bulldoze') {
         const bid = Wd.bld[h.i];
         const b = bid && S.buildings.get(bid);
+        Mx.setGhostTiles([]);
         if (b && !Tl.drag) {
           Mx.setGhostBox(b.x * T, b.y * T, (b.x + b.fw) * T, (b.y + b.fh) * T, b.baseY - 0.5, 3, false);
           Tl.tip = 'Demolish ' + b.name;
+        } else if (!Tl.drag && Wd.road[h.i] && !Wd.pmask[h.i] && !CB.Transit.stops.some(s => s.tile === h.i) && !Wd.rail[h.i]) {
+          Mx.setGhostBox(null);
+          const seg = roadSegment(h.i);
+          Mx.setGhostTiles(seg.map(i => ({ i, ok: false, h: 0.5 })));
+          G.uni.uBrushOn.value = 0;
+          Tl.tip = 'Click to remove this ' + (Wd.jcl[h.i] >= 0 ? 'intersection tile' : 'road segment (' + seg.length + ' tiles)') + ' · drag to clear an area';
         } else { Mx.setGhostBox(null); Tl.tip = Tl.drag ? 'Release to demolish everything in the area' : 'Click or drag to demolish'; }
       } else {
         const z = Wd.zonable[h.i];
@@ -516,23 +750,38 @@
     } else if (t.type === 'svc') {
       const sv = C.SERVICES[t.key];
       const lot = S.serviceLot(t.key, h.tx, h.ty, Tl.rot);
-      const y = Math.max(Wd.groundH((lot.x + lot.fw / 2) * T, (lot.y + lot.fh / 2) * T), 0);
-      Mx.setGhostBox(lot.x * T, lot.y * T, (lot.x + lot.fw) * T, (lot.y + lot.fh) * T, y, 9, lot.ok);
+      let y = 0; for (let yy = lot.y; yy < lot.y + lot.fh; yy++) for (let xx = lot.x; xx < lot.x + lot.fw; xx++) if (U.inWorld(xx, yy)) y = Math.max(y, Wd.tileAvg(U.idx(xx, yy)));
+      Mx.setGhostBuilding(t.key, sv.size[0], sv.size[1], lot.dir !== undefined ? lot.dir : Tl.rot, lot.x * T, lot.y * T, Math.max(y, 0.1), lot.ok);
+      Mx.setGhostBox(lot.x * T, lot.y * T, (lot.x + lot.fw) * T, (lot.y + lot.fh) * T, Math.max(y, 0.1) - 0.3, 0.45, lot.ok);
       Mx.setRing(null);
       Tl.tip = sv.name + ' · ' + U.money(sv.cost) + (lot.ok ? ' · R to rotate' : ' · ' + lot.reason);
     } else if (t.type === 'stop') {
-      const why = CB.Transit.canPlaceStop(t.st, h.i);
-      Mx.setGhostTiles([{ i: h.i, ok: !why, y: t.st === 'rail' && Wd.rail[h.i] === 1 ? Wd.deckH(h.x, h.z) : undefined, h: 3 }]);
-      Tl.tip = why || (({ bus: 'Bus stop', tram: 'Streetcar stop', rail: 'Station' })[t.st] + ' · ' + U.money(stopCost(t.st, h.i)));
-    } else if (t.type === 'line') {
-      const X = CB.Transit;
-      const s = X.stopAtTile(h.i, t.lt);
-      if (Tl._lastHoverTile !== h.i) { Tl._lastHoverTile = h.i; refreshLinePreview(h.i); }
-      Mx.setGhostTiles([{ i: h.i, ok: !!s || !X.canPlaceStop(t.lt, h.i), h: 2 }]);
-      const L = Tl.lineStops;
-      if (s && L.length >= 2 && s.id === L[0]) Tl.tip = 'Click to finish the line';
-      else if (s) Tl.tip = s.name + (L.length ? ' · add to line' : ' · start line here');
-      else Tl.tip = X.canPlaceStop(t.lt, h.i) || ('New ' + (t.lt === 'rail' ? 'station' : 'stop') + ' · ' + U.money(stopCost(t.lt, h.i)));
+      const side = stopSide(t.st, h);
+      const why = CB.Transit.canPlaceStop(t.st, h.i, side);
+      if (t.st === 'rail') { Mx.setGhostTiles([{ i: h.i, ok: !why, y: Wd.rail[h.i] === 1 ? Wd.deckH(h.x, h.z) : undefined, h: 3 }]); Mx.setGhostStop(Wd.rail[h.i] ? { type: 'rail', tile: h.i } : null, !why); }
+      else { Mx.setGhostTiles([]); Mx.setGhostStop(Wd.road[h.i] ? { type: t.st, tile: h.i, side } : null, !why); }
+      const sn = ['north', 'east', 'south', 'west'];
+      Tl.tip = why || (({ bus: 'Bus stop', tram: 'Streetcar stop', rail: 'Station' })[t.st] + (side !== undefined ? ' · ' + sn[side] + ' side' : '') + ' · ' + U.money(stopCost(t.st, h.i)) + (side !== undefined ? ' · move across the road for the other side' : ''));
+    } else if (t.type === 'line' || t.type === 'lineEdit') {
+      const X = CB.Transit, lt = t.type === 'line' ? t.lt : (X.lineById(t.line) || {}).type;
+      if (!lt) { Tl.setTool(null); return; }
+      const side = stopSide(lt, h), s = stopUnder(lt, h);
+      const why = s ? null : X.canPlaceStop(lt, h.i, side);
+      if (t.type === 'line') {
+        const key = h.i + ':' + side;
+        if (Tl._lastHoverTile !== key) { Tl._lastHoverTile = key; refreshLinePreview(s || (Wd.road[h.i] || Wd.rail[h.i] ? { tile: h.i, side } : null)); }
+      }
+      Mx.setGhostTiles(s ? [{ i: h.i, ok: true, h: 0.4, col: [0.4, 0.8, 1] }] : []);
+      Mx.setGhostStop(!s && !why ? (lt === 'rail' ? { type: 'rail', tile: h.i } : { type: lt, tile: h.i, side }) : null, true);
+      if (t.type === 'lineEdit') {
+        const l = X.lineById(t.line);
+        Tl.tip = s ? (l.stops.includes(s.id) ? 'Click to remove ' + s.name + ' from ' + l.name : 'Click to add ' + s.name + ' to ' + l.name) : (why || 'Click to add a new stop here · ' + U.money(stopCost(lt, h.i))) + ' · Esc when done';
+      } else {
+        const L = Tl.lineStops;
+        if (s && L.length >= 2 && s.id === L[0]) Tl.tip = 'Click to finish the line';
+        else if (s) Tl.tip = s.name + (L.length ? ' · add to line' : ' · start line here');
+        else Tl.tip = why || ('New ' + (lt === 'rail' ? 'station' : 'stop') + ' · ' + U.money(stopCost(lt, h.i)));
+      }
     } else {
       Tl.tip = '';
       if (h.i >= 0) {

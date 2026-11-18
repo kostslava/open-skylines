@@ -215,7 +215,8 @@
     if (ms >= 6) { for (let x = x0 + 4; x <= x0 + 46; x++) S.setRail(U2.idx(x, r - 7), 1); S.networkChanged(); }
     const X = CB.Transit;
     if (ms >= 3) {
-      const ids = [[x0 + 12, r + 1], [x0 + 24, r + 1], [x0 + 36, r + 1], [x0 + 36, r - 8], [x0 + 24, r - 8], [x0 + 12, r - 8]].map(([x, y]) => (X.stopAtTile(I(x, y), 'bus') || X.addStop('bus', I(x, y))).id);
+      // eastbound along the avenue (south kerb), westbound back along the street to the north (north kerb)
+      const ids = [[x0 + 9, r + 1, 2], [x0 + 21, r + 1, 2], [x0 + 33, r + 1, 2], [x0 + 33, r - 8, 0], [x0 + 21, r - 8, 0], [x0 + 9, r - 8, 0]].map(([x, y, sd]) => (X.stopAtTile(I(x, y), 'bus', sd) || X.addStop('bus', I(x, y), null, sd)).id);
       X.createLine('bus', ids);
     }
     if (ms >= 6) { const ids = [x0 + 6, x0 + 25, x0 + 44].map(x => X.addStop('rail', I(x, r - 7)).id); X.createLine('rail', ids); X.setVehicles(X.lines[X.lines.length - 1], 2); }

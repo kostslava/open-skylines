@@ -219,7 +219,9 @@
     const tab = cat.tabs ? UI.tab[key] : null;
     const items = catItems(key, tab);
     const p = $('palette');
-    const tabs = cat.tabs ? `<div class="ptabs" role="tablist">${cat.tabs.map(t => `<button role="tab" class="ptab ${t[0] === tab ? 'on' : ''} ${tabLocked(cat, t[0]) ? 'dim' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('')}</div>` : '';
+    const roadMode = key === 'roads' && tab !== 'junction' && tab !== 'path' || key === 'transit' && tab === 'tram';
+    const modeSw = roadMode ? `<div class="pmode" title="C toggles"><button data-mode="straight" class="${CB.Tools.roadMode === 'straight' ? 'on' : ''}">Straight</button><button data-mode="curve" class="${CB.Tools.roadMode === 'curve' ? 'on' : ''}">Curved</button></div>` : '';
+    const tabs = cat.tabs ? `<div class="ptabs" role="tablist">${cat.tabs.map(t => `<button role="tab" class="ptab ${t[0] === tab ? 'on' : ''} ${tabLocked(cat, t[0]) ? 'dim' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('')}${modeSw}</div>` : '';
     p.innerHTML = tabs + `<div class="cards">` + items.map((it, k) => {
       const locked = !S.unlocked(it.unlock);
       return `<button class="card ${locked ? 'locked' : ''}" data-k="${k}" title="${(it.name + (it.desc ? ' — ' + it.desc : '')).replace(/"/g, '&quot;')}">
@@ -229,6 +231,7 @@
     }).join('') + `</div>`;
     p.dataset.cat = key; p.dataset.tab = tab || '';
     p.querySelectorAll('[data-tab]').forEach(el => el.addEventListener('click', () => { UI.tab[key] = el.dataset.tab; CB.Tools.setTool(null); renderPalette(); }));
+    p.querySelectorAll('[data-mode]').forEach(el => el.addEventListener('click', () => CB.Tools.setRoadMode(el.dataset.mode)));
     p.querySelectorAll('.card').forEach(el => el.addEventListener('click', () => {
       const it = items[+el.dataset.k];
       if (!it) return;
@@ -240,6 +243,7 @@
     markPalette();
     refreshBadges();
   }
+  UI.onRoadMode = function () { document.querySelectorAll('#palette [data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === CB.Tools.roadMode)); };
   function markPalette() {
     const p = $('palette');
     if (!UI.cat || p.hidden && !p.children.length) return;
@@ -249,6 +253,7 @@
     p.querySelectorAll('.card').forEach(el => { const it = items[+el.dataset.k]; el.classList.toggle('on', !!it && JSON.stringify(it.tool) === t); });
   }
   UI.onToolChange = function () {
+    if (UI.panel === 'transit' && (CB.Tools.tool.type === 'lineEdit') !== !!UI._editing) { UI._editing = CB.Tools.tool.type === 'lineEdit'; UI.refreshTransit(); }
     markPalette();
     $('bdz').classList.toggle('on', CB.Tools.tool.type === 'bulldoze');
     if (CB.Tools.tool.type === 'bulldoze' && UI.cat) { UI.cat = null; $('palette').hidden = true; $('palette').innerHTML = ''; document.querySelectorAll('#toolbar [data-cat]').forEach(b => b.classList.remove('on')); }
@@ -396,6 +401,7 @@
 
   // ---------------- side panels ----------------
   UI.openPanel = function (key) {
+    if (UI.panel === 'transit' && key !== 'transit') { const tt = CB.Tools.tool.type; CB.Transit.showRibbons(UI.overlay === 'transit' || ['line', 'stop', 'rail', 'lineEdit'].includes(tt), tt === 'lineEdit' ? CB.Transit.lineById(CB.Tools.tool.line) : null); }
     UI.panel = key;
     document.querySelectorAll('#menu [data-panel]').forEach(b => b.classList.toggle('on', b.dataset.panel === key));
     const p = $('sidePanel');
@@ -475,35 +481,63 @@
   PANELS.transit = function (p) {
     const X = CB.Transit, S = CB.Sim;
     const busOK = S.unlocked(C.TRANSIT.bus.unlock), railOK = S.unlocked(C.TRANSIT.rail.unlock), tramOK = S.unlocked(C.TRANSIT.tram.unlock);
-    p.innerHTML = head('Public transport', 'Buses and trains take cars off the road') +
+    p.innerHTML = head('Public transport', 'Every line, its vehicles, colour and fares') +
       `<div class="row"><span>Riders last month</span><b data-v="riders"></b></div>
        <div class="row"><span>Trips by transit</span><b data-v="share"></b></div>
        <div class="row"><span>Waiting at stops</span><b data-v="waiting"></b></div>
        <div class="btns" style="margin-top:8px"><button class="btn primary" id="nbus" ${busOK ? '' : 'disabled'}>New bus line</button><button class="btn primary" id="ntram" ${tramOK ? '' : 'disabled'}>New streetcar line</button><button class="btn primary" id="nrail" ${railOK ? '' : 'disabled'}>New metro line</button></div>
-       <div class="sec" id="lineList"></div>`;
+       <div class="sec tlines" id="lineList"></div>`;
     bindClose(p, () => UI.openPanel(null));
     p.querySelector('#nbus').onclick = () => { UI.tab.transit = 'bus'; UI.openCat('transit'); CB.Tools.setTool({ type: 'line', lt: 'bus' }); };
     p.querySelector('#ntram').onclick = () => { UI.tab.transit = 'tram'; UI.openCat('transit'); CB.Tools.setTool({ type: 'line', lt: 'tram' }); };
     p.querySelector('#nrail').onclick = () => { UI.tab.transit = 'metro'; UI.openCat('transit'); CB.Tools.setTool({ type: 'line', lt: 'rail' }); };
+    X.showRibbons(true);
     renderLines(p);
     updTransit(p);
   };
+  const TYPE_NAME = { bus: 'Bus', tram: 'Streetcar', rail: 'Metro' };
   function renderLines(p) {
     const X = CB.Transit, L = p.querySelector('#lineList'); if (!L) return;
-    L.innerHTML = X.lines.length ? X.lines.map(l => `<div class="line ${l.broken ? 'broken' : ''}" data-l="${l.id}"><span class="dot" style="background:${l.color}"></span>
-      <div><div class="nm">${l.name}</div><div class="meta" data-v="lm_${l.id}"></div></div>
-      <div class="ctl"><button data-a="-" title="Fewer vehicles">−</button><b class="num" data-v="lv_${l.id}" style="min-width:18px;text-align:center"></b><button data-a="+" title="More vehicles">+</button><button data-a="v" title="Show on map">◎</button><button data-a="x" title="Delete line">×</button></div></div>`).join('')
-      : '<div class="sub">No lines yet. Choose a line tool, click stops in order, and click the first stop again to close the loop.</div>';
-    L.querySelectorAll('.line').forEach(el => {
+    const esc = t => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    L.innerHTML = X.lines.length ? X.lines.map(l => {
+      const editing = CB.Tools.tool.type === 'lineEdit' && CB.Tools.tool.line === l.id;
+      return `<div class="tline ${l.broken ? 'broken' : ''} ${editing ? 'editing' : ''}" data-l="${l.id}">
+      <div class="tl-head"><input type="color" value="${l.color}" data-a="col" title="Line colour"><input class="tl-name" value="${esc(l.name)}" data-a="name" maxlength="28"><span class="chip">${TYPE_NAME[l.type]}</span><button class="ib" data-a="v" title="Show on the map">◎</button><button class="ib" data-a="x" title="Delete line">×</button></div>
+      <div class="tl-grid">
+        <span>${l.type === 'rail' ? 'Trains' : l.type === 'tram' ? 'Streetcars' : 'Buses'}</span><div class="stepper"><button data-a="-">−</button><b data-v="lv_${l.id}"></b><button data-a="+">+</button></div>
+        <span>Ticket price</span><div class="stepper"><button data-a="f-">−</button><b data-v="lf_${l.id}"></b><button data-a="f+">+</button></div>
+        <span>Riders</span><b data-v="lr_${l.id}"></b>
+        <span>Every</span><b data-v="lh_${l.id}"></b>
+        <span>Upkeep</span><b data-v="lu_${l.id}"></b>
+      </div>
+      <div class="tl-stops">${l.stops.map(id => { const s = X.stopById(id); return s ? `<button class="sstop" data-s="${s.id}" title="Show ${esc(s.name)}"><i style="background:${l.color}"></i>${esc(s.name)}</button>` : ''; }).join('<span class="arr">›</span>')}</div>
+      <div class="btns"><button class="btn ${editing ? 'primary' : ''}" data-a="edit">${editing ? 'Done editing' : 'Edit route'}</button></div>
+      ${l.broken ? '<div class="sub bad">Broken route: a stop can no longer be reached. Edit the route or fix the roads.</div>' : ''}
+    </div>`; }).join('')
+      : '<div class="sub">No lines yet. Pick a line tool, click stops in order (each stop sits on the side of the road you click), then click the first stop again to close the loop.</div>';
+    L.querySelectorAll('.tline').forEach(el => {
       const l = X.lineById(+el.dataset.l);
-      el.querySelectorAll('[data-a]').forEach(b => b.onclick = () => {
+      el.querySelectorAll('[data-a]').forEach(b => {
         const a = b.dataset.a;
-        if (a === '+') X.setVehicles(l, l.vehicles + 1);
-        else if (a === '-') X.setVehicles(l, l.vehicles - 1);
-        else if (a === 'x') { X.deleteLine(l); renderLines(p); return; }
-        else if (a === 'v') { const s = X.stopById(l.stops[0]); if (s) CB.Gfx.focus((U.tx(s.tile) + 0.5) * C.TILE, (U.ty(s.tile) + 0.5) * C.TILE, 500); X.showRibbons(X.ribbonsOn, l); }
-        updTransit(p);
+        if (a === 'col') { b.oninput = () => { X.setColor(l, b.value); el.querySelectorAll('.sstop i').forEach(i => i.style.background = b.value); }; return; }
+        if (a === 'name') { b.onchange = () => { l.name = b.value.trim() || l.name; UI.refreshTransit(); }; b.onkeydown = e => e.stopPropagation(); return; }
+        b.onclick = () => {
+          if (a === '+') X.setVehicles(l, l.vehicles + 1);
+          else if (a === '-') X.setVehicles(l, l.vehicles - 1);
+          else if (a === 'f+') X.setFare(l, X.fareOf(l) + 0.5);
+          else if (a === 'f-') X.setFare(l, X.fareOf(l) - 0.5);
+          else if (a === 'x') { if (CB.Tools.tool.line === l.id) CB.Tools.setTool(null); X.deleteLine(l); renderLines(p); return; }
+          else if (a === 'v') { const s = X.stopById(l.stops[0]); if (s) CB.Gfx.focus((U.tx(s.tile) + 0.5) * C.TILE, (U.ty(s.tile) + 0.5) * C.TILE, 500); X.showRibbons(true, l); }
+          else if (a === 'edit') {
+            const on = CB.Tools.tool.type === 'lineEdit' && CB.Tools.tool.line === l.id;
+            CB.Tools.setTool(on ? null : { type: 'lineEdit', line: l.id });
+            if (!on) UI.toast('Editing ' + l.name + ': click a stop on it to remove it, click a road to add a stop. Esc when done.', 'good');
+            renderLines(p); return;
+          }
+          updTransit(p);
+        };
       });
+      el.querySelectorAll('[data-s]').forEach(b => b.onclick = () => { const s = X.stopById(+b.dataset.s); if (s) { CB.Gfx.focus((U.tx(s.tile) + 0.5) * C.TILE, (U.ty(s.tile) + 0.5) * C.TILE, 260); UI.selectStop(s); } });
     });
   }
   UI.refreshTransit = function () { if (UI.panel === 'transit') renderLines($('sidePanel')); };
@@ -515,7 +549,10 @@
     sv(p, 'waiting', U.num(X.stats.waiting));
     for (const l of X.lines) {
       sv(p, 'lv_' + l.id, l.vehicles);
-      sv(p, 'lm_' + l.id, l.broken ? 'Broken route: reconnect the stops' : `${l.stops.length} stops · ${U.num(l.ridersMonth)} riders this month · ${U.money(l.vehicles * C.TRANSIT[l.type].upkeep)}/mo`);
+      sv(p, 'lf_' + l.id, '$' + X.fareOf(l).toFixed(2));
+      sv(p, 'lr_' + l.id, U.num(l.ridersMonth) + ' this month · ' + U.num(l.ridersLast || 0) + ' last');
+      sv(p, 'lh_' + l.id, l.loopTime ? Math.max(1, Math.round(l.loopTime / l.vehicles * 60 / C.HOUR_SEC)) + ' min' : '–');
+      sv(p, 'lu_' + l.id, U.money(l.vehicles * C.TRANSIT[l.type].upkeep) + '/mo');
     }
   }
 
@@ -595,7 +632,7 @@
       <div class="sec"><div class="lbl">Controls</div><div class="keys">
         <kbd>W A S D</kbd><span>Move the camera (Shift for faster)</span><kbd>Q / E</kbd><span>Rotate</span><kbd>R / F</kbd><span>Zoom in and out</span><kbd>T / G</kbd><span>Tilt</span>
         <kbd>Right-drag</kbd><span>Rotate and tilt</span><kbd>Middle-drag</kbd><span>Pan</span><kbd>Wheel</kbd><span>Zoom</span>
-        <kbd>Space</kbd><span>Pause</span><kbd>1 2 3</kbd><span>Game speed</span><kbd>B</kbd><span>Bulldoze</span><kbd>R</kbd><span>Rotate a building before placing it</span><kbd>Esc</kbd><span>Cancel tool</span></div></div>`;
+        <kbd>Space</kbd><span>Pause</span><kbd>1 2 3</kbd><span>Game speed</span><kbd>B</kbd><span>Bulldoze</span><kbd>C</kbd><span>Straight or curved roads</span><kbd>R</kbd><span>Rotate a building before placing it</span><kbd>Esc</kbd><span>Cancel tool</span></div></div>`;
     bindClose(p, () => UI.openPanel(null));
     p.querySelectorAll('select').forEach(sel => sel.onchange = () => {
       const k = sel.id.slice(3);

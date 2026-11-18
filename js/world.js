@@ -189,6 +189,95 @@
     }
     Wd.link[i] = 0;
   };
+  Wd.unlinkTiles = function (a, b) {
+    const dx = U.tx(b) - U.tx(a), dy = U.ty(b) - U.ty(a);
+    if (Math.abs(dx) + Math.abs(dy) !== 1) return;
+    const d = dy < 0 ? 0 : dx > 0 ? 1 : dy > 0 ? 2 : 3;
+    Wd.link[a] &= ~(1 << d); Wd.link[b] &= ~(1 << ((d + 2) % 4));
+  };
+  // the two link directions of a plain corner tile (exactly two perpendicular links, not a junction), or null
+  Wd.cornerLinks = function (i) {
+    if (!Wd.road[i] || Wd.jcl[i] >= 0) return null;
+    const m = Wd.roadMask(i); let a = -1, b = -1, n = 0;
+    for (let d = 0; d < 4; d++) if (m & (1 << d)) { n++; if (a < 0) a = d; else b = d; }
+    if (n !== 2 || (a + b) % 2 === 0) return null;
+    return [a, b];
+  };
+  // the two links of a plain road tile in the middle of a chain (not a junction, not a dead end), or null
+  Wd.links2 = function (i) {
+    if (!Wd.road[i] || Wd.jcl[i] >= 0) return null;
+    const m = Wd.roadMask(i); let a = -1, b = -1, n = 0;
+    for (let d = 0; d < 4; d++) if (m & (1 << d)) { n++; if (a < 0) a = d; else b = d; }
+    return n === 2 ? [a, b] : null;
+  };
+  const edgeMid = (i, d) => [(U.tx(i) + 0.5 + C.DX[d] * 0.5) * T, (U.ty(i) + 0.5 + C.DY[d] * 0.5) * T];
+  // Smooth road centre lines. A chain of plain tiles is drawn (and driven) along a curve through smoothed
+  // edge crossing points: each crossing is the average of the raw edge midpoints around it, with the window
+  // shrinking near junctions and dead ends so the road still meets them square.
+  const eiCache = new Map(); let eiVer = -1;
+  // walk along a chain from tile t leaving through side d; returns the raw edge midpoints crossed (up to n)
+  function walkEdges(t, d, n) {
+    const out = [];
+    let cur = t, side = d;
+    for (let k = 0; k < n; k++) {
+      const l = Wd.links2(cur); if (!l || !l.includes(side)) break;
+      const nx = Wd.neighbor(cur, side); if (nx < 0) break;
+      out.push(edgeMid(cur, side));
+      const ln = Wd.links2(nx); if (!ln) break;
+      side = ln[0] === (side + 2) % 4 ? ln[1] : ln[0]; cur = nx;
+    }
+    return out;
+  }
+  Wd.edgeInfo = function (i, d) {
+    if (eiVer !== Wd.roadVer) { eiCache.clear(); eiVer = Wd.roadVer; }
+    const key = i * 4 + d, hit = eiCache.get(key); if (hit) return hit;
+    const m = edgeMid(i, d);
+    let res = [m[0], m[1], C.DX[d], C.DY[d]];
+    const j = Wd.neighbor(i, d), li = Wd.links2(i), lj = j >= 0 && Wd.links2(j);
+    if (li && lj && li.includes(d)) {
+      const other = li[0] === d ? li[1] : li[0], jo = lj[0] === (d + 2) % 4 ? lj[1] : lj[0];
+      const back = walkEdges(i, other, 3), fwd = walkEdges(j, jo, 3); // points behind (through i) and ahead (through j)
+      const r = Math.min(back.length, fwd.length, 2);
+      if (r > 0) {
+        let sx = m[0] * 3, sz = m[1] * 3, sw = 3;
+        for (let k = 0; k < r; k++) { const w = 2 - k; sx += (back[k][0] + fwd[k][0]) * w; sz += (back[k][1] + fwd[k][1]) * w; sw += 2 * w; }
+        const rb = Math.min(back.length, 2), rf = Math.min(fwd.length, 2);
+        const a = back[rb - 1], b = fwd[rf - 1];
+        let tx = b[0] - a[0], tz = b[1] - a[1]; const l = Math.hypot(tx, tz) || 1;
+        res = [sx / sw, sz / sw, tx / l, tz / l];
+      }
+    }
+    eiCache.set(key, res);
+    return res;
+  };
+  // is the road through this tile bent (a corner, or part of a curve)?
+  Wd.isBent = function (i) {
+    const l = Wd.links2(i); if (!l) return false;
+    if ((l[0] + l[1]) % 2 === 1) return true;
+    for (const d of l) {
+      const e = Wd.edgeInfo(i, d), m = edgeMid(i, d);
+      if (Math.abs(e[2] - C.DX[d]) + Math.abs(e[3] - C.DY[d]) > 0.02 || Math.abs(e[0] - m[0]) + Math.abs(e[1] - m[1]) > 0.05) return true;
+    }
+    return false;
+  };
+  // path through bent tile i travelling in on din and out through dout, offset sideways (+ = right) by
+  // offIn / offOut. Returns [ex, ez, qx, qz, xx, xz]: a quadratic curve fitted to the smooth centre line.
+  Wd.bendSeg = function (i, din, dout, offIn, offOut) {
+    const a = Wd.edgeInfo(i, (din + 2) % 4), b = Wd.edgeInfo(i, dout);
+    const ax = -a[2], az = -a[3], bx = b[2], bz = b[3];          // travel tangents at entry and exit
+    const ex = a[0] - az * offIn, ez = a[1] + ax * offIn, xx = b[0] - bz * offOut, xz = b[1] + bx * offOut;
+    const L = Math.hypot(xx - ex, xz - ez) / 3;
+    const p1x = ex + ax * L, p1z = ez + az * L, p2x = xx - bx * L, p2z = xz - bz * L;
+    return [ex, ez, (3 * (p1x + p2x) - (ex + xx)) / 4, (3 * (p1z + p2z) - (ez + xz)) / 4, xx, xz];
+  };
+  // a link straight across the median between the two strips of a dual carriageway (a U-turn at a dead end)
+  Wd.isUturnLink = function (a, d) {
+    const b = Wd.neighbor(a, d); if (b < 0) return false;
+    const Ra = C.ROADS[Wd.road[a]], Rb = C.ROADS[Wd.road[b]];
+    if (!Ra || !Rb || Ra.w !== 2 || Rb.w !== 2) return false;
+    if (Wd.linked(a, (d + 2) % 4) || Wd.linked(b, d)) return false; // a street crossing the avenue, not a U-turn
+    return (Wd.rdir[a] % 2) !== (d % 2) && Wd.rdir[b] === (Wd.rdir[a] + 2) % 4;
+  };
   // older saves: roads that end right against another road get joined to it
   Wd.joinDeadEnds = function () {
     for (let i = 0; i < W * W; i++) {
