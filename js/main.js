@@ -175,6 +175,7 @@
     Mx.beginVehicles(); CB.Traffic.render(); CB.Transit.render(); Mx.endVehicles();
     iconT += dt;
     if (iconT > 0.5) { iconT = 0; Mx.setIcons(Game.running ? S.icons : []); }
+    Mx.cullTrees(Gx.camera);
     Gx.render();
     fpsN++; fpsT += dt;
     if (fpsT > 0.5) {

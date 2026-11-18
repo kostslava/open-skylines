@@ -34,6 +34,7 @@
     Wd.pmask = new Uint8Array(W * W);
     Wd.rdir = new Uint8Array(W * W);
     Wd.rpart = new Uint8Array(W * W);
+    Wd.curv = new Uint8Array(W * W); // 1 = part of a road drawn with the curve tool (smoothed)
     Wd.jcl = new Int32Array(W * W).fill(-1);
     Wd.clusters = []; Wd.jcfg = new Map();
     Wd.rail = new Uint8Array(W * W);
@@ -220,21 +221,22 @@
     const out = [];
     let cur = t, side = d;
     for (let k = 0; k < n; k++) {
-      const l = Wd.links2(cur); if (!l || !l.includes(side)) break;
-      const nx = Wd.neighbor(cur, side); if (nx < 0) break;
+      const l = Wd.links2(cur); if (!l || !l.includes(side) || !Wd.curv[cur]) break;
+      const nx = Wd.neighbor(cur, side); if (nx < 0 || !Wd.curv[nx]) break;
       out.push(edgeMid(cur, side));
       const ln = Wd.links2(nx); if (!ln) break;
       side = ln[0] === (side + 2) % 4 ? ln[1] : ln[0]; cur = nx;
     }
     return out;
   }
+  Wd.clearEdgeCache = () => { eiCache.clear(); eiVer = Wd.roadVer; };
   Wd.edgeInfo = function (i, d) {
     if (eiVer !== Wd.roadVer) { eiCache.clear(); eiVer = Wd.roadVer; }
     const key = i * 4 + d, hit = eiCache.get(key); if (hit) return hit;
     const m = edgeMid(i, d);
     let res = [m[0], m[1], C.DX[d], C.DY[d]];
     const j = Wd.neighbor(i, d), li = Wd.links2(i), lj = j >= 0 && Wd.links2(j);
-    if (li && lj && li.includes(d)) {
+    if (li && lj && li.includes(d) && Wd.curv[i] && Wd.curv[j]) {
       const other = li[0] === d ? li[1] : li[0], jo = lj[0] === (d + 2) % 4 ? lj[1] : lj[0];
       const back = walkEdges(i, other, 3), fwd = walkEdges(j, jo, 3); // points behind (through i) and ahead (through j)
       const r = Math.min(back.length, fwd.length, 2);
@@ -252,6 +254,7 @@
   };
   // is the road through this tile bent (a corner, or part of a curve)?
   Wd.isBent = function (i) {
+    if (!Wd.curv[i]) return false; // plain corners stay square; only roads drawn as curves are smoothed
     const l = Wd.links2(i); if (!l) return false;
     if ((l[0] + l[1]) % 2 === 1) return true;
     for (const d of l) {

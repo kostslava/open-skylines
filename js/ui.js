@@ -113,7 +113,7 @@
   const roadItem = (r) => { const R = C.ROADS[r]; return { name: R.name, cost: U.money(R.cost) + '/tile', unlock: R.unlock, tool: { type: 'road', rt: r }, thumb: roadSvg(R), desc: R.desc + (R.w === 2 ? ' Two tiles wide.' : '') }; };
   const img = u => u ? `<img src="${u}" alt="">` : '';
   const svcThumb = k => { const sv = C.SERVICES[k]; return img(CB.Meshes.thumb('svc:' + k, { kind: 'svc', svc: k, w: sv.size[0], d: sv.size[1] })); };
-  const ZONE_SAMPLE = { 1: [1, 2, 3], 2: [2, 2, 3], 3: [2, 2, 4], 4: [1, 2, 3], 5: [2, 2, 3], 6: [2, 3, 3], 7: [2, 2, 3] };
+  const ZONE_SAMPLE = { 1: [1, 2, 3], 2: [2, 2, 3], 3: [2, 2, 4], 4: [1, 2, 3], 5: [2, 2, 3], 6: [2, 3, 3], 7: [2, 2, 3], 8: [2, 2, 4] };
   const zoneThumb = z => { const [w, d, level] = ZONE_SAMPLE[z]; return img(CB.Meshes.thumb('zone:' + z, { kind: 'zone', zone: z, w, d, level, seed: 4242 + z })); };
   const svcItem = (k) => { const sv = C.SERVICES[k]; return { thumb: svcThumb(k), name: sv.name, cost: U.money(sv.cost), unlock: sv.unlock, tool: { type: 'svc', key: k }, icon: SVC_ICON[k] || (sv.cat === 'parks' ? 'park' : sv.cat === 'landmarks' ? 'landmark' : 'police'), col: SVC_COL[sv.cov] || '#555', desc: (sv.desc || '') + ` ${sv.size[0]}×${sv.size[1]} tiles.` }; };
   const CATS = [
@@ -140,7 +140,7 @@
         for (let k = 1; k < C.PATHS.length; k++) { const P = C.PATHS[k]; items.push({ name: P.name, cost: U.money(P.cost) + '/cell', unlock: P.unlock, tool: { type: 'path', pk: k }, thumb: pathSvg(P), desc: P.desc }); }
       } else for (let r = 1; r < C.ROADS.length; r++) if (C.ROADS[r].grp === tab) items.push(roadItem(r));
     } else if (key === 'zones') {
-      for (let z = 1; z < C.ZONES.length; z++) { const Z = C.ZONES[z]; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color, thumb: zoneThumb(z), tint: Z.color }); }
+      for (const z of [1, 2, 8, 3, 4, 5, 6, 7]) { const Z = C.ZONES[z]; if (!Z) continue; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color, thumb: zoneThumb(z), tint: Z.color }); }
       items.push({ name: 'Remove Zoning', cost: 'Free', unlock: 0, tool: { type: 'dezone' }, icon: 'dezone', col: '#555c66' });
     } else if (key === 'transit') {
       const TR = C.TRANSIT;

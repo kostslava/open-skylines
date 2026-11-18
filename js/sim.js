@@ -63,6 +63,7 @@
   S.capOf = function (b) {
     const z = zoneOf(b); if (!z) return 0;
     const c = z.cap[b.level - 1];
+    if (z.rows) { const units = Math.max(2, Math.round(b.w * T / 4.6)); return Math.round(units * c); } // one household per row house
     if (z.perBuilding) { const a = b.w * b.d; return Math.max(2, Math.round(c * (a <= 1 ? 0.7 : a <= 2 ? 1 : a <= 3 ? 1.25 : a <= 4 ? 1.5 : 2))); }
     return c * b.w * b.d;
   };
@@ -144,7 +145,7 @@
   }
   function rebuildLots() {
     const Wd = CB.World;
-    S.lots = [[], [], [], [], [], [], [], []];
+    S.lots = C.ZONES.map(() => []);
     for (let i = 0; i < N; i++) {
       const z = Wd.zone[i];
       if (!z || !tileFree(i, z)) continue;
@@ -402,7 +403,25 @@
   // ------------------------------------------------------------------
   // Hourly building update
   // ------------------------------------------------------------------
+  // households arrive in a moving van (and leave in one); they can commute however they like afterwards
+  const MOVE_COLS = ['#e8eaec', '#e07a22', '#d8d4c8', '#2f6fb0', '#c8392e'].map(h => { const a = U.hex(h); return [U.lin(a[0]), U.lin(a[1]), U.lin(a[2])]; });
+  let moveBudget = 0;
+  function moveIn(b, n) {
+    const Wd = CB.World;
+    b.inbound = (b.inbound || 0) + n;
+    const land = () => { b.inbound = Math.max(0, (b.inbound || 0) - n); if (S.buildings.has(b.id) && b.state !== 'aband') b.res = Math.min(b.cap, b.res + n); };
+    CB.Traffic.request({
+      from: Wd.outIn, to: b.road, fromB: null, toB: b, kind: 'van', col: U.pick(MOVE_COLS, S.rng), purpose: 'Moving in',
+      onArrive: () => land(), onFail: () => land(),
+    });
+  }
+  function moveOut(b) {
+    const Wd = CB.World;
+    if (moveBudget-- <= 0) return;
+    CB.Traffic.request({ from: b.road, to: Wd.outOut, fromB: b, toB: null, kind: 'van', col: U.pick(MOVE_COLS, S.rng), purpose: 'Moving out', onArrive: () => { }, onFail: () => { } });
+  }
   function hourlyBuildings() {
+    moveBudget = 24;
     const Wd = CB.World, cv = S.cov;
     let pop = 0, happySum = 0, happyW = 0, workers = 0, employed = 0, jobs = 0, filled = 0, eduSum = 0, outsideIn = 0, comm = 0, commN = 0;
     const icons = [];
@@ -465,8 +484,13 @@
       }
       // occupancy
       if (res) {
-        if (!noConn && b.res < b.cap && resDemand > 3 && b.happy > 25) b.res = Math.min(b.cap, b.res + Math.max(1, Math.ceil((b.cap - b.res) * 0.4)));
-        if (b.happy < 28 && b.res > 0 && S.rng() < 0.35) b.res = Math.max(0, b.res - Math.max(1, Math.ceil(b.res * 0.12)));
+        const room = b.cap - b.res - (b.inbound || 0);
+        if (!noConn && room > 0 && resDemand > 3 && b.happy > 25 && moveBudget > 0) {
+          // one van per household (about 2-3 people), a few households at a time
+          let want = Math.max(1, Math.ceil(room * 0.4));
+          for (let k = 0; k < 3 && want > 0 && moveBudget > 0; k++) { const n = Math.min(want, 2 + (S.rng() < 0.5 ? 1 : 0)); moveIn(b, n); want -= n; moveBudget--; }
+        }
+        if (b.happy < 28 && b.res > 0 && S.rng() < 0.35) { b.res = Math.max(0, b.res - Math.max(1, Math.ceil(b.res * 0.12))); moveOut(b); }
         const wk = Math.round(b.res * 0.55);
         let e = employedOf(b);
         while (e > wk && b.work.length) {
@@ -488,6 +512,7 @@
           const old = b.cap; b.cap = S.capOf(b);
           if (!res) b.jobs = b.cap;
           CB.Meshes.refreshBuilding(b);
+          CB.Meshes.upgradeSite(b);
           if (CB.UI && CB.UI.selected === b) CB.Meshes.setSelection(b);
         }
       }
@@ -614,7 +639,7 @@
   S.zoneDemand = function (z) {
     const k = C.ZONES[z].key;
     if (k === 'rlow') return S.demand.rlow;
-    if (k === 'rmed') return S.demand.rmed;
+    if (k === 'rmed' || k === 'rapt') return S.demand.rmed;
     if (k === 'rhigh') return S.demand.rhigh;
     if (k === 'clow' || k === 'chigh') return S.demand.com;
     if (k === 'ind') return S.demand.ind;
@@ -734,19 +759,29 @@
       if (cat === 'res') { if (b.res > 0) resList.push(b); }
       else { workList.push(b); if (cat === 'com') { comList.push(b); visitList.push(b); } if (cat === 'ind') indList.push(b); }
     });
+    resCum = []; let acc = 0; for (const b of resList) { acc += Math.max(1, b.res); resCum.push(acc); }
+  }
+  // a home picked in proportion to how many people live there (towers make far more trips than cottages)
+  let resCum = [];
+  function randomRes() {
+    if (!resList.length) return null;
+    const t = S.rng() * resCum[resCum.length - 1];
+    let lo = 0, hi = resCum.length - 1;
+    while (lo < hi) { const m = (lo + hi) >> 1; if (resCum[m] < t) lo = m + 1; else hi = m; }
+    return resList[lo];
   }
 
   // ---------------- mode choice ----------------
   // Households own cars at different rates by density; short trips are walked, medium trips
   // are cycled when the route feels safe, and the rest pick between transit and the car.
-  const CAR_OWN = [0.9, 0.88, 0.62, 0.42];
-  const BIKE_OWN = 0.72;
+  const CAR_OWN = [0.9, 0.95, 0.85, 0.7, 0.9, 0.9, 0.9, 0.9, 0.8];
+  const BIKE_OWN = 0.45;
   function recordMode(m) { const M = CB.Traffic.mode; for (const k in M) M[k] += ((k === m ? 1 : 0) - M[k]) * 0.01; }
   S.chooseMode = function (dist, hasCar, safety, transit, carT) {
     // dist: route length in tiles. safety: 0..1 bike comfort of the best bike route (or -1 if none).
     // transit: transit route time or null. carT: estimated car time.
     const r = S.rng;
-    const pWalk = dist <= 7 ? 0.85 : dist <= 20 ? 0.85 * (20 - dist) / 13 : 0;
+    const pWalk = dist <= 4 ? 0.7 : dist <= 14 ? 0.7 * (14 - dist) / 10 : 0; // mostly a driving city, like the real thing
     if (r() < pWalk) return 'walk';
     if (safety >= 0 && dist <= 70) {
       const fd = dist <= 30 ? 1 : (70 - dist) / 40;
@@ -816,7 +851,7 @@
     const toWork = toWorkCurve(h), toHome = toHomeCurve(h);
     A.work += st.employed * toWork * dtH / ppc;
     A.home += st.employed * toHome * dtH / ppc;
-    A.shop += st.pop * 0.22 * dayCurve(h) * dtH / ppc;
+    A.shop += st.pop * 0.34 * dayCurve(h) * dtH / ppc;
     let indF = 0; for (const b of indList) indF += b.filled + b.outside;
     A.freight += indF * 0.14 * dayCurve(h) * dtH / Math.max(1, ppc * 1.2) + comList.length * 0.05 * dayCurve(h) * dtH / Math.max(1, ppc * 0.5);
     A.visit += (st.pop * 0.015 + visitList.length * 2) * dayCurve(h) * dtH / ppc;
@@ -826,19 +861,19 @@
     let guard = 0;
     while (A.work >= 1 && guard++ < 30) {
       A.work--;
-      const b = randomOf(resList); if (!b || !b.work.length) continue;
+      const b = randomRes(); if (!b || !b.work.length) continue;
       const w = S.buildings.get(U.pick(b.work, S.rng).id); if (!w) continue;
       personTrip(b.road, w.road, 'Commuting to work', ppc, recordCommute(b), b.zone, b, w);
     }
     while (A.home >= 1 && guard++ < 60) {
       A.home--;
-      const b = randomOf(resList); if (!b || !b.work.length) continue;
+      const b = randomRes(); if (!b || !b.work.length) continue;
       const w = S.buildings.get(U.pick(b.work, S.rng).id); if (!w) continue;
       personTrip(w.road, b.road, 'Heading home', ppc, recordCommute(b), b.zone, w, b);
     }
     while (A.shop >= 1 && guard++ < 90) {
       A.shop--;
-      const b = randomOf(resList); if (!b || !comList.length) continue;
+      const b = randomRes(); if (!b || !comList.length) continue;
       let best = null, bd = 1e9;
       for (let k = 0; k < 5; k++) { const c = randomOf(comList); const d = U.dist(c.road, b.road) + S.rng() * 8; if (d < bd) { bd = d; best = c; } }
       if (!best) continue;
@@ -873,7 +908,7 @@
     A.park = (A.park || 0) + st.pop * 0.03 * dayCurve(h) * dtH / ppc;
     while (A.park >= 1 && guard++ < 190) {
       A.park--;
-      const b = randomOf(resList); if (!b || !parkList.length) continue;
+      const b = randomRes(); if (!b || !parkList.length) continue;
       let best = null, bd = 1e9;
       for (let k = 0; k < 4; k++) { const p = randomOf(parkList); const d = U.dist(p.road, b.road); if (d < bd) { bd = d; best = p; } }
       if (best && bd < 60) personTrip(b.road, best.road, 'Going to the park', ppc, null, b.zone, b, best);
@@ -1077,7 +1112,7 @@
     return {
       v: 2, seed: Wd.seed, name: S.name, money: S.money, month: S.month, hour: S.hour, dayAcc: S.dayAcc || 0, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
       history: S.history, last: S.last, budget: S.budget,
-      road: U.encodeRLE(Wd.road), pcell: U.encodeRLE(Wd.pcell), unseen: S.unseen || [], link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart),
+      road: U.encodeRLE(Wd.road), pcell: U.encodeRLE(Wd.pcell), unseen: S.unseen || [], link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart), curv: U.encodeRLE(Wd.curv),
       jcfg: Wd.clusters.map(cl => ({ t: cl.tiles[0], c: cl.cfg })), rail: U.encodeRLE(Wd.rail), zone: U.encodeRLE(Wd.zone), tree: U.encodeRLE(Wd.tree),
       buildings: bl, transit: CB.Transit.serialize(),
     };
@@ -1090,6 +1125,7 @@
     Wd.link.set(U.decodeRLE(d.link, Uint8Array, N));
     Wd.rdir.set(U.decodeRLE(d.rdir, Uint8Array, N));
     Wd.rpart.set(U.decodeRLE(d.rpart, Uint8Array, N));
+    if (d.curv) Wd.curv.set(U.decodeRLE(d.curv, Uint8Array, N)); else Wd.curv.fill(0);
     Wd.jcfg = new Map(); for (const j of d.jcfg || []) Wd.jcfg.set(j.t, j.c);
     if (d.pcell) Wd.pcell.set(U.decodeRLE(d.pcell, Uint8Array, C.FW * C.FW)); else Wd.pcell.fill(0);
     S.unseen = d.unseen || [];

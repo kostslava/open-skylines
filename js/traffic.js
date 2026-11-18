@@ -791,13 +791,15 @@
   // ------------------------------------------------------------------
   // Render
   // ------------------------------------------------------------------
+  // slimmer than life so two vehicles fit side by side on the narrowest lanes
+  const VW = { car: 0.88, suv: 0.86, van: 0.84, truck: 0.8, bus: 0.82, tram: 0.88, police: 0.88, ambulance: 0.84, fire: 0.8, garbage: 0.8 };
   Tr.render = function () {
     const Wd = CB.World, Mx = CB.Meshes;
     for (const v of Tr.vehicles) {
       const y = Wd.roadH(v.x, v.z);
       const ya = Wd.roadH(v.x + v.hx * 2, v.z + v.hz * 2), yb = Wd.roadH(v.x - v.hx * 2, v.z - v.hz * 2);
       const pitch = Math.atan2(ya - yb, 4);
-      Mx.pushVehicle(v.kind, v.x, y + 0.05, v.z, v.hx, v.hz, v.col, pitch, 1);
+      Mx.pushVehicle(v.kind, v.x, y + 0.05, v.z, v.hx, v.hz, v.col, pitch, VW[v.kind] || 0.9);
     }
     for (const a of Tr.soft) {
       const inPark = !!a.visit;

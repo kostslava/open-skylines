@@ -30,7 +30,7 @@
   function clearPreview() {
     const Mx = CB.Meshes;
     Mx.setFlowArrows(null);
-    Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null); Mx.setGhostModel(null);
+    Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null); Mx.setGhostModel(null); prevKey = '';
     CB.Gfx.uni.uBrushOn.value = 0;
     if (Tl.previewRibbon) { Mx.lineGroup.remove(Tl.previewRibbon); Tl.previewRibbon.geometry.dispose(); Tl.previewRibbon = null; }
     Tl.tip = '';
@@ -181,7 +181,8 @@
     let V;
     if (c) V = latticeCurve(A, { x: c.x / T, y: c.z / T }, B, off);
     else V = latticeL(A, B, off);
-    if (!dual) { const st = toStrip(V); return st ? { strips: [st] } : { strips: [], bad: 'Outside the map' }; }
+    const curved = !!c && V.length > 2;
+    if (!dual) { const st = toStrip(V); return st ? { strips: [st], curved } : { strips: [], bad: 'Outside the map' }; }
     if (V.length < 2) { // a single click: a short stub eastwards
       V = [V[0], [V[0][0] + 1, V[0][1]]];
     }
@@ -199,7 +200,7 @@
     if (!f || !r) return { strips: [], bad: 'Outside the map' };
     const used = new Set(f.tiles);
     if (r.tiles.some(t => used.has(t))) return { strips: [f, r], bad: 'Curve is too tight for a dual road' };
-    return { strips: [f, r] };
+    return { strips: [f, r], curved };
   }
   // straight drag between two tiles (used by the demo city and tests)
   function roadStrips(a, b, rt) {
@@ -253,7 +254,7 @@
     }
     return { list, cost, bad };
   }
-  function placeRoad(strips, rt) {
+  function placeRoad(strips, rt, curved) {
     const Wd = CB.World, S = CB.Sim, R = C.ROADS[rt];
     let changed = false;
     for (const st of strips) {
@@ -266,7 +267,7 @@
         if (!crossing || C.GRP_RANK[R.grp] > C.GRP_RANK[C.ROADS[Wd.road[i]].grp]) {
           if (Wd.road[i] !== rt || Wd.rdir[i] !== d) changed = true;
           S.setRoad(i, rt);
-          if (!crossing) { Wd.rdir[i] = d; Wd.rpart[i] = R.w === 2 ? ((d + 3) % 4) + 1 : 0; }
+          if (!crossing) { Wd.rdir[i] = d; Wd.rpart[i] = R.w === 2 ? ((d + 3) % 4) + 1 : 0; Wd.curv[i] = curved ? 1 : 0; }
         }
         if (k > 0 && !Wd.linked(T2[k - 1], dirOf(T2[k - 1], i))) { Wd.linkTiles(T2[k - 1], i); changed = true; }
       }
@@ -304,8 +305,47 @@
     const ev = roadEval(plan.strips, rt);
     if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return false; }
     if (!spend(ev.cost)) return false;
-    if (placeRoad(plan.strips, rt)) { S.networkChanged(); markAround(plan.strips.flatMap(q => q.tiles)); CB.UI.sfx('build'); }
+    if (placeRoad(plan.strips, rt, plan.curved)) { S.networkChanged(); markAround(plan.strips.flatMap(q => q.tiles)); CB.UI.sfx('build'); }
     return true;
+  }
+  // Road preview: the real road model for the planned tiles (built by applying the plan to a copy of the
+  // network state for a moment), plus the tiles that would become zonable. Rebuilt only when the plan changes.
+  let prevKey = '';
+  function previewRoad(plan, rt, ev) {
+    const Wd = CB.World, Mx = CB.Meshes, R = C.ROADS[rt];
+    const tiles = plan.strips.flatMap(q => q.tiles);
+    const bad = plan.bad || ev.bad;
+    const key = rt + ':' + plan.curved + ':' + plan.strips.map(q => q.tiles.join(',')).join('|');
+    if (key !== prevKey) {
+      prevKey = key;
+      // zoning that the new road would open up
+      const z = [];
+      if (R.zonable && !bad) {
+        const seen = new Set(tiles), news = new Set(tiles.filter(i => !Wd.road[i]));
+        for (const i of news) for (let d = 0; d < 4; d++) for (let k = 1; k <= 3; k++) {
+          const x = U.tx(i) + C.DX[d] * k, y = U.ty(i) + C.DY[d] * k;
+          if (!U.inPlay(x, y)) break;
+          const j = U.idx(x, y);
+          if (Wd.road[j] || seen.has(j) || Wd.pmask[j] || Wd.bld[j] || !Wd.buildable(j) || Wd.rail[j] === 1) break;
+          seen.add(j); if (!Wd.zonable[j]) z.push({ i: j, ok: true, h: 0.06, col: [0.55, 0.95, 0.6] });
+        }
+      }
+      Tl._zonePrev = z;
+      Mx.setGhostModel(tiles.length ? 'road:' + key : null, gb => {
+        const keys = ['road', 'link', 'rdir', 'rpart', 'curv'], save = new Map();
+        const touch = new Set(); for (const i of tiles) { touch.add(i); for (let d = 0; d < 4; d++) { const j = Wd.neighbor(i, d); if (j >= 0) touch.add(j); } }
+        for (const i of touch) save.set(i, keys.map(k => Wd[k][i]));
+        for (const st of plan.strips) st.tiles.forEach((i, k) => {
+          if (!Wd.road[i] || C.GRP_RANK[R.grp] > C.GRP_RANK[C.ROADS[Wd.road[i]].grp]) { Wd.road[i] = rt; Wd.rdir[i] = st.dirs[k]; Wd.rpart[i] = R.w === 2 ? ((st.dirs[k] + 3) % 4) + 1 : 0; Wd.curv[i] = plan.curved ? 1 : 0; }
+          if (k > 0) Wd.linkTiles(st.tiles[k - 1], i);
+        });
+        Wd.clearEdgeCache();
+        try { for (const i of tiles) Mx.genRoadTile(gb, i); }
+        finally { for (const [i, v] of save) keys.forEach((k, n) => { Wd[k][i] = v[n]; }); Wd.clearEdgeCache(); }
+      }, 0, 0.04, 0, !bad);
+    }
+    Mx.setGhostModel(tiles.length ? 'road:' + key : null, null, 0, 0.04, 0, !bad);
+    Mx.setGhostTiles([...ev.list.filter(g => !g.ok).map(g => Object.assign(g, { h: 0.5 })), ...(Tl._zonePrev || [])]);
   }
   // curves are smoothed over a few tiles, so redraw a little further out than the tiles that changed
   function markAround(tiles) {
@@ -538,7 +578,7 @@
       const R = C.ROADS[Wd.road[i]]; if (!R) return;
       refund += R.cost / R.w * 0.5;
       if (i === Wd.outIn || i === Wd.outOut) return; // the highway to the outside world stays
-      Wd.unlinkAll(i); S.setRoad(i, 0); Wd.rdir[i] = 0; Wd.rpart[i] = 0; net = true; any = true;
+      Wd.unlinkAll(i); S.setRoad(i, 0); Wd.rdir[i] = 0; Wd.rpart[i] = 0; Wd.curv[i] = 0; net = true; any = true;
     };
     if (single) {
       if (!U.inPlay(r.x0, r.y0)) return;
@@ -702,7 +742,7 @@
       const plan = cv ? (Tl.curve ? planRoad(t.rt, Tl.curve.a, hp, Tl.curve.c) : planRoad(t.rt, hp, hp)) : planRoad(t.rt, Tl.drag ? Tl.drag.p : hp, hp);
       const strips = plan.strips;
       const ev = roadEval(strips, t.rt);
-      Mx.setGhostTiles(ev.list.map(g => Object.assign(g, { h: 0.12, road: true })));
+      previewRoad(plan, t.rt, ev);
       Mx.setFlowArrows(strips, t.rt);
       if (cv && Tl.curve && Tl.curve.c) Mx.setRing(Tl.curve.c.x, Tl.curve.c.z, 2.2); else Mx.setRing(null);
       const R = C.ROADS[t.rt], bad = plan.bad || ev.bad;

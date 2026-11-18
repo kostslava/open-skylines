@@ -111,12 +111,13 @@ window.CB = {};
   // ---------- Zones ----------
   C.ZONES = [null,
     { key: 'rlow', name: 'Low Density Residential', short: 'Res · Low', cat: 'res', color: '#5fcf5a', unlock: 0, lots: [[1, 1, 15], [1, 2, 34], [1, 3, 14], [2, 2, 25], [2, 3, 12]], cap: [3, 4, 4, 5, 6], perBuilding: true },
-    { key: 'rmed', name: 'Medium Density Residential', short: 'Res · Medium', cat: 'res', color: '#2f9e48', unlock: 3, lots: [[1, 2, 40], [2, 2, 40], [2, 3, 20]], cap: [8, 9, 11, 13, 15] },
+    { key: 'rmed', name: 'Row Houses', short: 'Res · Row houses', cat: 'res', color: '#2f9e48', unlock: 3, lots: [[1, 2, 30], [2, 2, 45], [2, 3, 25]], cap: [2.2, 2.4, 2.7, 3.0, 3.3], rows: true },
     { key: 'rhigh', name: 'High Density Residential', short: 'Res · High', cat: 'res', color: '#167a3a', unlock: 6, lots: [[2, 2, 50], [2, 3, 50]], cap: [18, 23, 28, 34, 40] },
     { key: 'clow', name: 'Low Density Commercial', short: 'Com · Low', cat: 'com', color: '#59a6f5', unlock: 0, lots: [[1, 1, 30], [1, 2, 60], [2, 2, 40]], cap: [2, 3, 3, 4, 5] },
     { key: 'chigh', name: 'High Density Commercial', short: 'Com · High', cat: 'com', color: '#2b62d9', unlock: 4, lots: [[2, 2, 50], [2, 3, 50]], cap: [5, 6, 8, 9, 11] },
     { key: 'ind', name: 'Industrial', short: 'Industry', cat: 'ind', color: '#f0c43a', unlock: 0, lots: [[1, 1, 25], [1, 2, 25], [2, 1, 15], [2, 2, 40], [2, 3, 35], [3, 3, 25]], cap: [3, 3, 4, 4, 5] },
     { key: 'office', name: 'Office', short: 'Office', cat: 'off', color: '#b276f2', unlock: 5, lots: [[2, 2, 50], [2, 3, 50]], cap: [8, 10, 12, 14, 17] },
+    { key: 'rapt', name: 'Medium Density Apartments', short: 'Res · Apartments', cat: 'res', color: '#3fb59a', unlock: 3, lots: [[1, 2, 25], [2, 2, 45], [2, 3, 30]], cap: [6, 7, 8, 9, 10] },
   ];
   C.LV_REQ = [0, 18, 32, 46, 60]; // land value needed to reach level n+1
 
