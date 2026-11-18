@@ -64,6 +64,7 @@ window.CB = {};
   C.PATHS = [null,
     { key: 'foot', name: 'Pedestrian Path', cost: 4, upkeep: 0.05, unlock: 0, col: '#cfc6b0', bike: 0.85, desc: 'Half a tile wide. Joins any sidewalk it touches.' },
     { key: 'bike', name: 'Bike Path', cost: 6, upkeep: 0.08, unlock: 1, col: '#8a4a3c', bike: 1, desc: 'Half a tile wide. Bikes and pedestrians. Joins any sidewalk it touches.' },
+    { key: 'shared', name: 'Shared Walk & Bike Path', cost: 8, upkeep: 0.1, unlock: 1, col: '#8f8a80', bike: 1, desc: 'One wide path for walkers and cyclists, with a centre line. Use it instead of laying a pedestrian and a bike path side by side.' },
   ];
   C.FW = C.W * 2;
   C.START_HW = C.ROADS.findIndex(r => r && r.key === 'hw2');

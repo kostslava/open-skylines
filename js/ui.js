@@ -108,7 +108,7 @@
   }
 
   function pathSvg(P) {
-    return `<svg viewBox="0 0 60 44" preserveAspectRatio="none"><rect width="60" height="44" fill="#6b9444"/><rect x="0" y="0" width="30" height="44" fill="#aeada6" opacity="0.35"/><rect x="11" y="0" width="8" height="44" fill="${P.col}"/><rect x="11" y="18" width="38" height="8" fill="${P.col}"/>${P.key === 'bike' ? '<line x1="15" y1="2" x2="15" y2="16" stroke="#fff" stroke-dasharray="3 3"/><line x1="22" y1="22" x2="47" y2="22" stroke="#fff" stroke-dasharray="3 3"/>' : ''}<text x="44" y="11" fill="#fff" font-size="8" text-anchor="middle" opacity="0.8">½</text></svg>`;
+    return `<svg viewBox="0 0 60 44" preserveAspectRatio="none"><rect width="60" height="44" fill="#6b9444"/><rect x="0" y="0" width="30" height="44" fill="#aeada6" opacity="0.35"/><rect x="11" y="0" width="8" height="44" fill="${P.col}"/><rect x="11" y="18" width="38" height="8" fill="${P.col}"/>${P.key === 'shared' ? '<line x1="15" y1="2" x2="15" y2="16" stroke="#f2c230" stroke-dasharray="3 3"/><line x1="22" y1="22" x2="47" y2="22" stroke="#f2c230" stroke-dasharray="3 3"/><rect x="10" y="0" width="1" height="44" fill="#eee"/><rect x="19" y="0" width="1" height="18" fill="#eee"/>' : ''}${P.key === 'bike' ? '<line x1="15" y1="2" x2="15" y2="16" stroke="#fff" stroke-dasharray="3 3"/><line x1="22" y1="22" x2="47" y2="22" stroke="#fff" stroke-dasharray="3 3"/>' : ''}<text x="44" y="11" fill="#fff" font-size="8" text-anchor="middle" opacity="0.8">½</text></svg>`;
   }
   const roadItem = (r) => { const R = C.ROADS[r]; return { name: R.name, cost: U.money(R.cost) + '/tile', unlock: R.unlock, tool: { type: 'road', rt: r }, thumb: roadSvg(R), desc: R.desc + (R.w === 2 ? ' Two tiles wide.' : '') }; };
   const img = u => u ? `<img src="${u}" alt="">` : '';
@@ -220,7 +220,7 @@
     const items = catItems(key, tab);
     const p = $('palette');
     const roadMode = key === 'roads' && tab !== 'junction' && tab !== 'path' || key === 'transit' && tab === 'tram';
-    const modeSw = roadMode ? `<div class="pmode" title="C toggles"><button data-mode="straight" class="${CB.Tools.roadMode === 'straight' ? 'on' : ''}">Straight</button><button data-mode="curve" class="${CB.Tools.roadMode === 'curve' ? 'on' : ''}">Curved</button></div>` : '';
+    const modeSw = roadMode ? `<div class="pmode" title="C cycles modes"><button data-mode="straight" class="${CB.Tools.roadMode === 'straight' ? 'on' : ''}">Straight</button><button data-mode="curve" class="${CB.Tools.roadMode === 'curve' ? 'on' : ''}">Curved</button><button data-mode="sbend" title="Each piece carries on from the direction the last one ended" class="${CB.Tools.roadMode === 'sbend' ? 'on' : ''}">S-bend</button></div>` : '';
     const tabs = cat.tabs ? `<div class="ptabs" role="tablist">${cat.tabs.map(t => `<button role="tab" class="ptab ${t[0] === tab ? 'on' : ''} ${tabLocked(cat, t[0]) ? 'dim' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('')}${modeSw}</div>` : '';
     p.innerHTML = tabs + `<div class="cards">` + items.map((it, k) => {
       const locked = !S.unlocked(it.unlock);
@@ -632,7 +632,7 @@
       <div class="sec"><div class="lbl">Controls</div><div class="keys">
         <kbd>W A S D</kbd><span>Move the camera (Shift for faster)</span><kbd>Q / E</kbd><span>Rotate</span><kbd>R / F</kbd><span>Zoom in and out</span><kbd>T / G</kbd><span>Tilt</span>
         <kbd>Right-drag</kbd><span>Rotate and tilt</span><kbd>Middle-drag</kbd><span>Pan</span><kbd>Wheel</kbd><span>Zoom</span>
-        <kbd>Space</kbd><span>Pause</span><kbd>1 2 3</kbd><span>Game speed</span><kbd>B</kbd><span>Bulldoze</span><kbd>C</kbd><span>Straight or curved roads</span><kbd>R</kbd><span>Rotate a building before placing it</span><kbd>Esc</kbd><span>Cancel tool</span></div></div>`;
+        <kbd>Space</kbd><span>Pause</span><kbd>1 2 3</kbd><span>Game speed</span><kbd>B</kbd><span>Bulldoze</span><kbd>C</kbd><span>Road mode: straight, curved, S-bend</span><kbd>R</kbd><span>Rotate a building before placing it</span><kbd>Esc</kbd><span>Cancel tool</span></div></div>`;
     bindClose(p, () => UI.openPanel(null));
     p.querySelectorAll('select').forEach(sel => sel.onchange = () => {
       const k = sel.id.slice(3);

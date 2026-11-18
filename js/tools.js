@@ -29,7 +29,7 @@
   }
   function clearPreview() {
     const Mx = CB.Meshes;
-    Mx.setFlowArrows(null);
+    Mx.setFlowArrows(null); Mx.setGuide(null);
     Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null); Mx.setGhostModel(null); prevKey = '';
     CB.Gfx.uni.uBrushOn.value = 0;
     if (Tl.previewRibbon) { Mx.lineGroup.remove(Tl.previewRibbon); Tl.previewRibbon.geometry.dispose(); Tl.previewRibbon = null; }
@@ -63,6 +63,7 @@
   Tl.roadMode = 'straight';
   Tl.curve = null;
   const isDual = rt => C.ROADS[rt].w === 2;
+  const snapWorld = (p, rt) => { const s = snapPt(p, isDual(rt)); return { x: s.x * T, z: s.y * T }; };
   function snapPt(p, dual) {
     if (dual) return { x: Math.round(p.x / T), y: Math.round(p.z / T) };
     return { x: Math.floor(p.x / T) + 0.5, y: Math.floor(p.z / T) + 0.5 };
@@ -340,11 +341,17 @@
           if (k > 0) Wd.linkTiles(st.tiles[k - 1], i);
         });
         Wd.clearEdgeCache();
-        try { for (const i of tiles) Mx.genRoadTile(gb, i); }
-        finally { for (const [i, v] of save) keys.forEach((k, n) => { Wd[k][i] = v[n]; }); Wd.clearEdgeCache(); }
-      }, 0, 0.04, 0, !bad);
+        try {
+          for (const i of tiles) {
+            const was = save.get(i)[0];
+            gb.tintCol = !was ? [0.5, 0.82, 1.0, 0.45] : was !== rt ? [1.0, 0.68, 0.18, 0.55] : [0.6, 0.9, 1.0, 0.25];
+            Mx.genRoadTile(gb, i);
+          }
+        }
+        finally { gb.tintCol = null; for (const [i, v] of save) keys.forEach((k, n) => { Wd[k][i] = v[n]; }); Wd.clearEdgeCache(); }
+      }, 0, 0.12, 0, !bad);
     }
-    Mx.setGhostModel(tiles.length ? 'road:' + key : null, null, 0, 0.04, 0, !bad);
+    Mx.setGhostModel(tiles.length ? 'road:' + key : null, null, 0, 0.12, 0, !bad);
     Mx.setGhostTiles([...ev.list.filter(g => !g.ok).map(g => Object.assign(g, { h: 0.5 })), ...(Tl._zonePrev || [])]);
   }
   // curves are smoothed over a few tiles, so redraw a little further out than the tiles that changed
@@ -369,6 +376,43 @@
     return { list, cost, bad };
   }
 
+  // Road drawing is click-based, like a pen tool. Every mode keeps drawing from the end of the last piece
+  // until Esc / right-click.
+  //   straight: click the start, click the end.
+  //   curve:    click the start, click where it bends (a dotted guide shows the direction), click the end.
+  //   sbend:    like curve for the first piece; after that each piece leaves in the direction the last one
+  //             ended, so one click per piece gives smooth S-bends and sweeping curves.
+  function autoBend(a, tan, b) {
+    const dx = b.x - a.x, dz = b.z - a.z, L = Math.hypot(dx, dz);
+    if (L < 1) return null;
+    const dp = dx * tan[0] + dz * tan[1];
+    const k = L * L / (2 * Math.max(dp, 0.34 * L)); // tangent intersection of a circular arc, capped near 90 degrees
+    return { x: a.x + tan[0] * k, z: a.z + tan[1] * k };
+  }
+  // the bend point for the piece ending at p, or undefined for a straight piece / null while choosing it
+  function bendFor(p) {
+    const cu = Tl.curve; if (!cu) return undefined;
+    if (Tl.roadMode === 'straight') return undefined;
+    if (cu.c) return cu.c;
+    if (Tl.roadMode === 'sbend' && cu.tan) return autoBend(cu.a, cu.tan, p);
+    return null;
+  }
+  function roadClick(h) {
+    const t = Tl.tool;
+    if (!h || h.i < 0 || mouse.moved) return;
+    const p = { x: h.x, z: h.z };
+    if (!Tl.curve) { Tl.curve = { a: p }; CB.UI.sfx('click'); return; }
+    const c = bendFor(p);
+    if (c === null) { Tl.curve.c = p; CB.UI.sfx('click'); return; }
+    const plan = planRoad(t.rt, Tl.curve.a, p, c || undefined);
+    if (!buildRoad(plan, t.rt)) return;
+    const nx = { a: p };
+    if (c) { const dx = p.x - c.x, dz = p.z - c.z, l = Math.hypot(dx, dz); if (l > 0.5) nx.tan = [dx / l, dz / l]; }
+    else { const a = Tl.curve.a, dx = p.x - a.x, dz = p.z - a.z, l = Math.hypot(dx, dz); if (l > 0.5) nx.tan = Math.abs(dx) >= Math.abs(dz) ? [Math.sign(dx), 0] : [0, Math.sign(dz)]; }
+    Tl.curve = nx;
+  }
+  Tl._roadClick = (x, z) => { const tx = Math.floor(x / T), tz = Math.floor(z / T); const m = mouse.moved; mouse.moved = false; roadClick({ i: U.idx(tx, tz), tx, ty: tz, x, z }); mouse.moved = m; };
+
   // ---------------- pointer handling ----------------
   let mouse = { x: 0, y: 0, down: false, btn: -1, sx: 0, sy: 0, moved: false };
   Tl.mouse = mouse;
@@ -379,7 +423,7 @@
       el.setPointerCapture(e.pointerId);
       mouse.down = true; mouse.btn = e.button; mouse.sx = mouse.x = e.clientX; mouse.sy = mouse.y = e.clientY; mouse.moved = false;
       mouse.touchPan = e.pointerType === 'touch' && Tl.tool.type === 'select';
-      if (e.button === 0 && !mouse.touchPan) onDown();
+      if (e.button === 0 && !mouse.touchPan) { Tl.hover = CB.Gfx.pick(mouse.x, mouse.y); onDown(); }
     });
     el.addEventListener('pointermove', e => {
       const dx = e.clientX - mouse.x, dy = e.clientY - mouse.y;
@@ -396,7 +440,7 @@
       Tl.needHover = true;
     });
     el.addEventListener('pointerup', e => {
-      if (mouse.btn === 0 && !mouse.touchPan) onUp(e);
+      if (mouse.btn === 0 && !mouse.touchPan) { mouse.x = e.clientX; mouse.y = e.clientY; Tl.hover = CB.Gfx.pick(mouse.x, mouse.y); onUp(e); Tl.needHover = true; }
       if (mouse.btn === 2 && !mouse.moved) onRightClick();
       mouse.down = false; mouse.btn = -1;
     });
@@ -414,7 +458,7 @@
     const k = keyName(e);
     const S = CB.Sim;
     if (k === 'r' && Tl.tool.type === 'svc') { Tl.rot = (Tl.rot + 1) % 4; Tl.needHover = true; return; }
-    if (k === 'c' && Tl.tool.type === 'road') { Tl.setRoadMode(Tl.roadMode === 'curve' ? 'straight' : 'curve'); return; }
+    if (k === 'c' && Tl.tool.type === 'road') { Tl.setRoadMode(({ straight: 'curve', curve: 'sbend', sbend: 'straight' })[Tl.roadMode]); return; }
     CB.Gfx.cam.keys[k] = true;
     if (e.key === 'Shift') CB.Gfx.cam.keys.Shift = true;
     if (k === ' ') { e.preventDefault(); CB.UI.setSpeed(S.speed === 0 ? (CB.UI.lastSpeed || 1) : 0); }
@@ -423,7 +467,7 @@
     else if (k === '3') CB.UI.setSpeed(4);
     else if (k === 'Escape') {
       if (Tl.tool.type === 'line' && Tl.lineStops.length) { Tl.lineStops = []; refreshLinePreview(); }
-      else if (Tl.tool.type === 'road' && Tl.curve) Tl.curve = null;
+      else if (Tl.tool.type === 'road' && Tl.curve) { Tl.curve = null; Tl.needHover = true; }
       else if (Tl.tool.type !== 'select') Tl.setTool(null);
       else { CB.UI.select(null); CB.UI.closePanels(); }
     }
@@ -433,15 +477,15 @@
   }
   function onRightClick() {
     if (Tl.tool.type === 'line' && Tl.lineStops.length) { Tl.lineStops.pop(); refreshLinePreview(); }
-    else if (Tl.tool.type === 'road' && Tl.curve) { if (Tl.curve.c) Tl.curve.c = null; else Tl.curve = null; }
+    else if (Tl.tool.type === 'road' && Tl.curve) { if (Tl.curve.c) Tl.curve.c = null; else Tl.curve = null; Tl.needHover = true; }
     else if (Tl.tool.type !== 'select' && !mouse.moved) Tl.setTool(null);
   }
 
   function onDown() {
     const h = Tl.hover; if (!h || h.i < 0) return;
     const t = Tl.tool.type;
-    if (t === 'road' && Tl.roadMode === 'curve') return; // curve mode works with clicks
-    if (t === 'road' || t === 'rail' || t === 'zone' || t === 'dezone' || t === 'bulldoze') Tl.drag = { start: h.i, p: { x: h.x, z: h.z } };
+    if (t === 'road') return; // roads are click to start, click to end
+    if (t === 'rail' || t === 'zone' || t === 'dezone' || t === 'bulldoze') Tl.drag = { start: h.i, p: { x: h.x, z: h.z } };
     if (t === 'path') Tl.drag = { start: h.i, f: fcellAt(h) };
   }
   function onUp() {
@@ -459,21 +503,7 @@
       CB.UI.select(null);
       return;
     }
-    if (t.type === 'road' && Tl.roadMode === 'curve') {
-      if (!h || h.i < 0 || mouse.moved) return;
-      const p = { x: h.x, z: h.z };
-      if (!Tl.curve) { Tl.curve = { a: p }; CB.UI.sfx('click'); return; }
-      if (!Tl.curve.c) { Tl.curve.c = p; CB.UI.sfx('click'); return; }
-      const plan = planRoad(t.rt, Tl.curve.a, p, Tl.curve.c);
-      if (buildRoad(plan, t.rt)) Tl.curve = { a: p }; // keep drawing from the end, like a pen tool
-      return;
-    }
-    if (t.type === 'road' && Tl.drag) {
-      const plan = planRoad(t.rt, Tl.drag.p, h ? { x: h.x, z: h.z } : Tl.drag.p);
-      Tl.drag = null;
-      buildRoad(plan, t.rt);
-      return;
-    }
+    if (t.type === 'road') { roadClick(h); return; }
     if (t.type === 'path' && Tl.drag) {
       const cells = lPathF(Tl.drag.f, h ? fcellAt(h) : Tl.drag.f);
       const ev = pathEval(cells, t.pk);
@@ -709,7 +739,8 @@
   // test hook: perform a tool action from tile a to tile b as if the player dragged
   Tl._simulate = function (tool, a, b) {
     Tl.setTool(tool);
-    const corner = tool.type === 'road' && isDual(tool.rt) ? 0.01 : 0.5;
+    if (tool.type === 'road') { buildRoad({ strips: roadStrips(a, b, tool.rt) }, tool.rt); return; }
+    const corner = 0.5;
     const mk = i => ({ i, tx: U.tx(i), ty: U.ty(i), x: (U.tx(i) + corner) * T, z: (U.ty(i) + corner) * T });
     Tl.hover = mk(a);
     mouse.moved = false;
@@ -738,16 +769,25 @@
     const h = Tl.hover, t = Tl.tool;
     if (!h || h.i < 0) { if (t.type !== 'select') { Mx.setGhostTiles([]); Mx.setGhostBox(null); Mx.setRing(null); Mx.setGhostModel(null); } Tl.tip = ''; return; }
     if (t.type === 'road') {
-      const hp = { x: h.x, z: h.z }, cv = Tl.roadMode === 'curve';
-      const plan = cv ? (Tl.curve ? planRoad(t.rt, Tl.curve.a, hp, Tl.curve.c) : planRoad(t.rt, hp, hp)) : planRoad(t.rt, Tl.drag ? Tl.drag.p : hp, hp);
+      const hp = { x: h.x, z: h.z }, cu = Tl.curve, mode = Tl.roadMode;
+      const c = bendFor(hp);
+      const choosing = c === null; // picking the bend direction: only a guide line, no road yet
+      const plan = !cu ? planRoad(t.rt, hp, hp) : choosing ? { strips: [] } : planRoad(t.rt, cu.a, hp, c || undefined);
       const strips = plan.strips;
       const ev = roadEval(strips, t.rt);
       previewRoad(plan, t.rt, ev);
       Mx.setFlowArrows(strips, t.rt);
-      if (cv && Tl.curve && Tl.curve.c) Mx.setRing(Tl.curve.c.x, Tl.curve.c.z, 2.2); else Mx.setRing(null);
+      // dotted construction lines from the start through the bend point
+      const sa = cu && snapWorld(cu.a, t.rt);
+      if (choosing) Mx.setGuide([[sa.x, sa.z, hp.x, hp.z]]);
+      else if (c) Mx.setGuide([[sa.x, sa.z, c.x, c.z], [c.x, c.z, hp.x, hp.z]]);
+      else Mx.setGuide(null);
+      if (cu && cu.c) Mx.setRing(cu.c.x, cu.c.z, 2.2); else Mx.setRing(null);
       const R = C.ROADS[t.rt], bad = plan.bad || ev.bad;
-      const hint = cv ? (!Tl.curve ? 'click the start' : !Tl.curve.c ? 'click where the road should bend' : 'click the end') : (R.oneway ? 'drag in the direction of travel' : 'drag to build');
-      Tl.tip = R.name + ' · ' + (strips.length && strips[0].tiles.length > 1 ? strips[0].tiles.length + ' tiles · ' : '') + U.money(ev.cost) + ' · ' + (bad || hint) + ' · C: ' + (cv ? 'straight' : 'curved') + ' mode';
+      const upg = ev.list.filter(g => g.col && g.col[0] === 1).length;
+      const hint = !cu ? 'click to start the road' : choosing ? 'click where the road should bend' : (R.oneway ? 'click the end (traffic flows this way)' : 'click the end') + ' · Esc to stop';
+      const nm = { straight: 'Straight', curve: 'Curve', sbend: 'S-bend' };
+      Tl.tip = R.name + ' · ' + (strips.length && strips[0].tiles.length > 1 ? strips[0].tiles.length + ' tiles · ' : '') + (upg ? 'upgrades ' + upg + ' tiles · ' : '') + U.money(ev.cost) + ' · ' + (bad || hint) + ' · C: mode (' + nm[mode] + ')';
     } else if (t.type === 'path') {
       const cells = Tl.drag ? lPathF(Tl.drag.f, fcellAt(h)) : [fcellAt(h)];
       const ev = pathEval(cells, t.pk);

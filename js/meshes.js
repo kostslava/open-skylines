@@ -34,6 +34,7 @@
         const w = this.wear, l = (r + g + b) / 3, k = 1 - w * 0.22;
         r = (r * (1 - w * 0.45) + l * w * 0.45) * k; g = (g * (1 - w * 0.45) + l * w * 0.45) * k; b = (b * (1 - w * 0.4) + l * w * 0.4) * k * 0.96;
       }
+      if (this.tintCol) { const t = this.tintCol, k = t[3]; r = r * (1 - k) + t[0] * k; g = g * (1 - k) + t[1] * k; b = b * (1 - k) + t[2] * k; }
       if (this.autoMat && st === 9 && !this.noLit) st = 10; // building glass: lights up at night
       if (this.noLit) { const b0 = st % 32; if (b0 >= 1 && b0 <= 5) st -= b0; }
       const nx = this.ma * N[0] + this.mb * N[2], nz = this.mc * N[0] + this.md * N[2];
@@ -377,7 +378,7 @@
   function fountain(gb, x, z, s) { gb.cyl(x, 0, z, 3 * s, 0.7, 18, '#b7b0a2', M8.concrete, '#1d6f8a'); gb.cyl(x, 0.7, z, 2.7 * s, 0.02, 18, '#1d6f8a', 13); gb.cyl(x, 0.7, z, 0.45 * s, 2.2 * s, 8, '#d8d2c4'); gb.cyl(x, 0.7 + 2.2 * s, z, 1.1 * s, 0.25, 10, '#d8d2c4'); }
   function court(gb, x0, z0, x1, z1, col) { gb.flat(x0, z0, x1, z1, 0.12, col || '#c0603a'); const c = '#f2f2ec', lw = 0.15; gb.flat(x0 + 0.4, z0 + 0.4, x1 - 0.4, z0 + 0.4 + lw, 0.13, c); gb.flat(x0 + 0.4, z1 - 0.4 - lw, x1 - 0.4, z1 - 0.4, 0.13, c); gb.flat(x0 + 0.4, z0 + 0.4, x0 + 0.4 + lw, z1 - 0.4, 0.13, c); gb.flat(x1 - 0.4 - lw, z0 + 0.4, x1 - 0.4, z1 - 0.4, 0.13, c); gb.flat(x0 + 0.4, (z0 + z1) / 2 - lw / 2, x1 - 0.4, (z0 + z1) / 2 + lw / 2, 0.13, c); }
   function hip2(gb, x0, z0, x1, z1, y, h, col) { hip(gb, x0, z0, x1, z1, y, h, col, roofSt(col)); }
-  function driveway(gb, x0, x1, z1, car, r) { gb.flat(x0, 0.06, x1, z1, 0.11, '#a8a59e', M8.concrete); if (car) parkedCar(gb, (x0 + x1) / 2, 2.8, true, r); }
+  function driveway(gb, x0, x1, z1, car, r) { gb.drive = true; gb.flat(x0, 0.06, x1, z1, 0.11, '#a8a59e', M8.concrete); if (car) parkedCar(gb, (x0 + x1) / 2, 2.8, true, r); }
   function garage(gb, x0, x1, z0, d, wall, rc, wm) {
     gb.box(x0, 0, z0, x1, 2.9, z0 + d, wall, wm, { top: rc });
     gb.box(x0 + 0.35, 0, z0 - 0.06, x1 - 0.35, 2.35, z0, '#ecebe6', M8.siding);
@@ -540,9 +541,10 @@
   function wornYard(gb, r, LW, LD) {
     for (const y of [0.1, 1.05]) gb.box(0.2, y, LD - 0.36, LW - 0.2, y + 0.04, LD - 0.32, '#8a9095');
     for (let x = 0.2; x <= LW - 0.2; x += 2.5) gb.box(x - 0.04, 0, LD - 0.38, x + 0.04, 1.15, LD - 0.3, '#7a8086');
-    gb.flat(LW - 3.4, 0.1, LW - 0.6, Math.min(5, LD - 1), 0.11, '#8a8478', M8.gravel);
+    const drive = gb.drive; gb.drive = false; // the house already has a paved driveway: no gravel pad on top of it
+    if (!drive) gb.flat(LW - 3.4, 0.1, LW - 0.6, Math.min(5, LD - 1), 0.1, '#8a8478', M8.gravel);
     if (r() < 0.6 && LD > 12) gb.box(0.8, 0, LD - 3.6, 3.2, 2.0, LD - 1.2, '#8a8a84', M8.metal, { top: '#6e6a62' });
-    if (r() < 0.4) parkedCarOld(gb, LW - 2, 2.6, r);
+    if (r() < 0.4 && !drive) parkedCarOld(gb, LW - 2, 2.6, r);
   }
   function parkedCarOld(gb, x, z, r) { parkedVeh(gb, r() < 0.3 ? 'van' : 'car', x, z, true, U.pick(['#7a6a5a', '#5a6a6e', '#8a7a4a', '#6e6a62', '#7a4a3a'], r), r() < 0.5); }
 
@@ -957,7 +959,7 @@
   }
   function chainFence(gb, x0, z0, x1, z1, gapX0, gapX1) {
     const post = (x, z) => gb.box(x - 0.05, 0, z - 0.05, x + 0.05, 2.0, z + 0.05, '#7a8086');
-    const run = (ax, az, bx, bz) => { for (const y of [0.15, 1.0, 1.9]) gb.box(Math.min(ax, bx) - 0.02, y, Math.min(az, bz) - 0.02, Math.max(ax, bx) + 0.02, y + 0.05, Math.max(az, bz) + 0.02, '#8a9096'); for (let t = 0; t <= 1; t += 0.02) { const x = ax + (bx - ax) * t, z = az + (bz - az) * t; gb.box(x - 0.008, 0.15, z - 0.008, x + 0.008, 1.9, z + 0.008, '#9aa0a6'); } const n = Math.ceil(Math.hypot(bx - ax, bz - az) / 3); for (let k = 0; k <= n; k++) post(ax + (bx - ax) * k / n, az + (bz - az) * k / n); };
+    const run = (ax, az, bx, bz) => { for (const y of [0.15, 1.0, 1.9]) gb.box(Math.min(ax, bx) - 0.02, y, Math.min(az, bz) - 0.02, Math.max(ax, bx) + 0.02, y + 0.05, Math.max(az, bz) + 0.02, '#8a9096'); for (let t = 0; t <= 1; t += 0.02) { const x = ax + (bx - ax) * t, z = az + (bz - az) * t; gb.box(x - 0.008, 0.15, z - 0.008, x + 0.008, 1.9, z + 0.008, '#9aa0a6'); } const n = Math.max(1, Math.ceil(Math.hypot(bx - ax, bz - az) / 3)); for (let k = 0; k <= n; k++) post(ax + (bx - ax) * k / n, az + (bz - az) * k / n); };
     if (gapX0 !== undefined) { run(x0, z0, gapX0, z0); run(gapX1, z0, x1, z0); } else run(x0, z0, x1, z0);
     run(x0, z1, x1, z1); run(x0, z0, x0, z1); run(x1, z0, x1, z1);
   }
@@ -1127,7 +1129,12 @@
     const [x0, x1, z0, z1] = along ? [x - Wd / 2, x + Wd / 2, z - L / 2, z + L / 2] : [x - L / 2, x + L / 2, z - Wd / 2, z + Wd / 2];
     gb.box(x0, y0, z0, x1, y0 + H, z1, col, M8.metal);
     gb.box(x0 - 0.04, y0, z0 - 0.04, x1 + 0.04, y0 + 0.12, z1 + 0.04, '#3a3d42');
-    gb.box(x0 - 0.04, y0 + H - 0.12, z0 - 0.04, x1 + 0.04, y0 + H, z1 + 0.04, '#3a3d42');
+    // top rails: a frame around the roof edge, standing a little proud of the roof so nothing is coplanar
+    const rw = 0.14, yt = y0 + H, rh = 0.06;
+    gb.box(x0 - 0.04, yt - 0.12, z0 - 0.04, x1 + 0.04, yt + rh, z0 + rw, '#3a3d42');
+    gb.box(x0 - 0.04, yt - 0.12, z1 - rw, x1 + 0.04, yt + rh, z1 + 0.04, '#3a3d42');
+    gb.box(x0 - 0.04, yt - 0.12, z0 + rw, x0 + rw, yt + rh, z1 - rw, '#3a3d42');
+    gb.box(x1 - rw, yt - 0.12, z0 + rw, x1 + 0.04, yt + rh, z1 - rw, '#3a3d42');
   }
   function pallets(gb, x, z, n, r) {
     for (let k = 0; k < n; k++) {
@@ -1334,7 +1341,7 @@
     foundation(gb, LW, LD, b, '#8a8780', M8.gravel);
     const cc = ['#2f6f9e', '#b5502f', '#3a7a4a', '#c8a03a', '#8a3a3a', '#5a6a7a'];
     container(gb, 3.5, 5.0, false, U.pick(cc, r)); container(gb, 3.5, 7.7, false, U.pick(cc, r));
-    if (r() < 0.7) container(gb, 3.5, 5.0, false, U.pick(cc, r), 2.6);
+    if (r() < 0.7) container(gb, 3.5, 5.0, false, U.pick(cc, r), 2.66);
     container(gb, 8.4, 6.6, true, U.pick(cc, r));
     // site cabin
     gb.box(0.7, 0.2, 1.0, 4.4, 2.8, 3.2, '#e8e2d4', M8.siding); win(gb, 0, 1.8, 1.2, 1.0, 1.0, 0.9, { trim: '#2a2d31' }); doorway(gb, 3.5, 1.0, '#3a4a52', '#2a2d31', false);
@@ -1962,7 +1969,7 @@
     gb.tint = b.state === 'aband' ? 0.55 : null;
     gb.noLit = b.state === 'aband';
     gb.autoMat = true;
-    gb.wear = b.kind === 'zone' ? ([0, 0.85, 0.45, 0.12, 0, 0][b.level] || 0) * (b.zone === 1 ? 0.55 : 1) : 0;
+    gb.drive = false; gb.wear = b.kind === 'zone' ? ([0, 0.85, 0.45, 0.12, 0, 0][b.level] || 0) * (b.zone === 1 ? 0.55 : 1) : 0;
     const LW = b.w * T, LD = b.d * T;
     if (b.kind === 'zone') GEN[C.ZONES[b.zone].key](gb, b, r, LW, LD);
     else SGEN[b.svc](gb, b, r, LW, LD);
@@ -2341,10 +2348,11 @@
     for (let q = 0; q < 4; q++) {
       const f = Wd.cellOf(i, q), k = Wd.pcell[f]; if (!k) continue;
       const P = C.PATHS[k], fx = f % FW, fy = (f / FW) | 0;
-      const x0 = fx * H, z0 = fy * H, cx = x0 + H / 2, cz = z0 + H / 2, w = k === 2 ? 1.25 : 1.05;
+      const shared = k === 3;
+      const x0 = fx * H, z0 = fy * H, cx = x0 + H / 2, cz = z0 + H / 2, w = shared ? 1.85 : k === 2 ? 1.25 : 1.05;
       const y = (lx, lz) => Math.max(Wd.groundH(lx, lz), C.WATER + 0.3) + 0.2;
-      const pst = k === 2 ? 14 + M8.asph : 14 + M8.paving;
-      const quad = (ax, az, bx, bz, col, dy) => gb.quad([ax, y(ax, bz) + (dy || 0), bz], [bx, y(bx, bz) + (dy || 0), bz], [bx, y(bx, az) + (dy || 0), az], [ax, y(ax, az) + (dy || 0), az], col, col === COL.white ? 14 : pst);
+      const pst = k >= 2 ? 14 + M8.asph : 14 + M8.paving;
+      const quad = (ax, az, bx, bz, col, dy) => gb.quad([ax, y(ax, bz) + (dy || 0), bz], [bx, y(bx, bz) + (dy || 0), bz], [bx, y(bx, az) + (dy || 0), az], [ax, y(ax, az) + (dy || 0), az], col, col === COL.white || col === COL.yellow ? 14 : pst);
       quad(cx - w, cz - w, cx + w, cz + w, P.col);
       for (let d = 0; d < 4; d++) {
         const nx = fx + C.DX[d], ny = fy + C.DY[d];
@@ -2354,6 +2362,13 @@
         if (!Wd.pcell[nf] && !toRoad) continue;
         if (d === 0) quad(cx - w, z0, cx + w, cz, P.col); else if (d === 2) quad(cx - w, cz, cx + w, z0 + H, P.col);
         else if (d === 1) quad(cx, cz - w, x0 + H, cz + w, P.col); else quad(x0, cz - w, cx, cz + w, P.col);
+        if (shared) { // dashed yellow centre line: walkers keep to one side, bikes to the other
+          for (let t = 0; t < 2; t++) {
+            const a = 0.35 + t * 1.25, b = a + 0.75;
+            if (d === 0) quad(cx - 0.07, cz - b, cx + 0.07, cz - a, COL.yellow, 0.01); else if (d === 2) quad(cx - 0.07, cz + a, cx + 0.07, cz + b, COL.yellow, 0.01);
+            else if (d === 1) quad(cx + a, cz - 0.07, cx + b, cz + 0.07, COL.yellow, 0.01); else quad(cx - b, cz - 0.07, cx - a, cz + 0.07, COL.yellow, 0.01);
+          }
+        }
         if (k === 2) { if (d % 2 === 0) quad(cx - 0.06, d === 0 ? z0 + 0.6 : cz + 0.6, cx + 0.06, d === 0 ? cz - 0.6 : z0 + H - 0.6, COL.white, 0.01); else quad(d === 3 ? x0 + 0.6 : cx + 0.6, cz - 0.06, d === 3 ? cx - 0.6 : x0 + H - 0.6, cz + 0.06, COL.white, 0.01); }
       }
     }
@@ -2810,24 +2825,51 @@
     M.lamps.frustumCulled = false; M.lamps.count = 0;
     G.scene.add(M.lamps); G.cityMeshes.add(M.lamps);
   }
+  // Street lamps stand at the kerb edge of the sidewalk (never mid-sidewalk), staggered every other tile.
+  // Roads with a raised median get a double-armed lamp down the middle instead. Positions come from the same
+  // centre-line curve the road is drawn with, so on curved roads the lamps follow the kerb.
   function rebuildLamps() {
-    const Wd = CB.World, G = CB.Gfx;
+    const Wd = CB.World, G = CB.Gfx, h = T / 2;
     const L = [];
+    const stopTiles = new Set(CB.Transit ? CB.Transit.stops.map(s => s.tile) : []);
     for (let i = 0; i < W * W; i++) {
       const rt = Wd.road[i]; if (!rt) continue;
+      const R = C.ROADS[rt];
+      if (R.grp === 'highway' || !R.car || Wd.jcl[i] >= 0) continue;
       const x = U.tx(i), y = U.ty(i);
-      if ((x + y) % 2) continue;
-      if (C.ROADS[rt].grp === 'highway' || !C.ROADS[rt].car || CB.World.jcl[i] >= 0) continue;
-      const m = Wd.roadMask(i);
-      let side = -1;
-      const pref = (x + y) % 4 === 0 ? [0, 1, 2, 3] : [2, 3, 0, 1];
-      for (const d of pref) if (!(m & (1 << d))) { side = d; break; }
-      if (side < 0) continue;
-      const sw = Math.max(0.8, C.ROADS[rt].side);
-      const cx = (x + 0.5) * T, cz = (y + 0.5) * T;
-      const off = T / 2 - sw * 0.45;
-      const px = cx + C.DX[side] * off, pz = cz + C.DY[side] * off;
-      L.push(px, Wd.roadH(px, pz) + 0.2, pz, -C.DX[side], -C.DY[side]);
+      const l2 = Wd.links2(i);
+      let din, dout;
+      if (l2) {
+        if ((l2[0] + l2[1]) % 2 === 1 && !Wd.isBent(i)) continue; // plain square corner: no lamp
+        dout = l2.includes(Wd.rdir[i]) ? Wd.rdir[i] : l2[1];
+        din = ((l2[0] === dout ? l2[1] : l2[0]) + 2) % 4;
+      } else { dout = Wd.rdir[i]; din = dout; }
+      const Lr = R.L, pair = R.w === 2;
+      const medLamp = pair ? Lr.med >= 0.4 : (!R.oneway && Lr.med >= 0.8);
+      const kerb = R.side >= 0.8 ? h - R.side + 0.35 : h - 0.25; // right-hand kerb edge, traveller frame
+      let us; // lateral offsets (+ = right of travel) and whether the lamp has two arms
+      if (medLamp) {
+        if (pair) { if (Wd.rdir[i] > 1 || (x + y) % 2) continue; us = [[-h, true]]; } // one lamp per median, on one strip
+        else { if ((x + y) % 2) continue; us = [[Lr.medX - h, true]]; }
+      } else if (pair) { if ((x + y) % 2) continue; us = [[kerb, false]]; }
+      else { if ((x + y) % 2) continue; us = [[(x + y) % 4 === 0 ? kerb : -kerb, false]]; }
+      if (stopTiles.has(i)) continue;
+      for (const [u, dbl] of us) {
+        let px, pz, tx, tz;
+        if (l2 && Wd.isBent(i)) {
+          const q = Wd.bendSeg(i, din, dout, u, u);
+          px = 0.25 * q[0] + 0.5 * q[2] + 0.25 * q[4]; pz = 0.25 * q[1] + 0.5 * q[3] + 0.25 * q[5];
+          tx = q[4] - q[0]; tz = q[5] - q[1]; const ln = Math.hypot(tx, tz) || 1; tx /= ln; tz /= ln;
+        } else {
+          tx = C.DX[dout]; tz = C.DY[dout];
+          px = (x + 0.5) * T - tz * u; pz = (y + 0.5) * T + tx * u;
+        }
+        const rx = -tz, rz = tx; // right of travel
+        const yy = Wd.roadH(px, pz) + 0.3;
+        const s = u > 0 ? -1 : 1; // arm reaches over the road
+        L.push(px, yy, pz, rx * s, rz * s);
+        if (dbl) L.push(px, yy, pz, -rx * s, -rz * s);
+      }
     }
     const n = L.length / 5;
     if (M.lamps.instanceMatrix.count < n) {
@@ -3323,6 +3365,33 @@
   M.setGhostStop = function (stop, ok) {
     if (!stop) { M.setGhostModel(null); return; }
     M.setGhostModel('s:' + stop.type + ':' + stop.tile + ':' + stop.side, gb => genStop(gb, stop), 0, 0, 0, ok);
+  };
+  // dotted construction lines (road curve direction). segs: [[x0, z0, x1, z1], ...] in world units
+  let guideKey = '';
+  M.setGuide = function (segs) {
+    const G = CB.Gfx, Wd = CB.World;
+    const key = segs ? segs.map(q => q.map(v => v.toFixed(1)).join(',')).join('|') : '';
+    if (key === guideKey) return;
+    guideKey = key;
+    if (!M.guide) {
+      M.guide = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthTest: false, depthWrite: false }));
+      M.guide.renderOrder = 9; M.guide.frustumCulled = false; G.scene.add(M.guide);
+    }
+    if (!segs) { M.guide.visible = false; return; }
+    const pos = [], D = 1.8, GAP = 1.2, w = 0.32;
+    for (const [x0, z0, x1, z1] of segs) {
+      const L = Math.hypot(x1 - x0, z1 - z0); if (L < 0.1) continue;
+      const ux = (x1 - x0) / L, uz = (z1 - z0) / L, nx = -uz * w, nz = ux * w;
+      for (let t = 0; t < L; t += D + GAP) {
+        const t1 = Math.min(L, t + D);
+        const ax = x0 + ux * t, az = z0 + uz * t, bx = x0 + ux * t1, bz = z0 + uz * t1;
+        const ya = Math.max(Wd.groundH(ax, az), C.WATER) + 0.6, yb = Math.max(Wd.groundH(bx, bz), C.WATER) + 0.6;
+        pos.push(ax + nx, ya, az + nz, bx + nx, yb, bz + nz, bx - nx, yb, bz - nz, ax + nx, ya, az + nz, bx - nx, yb, bz - nz, ax - nx, ya, az - nz);
+      }
+    }
+    M.guide.geometry.dispose();
+    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    M.guide.geometry = g; M.guide.visible = true;
   };
   M.setRing = function (x, z, r) {
     if (x === null) { M.ring.visible = false; return; }
