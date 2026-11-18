@@ -518,7 +518,7 @@
       const lot = S.serviceLot(t.key, h.tx, h.ty, Tl.rot);
       const y = Math.max(Wd.groundH((lot.x + lot.fw / 2) * T, (lot.y + lot.fh / 2) * T), 0);
       Mx.setGhostBox(lot.x * T, lot.y * T, (lot.x + lot.fw) * T, (lot.y + lot.fh) * T, y, 9, lot.ok);
-      Mx.setRing((lot.x + lot.fw / 2) * T, (lot.y + lot.fh / 2) * T, sv.radius * T);
+      Mx.setRing(null);
       Tl.tip = sv.name + ' · ' + U.money(sv.cost) + (lot.ok ? ' · R to rotate' : ' · ' + lot.reason);
     } else if (t.type === 'stop') {
       const why = CB.Transit.canPlaceStop(t.st, h.i);

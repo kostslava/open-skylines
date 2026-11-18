@@ -699,7 +699,7 @@
       const s = C.SERVICES[b.svc];
       p.innerHTML = head(s.name, s.desc) +
         `<div class="row"><span>Upkeep</span><b>${U.money(s.upkeep)} / month</b></div>
-         <div class="row"><span>Coverage radius</span><b>${s.radius * C.TILE} m</b></div>
+         ${s.cov !== 'landmark' && s.cov !== 'park' ? `<div class="row"><span>Works best within</span><b>~${Math.round(s.radius * 0.55 * C.TILE / 10) * 10} m</b></div>` : ''}
          ${s.veh ? `<div class="row"><span>Vehicles out</span><b data-v="veh"></b></div>` : ''}
          <div data-v="sprob" class="sub"></div>
          <div class="btns" style="margin-top:10px"><button class="btn danger" id="bdel">Demolish</button></div>`;

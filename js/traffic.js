@@ -70,7 +70,9 @@
       const nb = Wd.neighbor(cur, d);
       if (onlyTram && !C.ROADS[Wd.road[nb]].tram) return null;
       const cc = Wd.jcl[cur], nc = Wd.jcl[nb];
-      let s = 4, extra = 0;
+      // no U-turns in the middle of a block (only at dead ends or junctions)
+      if (cc < 0 && cd < 4 && d === (cd + 2) % 4 && Wd.degree(cur) > 1) return null;
+      let s = d, extra = 0;                                   // remember which way we are travelling
       if (cc >= 0 && nc === cc) s = cd;                       // still inside the junction
       else if (nc >= 0) {                                     // entering a junction
         s = d;
@@ -81,7 +83,7 @@
         const cl = Wd.clusters[cc];
         const t = Wd.relTurn(cd, d);
         if (!(cl.mask[cd] & t)) return null;
-        if (t === 4) extra += 2; else if (t === 8) extra += 6;
+        if (t === 4) extra += 0.6; else if (t === 8) extra += 8;
       }
       res.s = s; res.c = costFn(nb) + extra;
       return res;
@@ -275,6 +277,26 @@
   }
   Tr.evalPos = evalPos;
 
+  // where a building meets its road: the door (inside the lot) and the curb (on the road edge)
+  Tr.doorOf = function (b) {
+    if (b._door && b._door.road === b.road) return b._door;
+    const Wd = CB.World;
+    let adj = -1;
+    for (const t of CB.Sim.lotTiles(b)) for (let d = 0; d < 4; d++) if (Wd.neighbor(t, d) === b.road) { adj = t; break; }
+    const rx = (U.tx(b.road) + 0.5) * T, rz = (U.ty(b.road) + 0.5) * T;
+    let ux = 0, uz = 1;
+    if (adj >= 0) { ux = Math.sign(U.tx(adj) - U.tx(b.road)); uz = Math.sign(U.ty(adj) - U.ty(b.road)); }
+    const ex = rx + ux * T / 2, ez = rz + uz * T / 2;
+    b._door = { road: b.road, door: [ex + ux * 3.2, ez + uz * 3.2], curb: [ex - ux * 1.6, ez - uz * 1.6], ux, uz };
+    return b._door;
+  };
+  function curve(ax, az, cx, cz, bx, bz) { return { ax, az, cx, cz, bx, bz, len: Math.max(0.5, Math.hypot(cx - ax, cz - az) + Math.hypot(bx - cx, bz - cz)) }; }
+  function evalCurve(c, t, out) {
+    const u = 1 - t;
+    out[0] = u * u * c.ax + 2 * u * t * c.cx + t * t * c.bx; out[1] = u * u * c.az + 2 * u * t * c.cz + t * t * c.bz;
+    const dx = 2 * u * (c.cx - c.ax) + 2 * t * (c.bx - c.cx), dz = 2 * u * (c.cz - c.az) + 2 * t * (c.bz - c.cz), l = Math.hypot(dx, dz) || 1;
+    out[2] = dx / l; out[3] = dz / l;
+  }
   Tr.spawn = function (o) {
     if (!o.path || o.path.length < 1) return null;
     if (o.kind === 'car' || o.kind === 'suv') { if (Tr.carCount() >= CB.Gfx.settings.cars) return null; }
@@ -283,10 +305,15 @@
       lane: 0, pref: Math.random() < 0.5 ? 0 : 1, drv: 0.88 + Math.random() * 0.24,
       col: o.col || null, purpose: o.purpose || '', data: o.data || null, onArrive: o.onArrive || null,
       L: LEN[o.kind] || 4.5, stuck: 0, wait: 0, dwell: 0, born: Tr.time, x: 0, z: 0, hx: 1, hz: 0, id: ++Tr.nextId,
-      entryDir: 4, stopDone: -1, waitStop: 0, lw: 3,
+      entryDir: 4, stopDone: -1, waitStop: 0, lw: 3, toB: o.toB || null,
     };
     setupSeg(v);
     v.t = 0;
+    if (o.fromB && CB.Sim.buildings.has(o.fromB.id)) {
+      const D = Tr.doorOf(o.fromB);
+      v.ph = { c: curve(D.door[0], D.door[1], D.curb[0], D.curb[1], v.ex, v.ez), t: 0, out: true };
+      evalCurve(v.ph.c, 0, tmp); v.x = tmp[0]; v.z = tmp[1]; v.hx = tmp[2]; v.hz = tmp[3];
+    }
     Tr.vehicles.push(v);
     return v;
   };
@@ -298,15 +325,44 @@
   Tr.request = function (spec) { if (Tr.queue.length < 400) Tr.queue.push(spec); else if (spec.onFail) spec.onFail('queue'); };
 
   // ---------------- cyclists & pedestrians ----------------
-  Tr.spawnSoft = function (kind, path, onArrive) {
-    if (!path || path.length < 2) return null;
+  Tr.spawnSoft = function (kind, path, onArrive, fromB, toB) {
+    if (!path || path.length < 1) return null;
     if (Tr.soft.length >= Math.round(CB.Gfx.settings.cars * 0.7)) return null;
     const a = { kind, path, seg: 0, t: 0, born: Tr.time, onArrive, sp: (kind === 'bike' ? 5.2 : 1.6) * (0.85 + Math.random() * 0.3) * (kind === 'bike' ? 2.2 : 2.8), side: Math.random() < 0.5 ? 1 : -1, x: 0, z: 0, hx: 1, hz: 0, col: null };
     if (kind === 'bike') a.col = U.pick(BIKE_COLS);
     else a.col = U.pick(PED_COLS);
+    a.toB = toB || null;
+    if (path.length < 2) { a.path = [path[0], path[0]]; }
     setupSoft(a);
+    if (fromB && CB.Sim.buildings.has(fromB.id)) {
+      const D = Tr.doorOf(fromB);
+      a.ph = { c: curve(D.door[0], D.door[1], D.door[0] - D.ux * 1.6, D.door[1] - D.uz * 1.6, a.ex, a.ez), t: 0, out: true };
+    }
     Tr.soft.push(a);
     return a;
+  };
+  function isPublic(b) { return b && b.kind === 'svc' && (C.SERVICES[b.svc].cat === 'parks' || C.SERVICES[b.svc].cat === 'landmarks'); }
+  Tr.isPublic = isPublic;
+  // a visitor milling about inside a park or plaza
+  function startVisit(a, b, secs) {
+    a.visit = { b, until: Tr.time + secs };
+    nextWander(a);
+  }
+  function nextWander(a) {
+    const b = a.visit.b;
+    const x0 = b.x * T + 1.5, z0 = b.y * T + 1.5, x1 = (b.x + b.fw) * T - 1.5, z1 = (b.y + b.fh) * T - 1.5;
+    const tx = x0 + Math.random() * (x1 - x0), tz = z0 + Math.random() * (z1 - z0);
+    a.ph = { c: curve(a.x, a.z, (a.x + tx) / 2, (a.z + tz) / 2, tx, tz), t: 0, out: false, wander: true, pause: Math.random() * 4 };
+  }
+  Tr.spawnVisitors = function (b, n, secs) {
+    if (!CB.Sim.buildings.has(b.id)) return;
+    const D = Tr.doorOf(b);
+    for (let k = 0; k < n; k++) {
+      if (Tr.soft.length >= Math.round(CB.Gfx.settings.cars * 0.7)) return;
+      const a = { kind: 'ped', path: [b.road, b.road], seg: 0, t: 0, born: Tr.time, onArrive: null, sp: 2.4, side: 1, x: D.door[0] + (Math.random() - 0.5) * 2, z: D.door[1] + (Math.random() - 0.5) * 2, hx: 1, hz: 0, col: U.pick(PED_COLS) };
+      startVisit(a, b, secs * (0.6 + Math.random() * 0.8));
+      Tr.soft.push(a);
+    }
   };
   let BIKE_COLS = [[1, 1, 1]], PED_COLS = [[1, 1, 1]];
   Tr.setColors = function (b, p) { BIKE_COLS = b; PED_COLS = p; };
@@ -432,7 +488,7 @@
       }
       const p = Tr.findPath(s.from, s.to, s.static);
       if (!p) { if (s.onFail) s.onFail('noroute'); continue; }
-      const v = Tr.spawn({ kind: s.kind, path: p, col: s.col, purpose: s.purpose, data: s.data, onArrive: s.onArrive });
+      const v = Tr.spawn({ kind: s.kind, path: p, col: s.col, purpose: s.purpose, data: s.data, onArrive: s.onArrive, fromB: s.fromB, toB: s.toB });
       if (v && occ) occ.set(v.cur, (occ.get(v.cur) || 0) + 10);
       if (!v && s.onFail) s.onFail('cap');
     }
@@ -458,6 +514,14 @@
     for (let k = 0; k < vs.length; k++) {
       const v = vs[k];
       if (v.dwell > 0) { v.dwell -= dt; v.speed = 0; if (v.dwell <= 0 && v.onDwellEnd) v.onDwellEnd(v); evalPos(v, tmp); v.x = tmp[0]; v.z = tmp[1]; continue; }
+      if (v.ph) {
+        // pulling out of / into a driveway
+        let wait = false;
+        if (v.ph.out) for (let j = head[v.cur]; j !== -1; j = vs[j].nx) { const u = vs[j]; if (u !== v && !u.ph && u.t < 0.35 && u.laneIn === v.laneIn) { wait = true; break; } }
+        if (!wait) v.ph.t += 3.2 * dt / v.ph.c.len;
+        if (v.ph.t >= 1) { if (v.ph.out) { v.ph = null; v.t = 0; } else { done.push(v); continue; } }
+        else { evalCurve(v.ph.c, v.ph.t, tmp); v.x = tmp[0]; v.z = tmp[1]; v.hx = tmp[2]; v.hz = tmp[3]; v.speed = wait ? 0 : 3; continue; }
+      }
       let gap = 1e9;
       for (let j = head[v.cur]; j !== -1; j = vs[j].nx) {
         if (j === k) continue; const u = vs[j];
@@ -512,7 +576,12 @@
       }
       while (v.t >= 1) {
         const over = (v.t - 1) * v.len;
-        if (v.next < 0) { done.push(v); v.t = 1; break; }
+        if (v.next < 0) {
+          v.t = 1;
+          if (v.toB && CB.Sim.buildings.has(v.toB.id) && v.toB.road === v.cur) { const D = Tr.doorOf(v.toB); evalPos(v, tmp); v.ph = { c: curve(tmp[0], tmp[1], D.curb[0], D.curb[1], D.door[0], D.door[1]), t: 0, out: false }; }
+          else done.push(v);
+          break;
+        }
         v.seg++;
         if (v.loop) v.seg %= v.path.length;
         v.lane = v.laneOut;
@@ -535,10 +604,31 @@
     let nb = 0, np = 0;
     for (const a of Tr.soft) {
       if (a.kind === 'bike') nb++; else np++;
+      if (a.ph) {
+        if (a.ph.pause > 0 && a.ph.t >= 1) { a.ph.pause -= dt; continue; }
+        a.ph.t = Math.min(1, a.ph.t + (a.ph.wander ? 1.6 : a.sp * 0.6) * dt / a.ph.c.len);
+        if (a.ph.t < 1) { evalCurve(a.ph.c, a.ph.t, tmp); a.x = tmp[0]; a.z = tmp[1]; a.hx = tmp[2]; a.hz = tmp[3]; continue; }
+        if (a.ph.wander) {
+          if (a.visit && Tr.time > a.visit.until) { sdone.push(a); continue; }
+          if (!a.ph.pause || a.ph.pause <= 0) nextWander(a);
+          continue;
+        }
+        if (a.ph.out) { a.ph = null; a.t = 0; } else { sdone.push(a); continue; }
+      }
       a.t += a.sp * dt / a.len;
       while (a.t >= 1) {
         const over = (a.t - 1) * a.len;
-        if (a.seg + 1 >= a.path.length) { sdone.push(a); a.t = 1; break; }
+        if (a.seg + 1 >= a.path.length) {
+          a.t = 1;
+          const b = a.toB;
+          if (b && CB.Sim.buildings.has(b.id) && b.road === a.path[a.seg]) {
+            evalPos(a, tmp); a.x = tmp[0]; a.z = tmp[1];
+            const D = Tr.doorOf(b);
+            if (isPublic(b)) { if (a.onArrive) { a.onArrive(Tr.time - a.born, true); a.onArrive = null; } a.kind = 'ped'; startVisit(a, b, 25 + Math.random() * 35); }
+            else a.ph = { c: curve(a.x, a.z, D.door[0] - D.ux * 1.6, D.door[1] - D.uz * 1.6, D.door[0], D.door[1]), t: 0, out: false };
+          } else sdone.push(a);
+          break;
+        }
         a.seg++;
         if (!Wd.road[a.path[a.seg]] && !Wd.pmask[a.path[a.seg]]) { sdone.push(a); break; }
         setupSoft(a); a.t = over / a.len;
@@ -586,7 +676,8 @@
     }
     for (const a of Tr.soft) {
       const y = Wd.roadH(a.x, a.z) + 0.2;
-      const step = ((a.seg * T + a.t * a.len) / (a.kind === 'ped' ? 0.55 : 0.9)) | 0;
+      const moving = !a.ph || a.ph.t < 1;
+      const step = moving ? ((a.ph ? a.ph.t * a.ph.c.len * 3 : a.seg * T + a.t * a.len) / (a.kind === 'ped' ? 0.55 : 0.9)) | 0 : 0;
       Mx.pushVehicle(step % 2 ? a.kind + '2' : a.kind, a.x, y, a.z, a.hx, a.hz, a.col, 0, 1);
     }
     // traffic light heads

@@ -337,6 +337,18 @@
       }
     }
   }
+  function falloff(arr, cx, cy, r0, s) {
+    const R = r0 * 4, r02 = r0 * r0;
+    for (let y = Math.max(0, Math.floor(cy - R)); y <= Math.min(W - 1, Math.ceil(cy + R)); y++) {
+      for (let x = Math.max(0, Math.floor(cx - R)); x <= Math.min(W - 1, Math.ceil(cx + R)); x++) {
+        const d2 = (x + 0.5 - cx) ** 2 + (y + 0.5 - cy) ** 2;
+        const f = s / (1 + d2 / r02) - 0.06;
+        if (f <= 0) continue;
+        const i = y * W + x;
+        arr[i] = Math.min(1.5, arr[i] + f);
+      }
+    }
+  }
   function computeCoverage() {
     const Wd = CB.World, cv = S.cov;
     for (const k of COV_KEYS) cv[k].fill(0);
@@ -345,7 +357,8 @@
       if (b.kind === 'svc') {
         const sv = C.SERVICES[b.svc];
         if (!Wd.road[b.road]) return;
-        stamp(cv[sv.cov], cx, cy, sv.radius, 1, sv.cov === 'park' || sv.cov === 'landmark');
+        // no hard edge: strength fades with distance, and several buildings add up
+        falloff(cv[sv.cov], cx, cy, sv.radius * 0.55, sv.cov === 'park' || sv.cov === 'landmark' ? 1 : 1.1);
         if (sv.pollute) stamp(cv.pollution, cx, cy, 6, sv.pollute, true);
       } else if (b.zone === 6 && b.state === 'live') {
         stamp(cv.pollution, cx, cy, 6 + b.level, 0.32 + b.level * 0.05, true);
@@ -635,7 +648,7 @@
       if (sv.cov !== cov) return;
       if (needVeh && s.vehOut >= (sv.vehCount || 0)) return;
       const d = Math.hypot(s.x + s.fw / 2 - b.x - b.fw / 2, s.y + s.fh / 2 - b.y - b.fh / 2);
-      if (d <= sv.radius && d < bd && CB.World.road[s.road]) { bd = d; best = s; }
+      if (d < bd && CB.World.road[s.road] && CB.World.conn[s.road]) { bd = d; best = s; }
     });
     return best;
   }
@@ -666,12 +679,13 @@
       if (!sv.veh || s.vehOut >= sv.vehCount) continue;
       const cx = s.x + s.fw / 2, cy = s.y + s.fh / 2;
       if (sv.cov === 'garbage') {
-        let target = null, tg = 30;
-        for (let k = 0; k < 40; k++) {
+        // pick the pile worth the trip: lots of garbage, not too far away
+        let target = null, best = 0;
+        for (let k = 0; k < 50; k++) {
           const b = all[Math.floor(S.rng() * all.length)];
-          if (b.kind !== 'zone' || b.gTarget || b.garbage < tg) continue;
-          if (Math.hypot(b.x - cx, b.y - cy) > sv.radius) continue;
-          target = b; tg = b.garbage;
+          if (b.kind !== 'zone' || b.gTarget || b.garbage < 30 || !Wd.conn[b.road]) continue;
+          const sc = b.garbage / (1 + Math.hypot(b.x - cx, b.y - cy) / 14);
+          if (sc > best) { best = sc; target = b; }
         }
         if (!target) continue;
         target.gTarget = true; s.vehOut++;
@@ -687,9 +701,10 @@
           onFail: (why) => { if (why === 'cap') collect(); target.gTarget = false; done(); },
         });
       } else if ((sv.cov === 'police' || sv.cov === 'health') && S.rng() < (sv.cov === 'police' ? 0.55 : 0.3)) {
-        const cands = all.filter(b => b.kind === 'zone' && b.state === 'live' && Math.hypot(b.x - cx, b.y - cy) <= sv.radius);
-        if (!cands.length) continue;
-        const target = U.pick(cands, S.rng);
+        // nearby calls are more likely than far ones
+        let target = null, bd = 1e9;
+        for (let k = 0; k < 6; k++) { const b = all[Math.floor(S.rng() * all.length)]; if (b.kind !== 'zone' || b.state !== 'live') continue; const d = Math.hypot(b.x - cx, b.y - cy) * (0.6 + S.rng()); if (d < bd) { bd = d; target = b; } }
+        if (!target) continue;
         s.vehOut++;
         const done = () => { s.vehOut = Math.max(0, s.vehOut - 1); };
         CB.Traffic.request({
@@ -709,12 +724,12 @@
   function carColor() { return U.pick(CB.Meshes.CAR_COLORS, S.rng); }
   function randomOf(list) { return list.length ? list[Math.floor(S.rng() * list.length)] : null; }
 
-  let resList = [], comList = [], indList = [], workList = [], visitList = [];
+  let resList = [], comList = [], indList = [], workList = [], visitList = [], parkList = [];
   function refreshLists() {
-    resList = []; comList = []; indList = []; workList = []; visitList = [];
+    resList = []; comList = []; indList = []; workList = []; visitList = []; parkList = [];
     S.buildings.forEach(b => {
       if (b.state !== 'live' || !CB.World.conn[b.road]) return;
-      if (b.kind === 'svc') { const c = C.SERVICES[b.svc].cat; if (c === 'landmarks' || (c === 'parks' && b.w > 1)) visitList.push(b); return; }
+      if (b.kind === 'svc') { const c = C.SERVICES[b.svc].cat; if (c === 'landmarks' || (c === 'parks' && b.w > 1)) visitList.push(b); if (c === 'parks' || c === 'landmarks') parkList.push(b); return; }
       const cat = C.ZONES[b.zone].cat;
       if (cat === 'res') { if (b.res > 0) resList.push(b); }
       else { workList.push(b); if (cat === 'com') { comList.push(b); visitList.push(b); } if (cat === 'ind') indList.push(b); }
@@ -747,12 +762,12 @@
     if (dist <= 40) return 'walk';
     return 'car'; // taxi / ride from a friend
   };
-  function softTrip(kind, path, done) {
+  function softTrip(kind, path, done, fb, tb) {
     const est = path.length * T / (kind === 'bike' ? 11 : 4.5);
-    const a = CB.Traffic.spawnSoft(kind, path, (t) => done && done(t, true));
+    const a = CB.Traffic.spawnSoft(kind, path, (t) => done && done(t, true), fb, tb);
     if (!a && done) done(est, true);
   }
-  function personTrip(fromTile, toTile, purpose, n, done, zone) {
+  function personTrip(fromTile, toTile, purpose, n, done, zone, fb, tb) {
     const dist = U.dist(fromTile, toTile);
     const hasCar = S.rng() < (CAR_OWN[zone] || 0.85);
     let bikePath = null, safety = -1;
@@ -763,8 +778,8 @@
     recordMode(mode);
     if (mode === 'walk') {
       const p = dist <= 40 ? CB.Traffic.findSoftPath(fromTile, toTile, false) : null;
-      if (p) { softTrip('ped', p, done); return; }
-    } else if (mode === 'bike' && bikePath) { softTrip('bike', bikePath, done); return; }
+      if (p) { softTrip('ped', p, done, fb, tb); return; }
+    } else if (mode === 'bike' && bikePath) { softTrip('bike', bikePath, done, fb, tb); return; }
     else if (mode === 'transit' && r) {
       S.stats.transitShare += (1 - S.stats.transitShare) * 0.01;
       r._t0 = CB.Traffic.time;
@@ -772,12 +787,13 @@
       return;
     }
     S.stats.transitShare *= 0.99;
-    carTrip(fromTile, toTile, purpose, n, done);
+    carTrip(fromTile, toTile, purpose, n, done, null, fb, tb);
   }
-  function carTrip(from, to, purpose, n, onArrive, kind) {
+  function carTrip(from, to, purpose, n, onArrive, kind, fb, tb) {
+    const pub = CB.Traffic.isPublic(tb);
     CB.Traffic.request({
-      from, to, kind: kind || (S.rng() < 0.3 ? 'suv' : 'car'), col: kind === 'truck' || kind === 'van' ? null : carColor(), purpose,
-      onArrive: (v, ok) => onArrive && onArrive(ok ? CB.Traffic.time - v.born : 120, ok),
+      from, to, fromB: fb || null, toB: tb || null, kind: kind || (S.rng() < 0.3 ? 'suv' : 'car'), col: kind === 'truck' || kind === 'van' ? null : carColor(), purpose,
+      onArrive: (v, ok) => { if (ok && pub) CB.Traffic.spawnVisitors(tb, 1 + (S.rng() < 0.5 ? 1 : 0), 40); if (onArrive) onArrive(ok ? CB.Traffic.time - v.born : 120, ok); },
       onFail: (why) => { if (why === 'cap' && onArrive) onArrive(U.dist(from, to) * T / 16 + 10, true); },
     });
   }
@@ -812,13 +828,13 @@
       A.work--;
       const b = randomOf(resList); if (!b || !b.work.length) continue;
       const w = S.buildings.get(U.pick(b.work, S.rng).id); if (!w) continue;
-      personTrip(b.road, w.road, 'Commuting to work', ppc, recordCommute(b), b.zone);
+      personTrip(b.road, w.road, 'Commuting to work', ppc, recordCommute(b), b.zone, b, w);
     }
     while (A.home >= 1 && guard++ < 60) {
       A.home--;
       const b = randomOf(resList); if (!b || !b.work.length) continue;
       const w = S.buildings.get(U.pick(b.work, S.rng).id); if (!w) continue;
-      personTrip(w.road, b.road, 'Heading home', ppc, recordCommute(b), b.zone);
+      personTrip(w.road, b.road, 'Heading home', ppc, recordCommute(b), b.zone, w, b);
     }
     while (A.shop >= 1 && guard++ < 90) {
       A.shop--;
@@ -827,31 +843,40 @@
       for (let k = 0; k < 5; k++) { const c = randomOf(comList); const d = U.dist(c.road, b.road) + S.rng() * 8; if (d < bd) { bd = d; best = c; } }
       if (!best) continue;
       const shop = best;
-      personTrip(b.road, shop.road, 'Going shopping', ppc, () => { if (S.buildings.has(shop.id)) shop.cust += ppc; }, b.zone);
+      personTrip(b.road, shop.road, 'Going shopping', ppc, () => { if (S.buildings.has(shop.id)) shop.cust += ppc; }, b.zone, b, shop);
     }
     while (A.freight >= 1 && guard++ < 110) {
       A.freight--;
       const src = indList.length && S.rng() < 0.7 ? randomOf(indList) : null;
       if (src) {
         const dst = comList.length && S.rng() < 0.65 ? randomOf(comList) : null;
-        if (dst) carTrip(src.road, dst.road, 'Delivering goods', 1, null, 'truck');
-        else carTrip(src.road, outT, 'Exporting goods', 1, null, 'truck');
-      } else if (comList.length) carTrip(inT, randomOf(comList).road, 'Importing goods', 1, null, 'truck');
+        if (dst) carTrip(src.road, dst.road, 'Delivering goods', 1, null, 'truck', src, dst);
+        else carTrip(src.road, outT, 'Exporting goods', 1, null, 'truck', src, null);
+      } else if (comList.length) { const dst = randomOf(comList); carTrip(inT, dst.road, 'Importing goods', 1, null, 'truck', null, dst); }
     }
     while (A.visit >= 1 && guard++ < 130) {
       A.visit--;
       const tgt = randomOf(visitList); if (!tgt) continue;
-      carTrip(inT, tgt.road, 'Visiting the city', ppc, () => { if (S.buildings.has(tgt.id) && tgt.kind === 'zone') tgt.cust += ppc; });
+      carTrip(inT, tgt.road, 'Visiting the city', ppc, () => { if (S.buildings.has(tgt.id) && tgt.kind === 'zone') tgt.cust += ppc; }, null, null, tgt);
     }
     while (A.cin >= 1 && guard++ < 150) {
       A.cin--;
       const w = randomOf(workList); if (!w || !w.outside) continue;
-      carTrip(inT, w.road, 'Commuting from out of town', ppc, null);
+      carTrip(inT, w.road, 'Commuting from out of town', ppc, null, null, null, w);
     }
     while (A.cout >= 1 && guard++ < 170) {
       A.cout--;
       const w = randomOf(workList); if (!w || !w.outside) continue;
-      carTrip(w.road, outT, 'Leaving town', ppc, null);
+      carTrip(w.road, outT, 'Leaving town', ppc, null, null, w, null);
+    }
+    // residents heading to a park or plaza nearby
+    A.park = (A.park || 0) + st.pop * 0.03 * dayCurve(h) * dtH / ppc;
+    while (A.park >= 1 && guard++ < 190) {
+      A.park--;
+      const b = randomOf(resList); if (!b || !parkList.length) continue;
+      let best = null, bd = 1e9;
+      for (let k = 0; k < 4; k++) { const p = randomOf(parkList); const d = U.dist(p.road, b.road); if (d < bd) { bd = d; best = p; } }
+      if (best && bd < 60) personTrip(b.road, best.road, 'Going to the park', ppc, null, b.zone, b, best);
     }
     for (const k in A) if (A[k] > 40) A[k] = 40;
   }
@@ -861,7 +886,7 @@
     if (inT === undefined || !CB.World.conn[b.road]) return;
     const n = Math.ceil(b.cap * 0.5);
     CB.Traffic.request({
-      from: inT, to: b.road, kind: 'van', purpose: 'Moving in',
+      from: inT, to: b.road, toB: b, kind: 'van', purpose: 'Moving in',
       onArrive: () => { if (S.buildings.has(b.id)) b.res = Math.min(b.cap, b.res + n); },
       onFail: () => { if (S.buildings.has(b.id)) b.res = Math.min(b.cap, b.res + n); },
     });
