@@ -72,6 +72,35 @@
     return strips;
   }
   Tl.roadStrips = roadStrips;
+  // ---- half-tile paths ----
+  const FW = C.FW;
+  const fcellAt = h => U.clamp(Math.floor(h.z / (T / 2)), 0, FW - 1) * FW + U.clamp(Math.floor(h.x / (T / 2)), 0, FW - 1);
+  function lPathF(a, b) {
+    const ax = a % FW, ay = (a / FW) | 0, bx = b % FW, by = (b / FW) | 0, out = [];
+    const hf = Math.abs(bx - ax) >= Math.abs(by - ay);
+    let x = ax, y = ay; out.push(y * FW + x);
+    const sx = Math.sign(bx - ax), sy = Math.sign(by - ay);
+    if (hf) { while (x !== bx) { x += sx; out.push(y * FW + x); } while (y !== by) { y += sy; out.push(y * FW + x); } }
+    else { while (y !== by) { y += sy; out.push(y * FW + x); } while (x !== bx) { x += sx; out.push(y * FW + x); } }
+    return out;
+  }
+  function pathEval(cells, pk) {
+    const Wd = CB.World, P = C.PATHS[pk];
+    let cost = 0, bad = null;
+    const list = cells.map(f => {
+      const i = U.idx((f % FW) >> 1, ((f / FW) | 0) >> 1);
+      let ok = true, col = null;
+      if (!U.inPlay(U.tx(i), U.ty(i))) { ok = false; bad = 'Outside the city limits'; }
+      else if (Wd.road[i]) { ok = false; bad = 'Paths go beside roads, not on them'; }
+      else if (Wd.bld[i]) { ok = false; bad = 'A building is in the way'; }
+      else if (Wd.isWater(i) || Wd.slope(i) > 6) { ok = false; bad = 'Too steep or wet here'; }
+      else if (Wd.rail[i] === 1) { ok = false; bad = 'Elevated track is in the way'; }
+      else if (Wd.pcell[f] === pk) col = [0.5, 0.7, 1];
+      else cost += P.cost;
+      return { f, ok, col, h: 0.3 };
+    });
+    return { list, cost, bad };
+  }
   function roadEval(strips, rt) {
     const Wd = CB.World, R = C.ROADS[rt];
     let cost = 0, bad = null;
@@ -107,13 +136,15 @@
         if (k > 0 && !Wd.linked(T2[k - 1], dirOf(T2[k - 1], i))) { Wd.linkTiles(T2[k - 1], i); changed = true; }
       }
     }
-    // snap: connect the ends to a road that continues straight on
+    // snap: a road that starts or ends right next to another road joins it (straight on or as a T)
     for (const st of strips) {
       const A = st.tiles, n = A.length;
       const ends = [[A[0], (st.dirs[0] + 2) % 4], [A[n - 1], st.dirs[n - 1]]];
       for (const [t, d] of ends) {
         const o = Wd.neighbor(t, d);
-        if (o >= 0 && Wd.road[o] && !Wd.linked(t, d) && (Wd.link[o] & (1 << ((d + 2) % 4) | 1 << d)) !== 0 && Wd.degree(o) <= 2) { Wd.linkTiles(t, o); changed = true; }
+        if (o < 0 || !Wd.road[o] || Wd.linked(t, d)) continue;
+        if (strips.length === 2 && strips.some(q => q.tiles.includes(o))) continue; // own partner strip
+        Wd.linkTiles(t, o); changed = true;
       }
     }
     // dual carriageway ends: let vehicles turn around at a dead end
@@ -209,6 +240,7 @@
     const h = Tl.hover; if (!h || h.i < 0) return;
     const t = Tl.tool.type;
     if (t === 'road' || t === 'rail' || t === 'zone' || t === 'dezone' || t === 'bulldoze') Tl.drag = { start: h.i };
+    if (t === 'path') Tl.drag = { start: h.i, f: fcellAt(h) };
   }
   function onUp() {
     const h = Tl.hover;
@@ -232,6 +264,21 @@
       if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return; }
       if (!spend(ev.cost)) return;
       if (placeRoad(strips, t.rt)) { S.networkChanged(); CB.UI.sfx('build'); }
+      return;
+    }
+    if (t.type === 'path' && Tl.drag) {
+      const cells = lPathF(Tl.drag.f, h ? fcellAt(h) : Tl.drag.f);
+      const ev = pathEval(cells, t.pk);
+      Tl.drag = null; clearPreview();
+      if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return; }
+      if (!spend(ev.cost)) return;
+      for (const f of cells) {
+        Wd.setPath(f, t.pk);
+        const i = U.idx((f % FW) >> 1, ((f / FW) | 0) >> 1);
+        Wd.zone[i] = 0; Wd.tree[i] = 0; CB.Meshes.markInfra(i);
+      }
+      CB.Meshes.treesDirty = true;
+      S.networkChanged(); CB.UI.sfx('build');
       return;
     }
     if (t.type === 'junction') {
@@ -308,6 +355,7 @@
       if (b) { if (b.kind === 'svc') refund += C.SERVICES[b.svc].cost * 0.25; S.removeBuilding(b); any = true; }
     };
     const killStops = i => { for (const s of X.stops.filter(s => s.tile === i)) { X.removeStop(s); any = true; } };
+    const killPath = i => { for (let q = 0; q < 4; q++) Wd.setPath(Wd.cellOf(i, q), 0); CB.Meshes.markInfra(i); net = true; any = true; };
     const killRail = i => { S.setRail(i, 0); net = true; any = true; };
     const killRoad = i => {
       const R = C.ROADS[Wd.road[i]]; if (!R) return;
@@ -319,6 +367,7 @@
       if (!U.inPlay(r.x0, r.y0)) return;
       const i = U.idx(r.x0, r.y0);
       if (Wd.bld[i]) killB(i);
+      else if (Wd.pmask[i]) killPath(i);
       else if (X.stops.some(s => s.tile === i)) killStops(i);
       else if (Wd.rail[i]) killRail(i);
       else if (Wd.road[i]) {
@@ -332,6 +381,7 @@
         if (!U.inPlay(x, y)) continue;
         const i = U.idx(x, y);
         if (Wd.bld[i]) killB(i);
+        if (Wd.pmask[i]) killPath(i);
         killStops(i);
         if (Wd.rail[i]) killRail(i);
         if (Wd.road[i]) killRoad(i);
@@ -408,6 +458,13 @@
     onUp();
   };
 
+  Tl._simulateAt = function (tool, ax, az, bx, bz) {
+    Tl.setTool(tool);
+    const mk = (x, z) => { const tx = Math.floor(x / T), ty = Math.floor(z / T); return { i: U.idx(tx, ty), tx, ty, x, z }; };
+    Tl.hover = mk(ax, az); mouse.moved = false; onDown();
+    Tl.hover = mk(bx, bz); onUp();
+  };
+
   // ---------------- per-frame hover & previews ----------------
   Tl.update = function () {
     const G = CB.Gfx, Mx = CB.Meshes, Wd = CB.World, S = CB.Sim;
@@ -424,6 +481,11 @@
       Mx.setFlowArrows(strips, t.rt);
       const R = C.ROADS[t.rt];
       Tl.tip = R.name + ' · ' + (Tl.drag ? strips[0].tiles.length + ' tiles · ' : '') + U.money(ev.cost) + (ev.bad ? ' · ' + ev.bad : (R.oneway ? ' · drag in the direction of travel' : ''));
+    } else if (t.type === 'path') {
+      const cells = Tl.drag ? lPathF(Tl.drag.f, fcellAt(h)) : [fcellAt(h)];
+      const ev = pathEval(cells, t.pk);
+      Mx.setGhostTiles(ev.list);
+      Tl.tip = C.PATHS[t.pk].name + ' · ' + U.money(ev.cost) + (ev.bad ? ' · ' + ev.bad : ' · joins sidewalks it touches');
     } else if (t.type === 'junction') {
       const cl = junctionNear(h.i);
       Mx.setGhostTiles(cl ? cl.tiles.map(i => ({ i, ok: true, h: 0.6, col: [0.4, 0.8, 1] })) : []);

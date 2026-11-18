@@ -31,10 +31,10 @@ you start with just roads and zoning. services unlock as people move in:
 
 ## what's in it
 
-- **roads.** small roads are one tile, avenues, boulevards and highways are two tiles wide (one carriageway each way). 29 road types: one-ways, 1+2 asymmetric, gravel, medians, tree-lined, painted and protected bike lanes, tram tracks, ramps, bike and foot paths. the menu is split into tabs like the real thing
+- **roads.** small roads are one tile, avenues, boulevards and highways are two tiles wide (one carriageway each way). 29 road types: one-ways, 1+2 asymmetric, gravel, medians, tree-lined, painted and protected bike lanes, tram tracks and ramps. bike and foot paths are half a tile wide (four fit in a tile) and join any sidewalk they touch. the menu is split into tabs like the real thing
 - **intersections.** traffic lights go up automatically where avenues or bigger meet; small street crossings stay uncontrolled. every approach gets painted lane arrows. the intersection editor (roads → intersections) lets you switch between lights, stop signs, all-way stops and roundabouts, pick who stops, tune green times, and choose which turns each lane allows. cars plan routes around the arrows
 - **traffic.** cars pathfind with direction-aware A*, respect one-ways, pick lanes from the arrows, follow each other and wait at signals. people only drive when it makes sense: short trips are walked, medium trips are cycled if the route is safe (more bike lanes = more cyclists), and transit wins when it's quicker. shifts are staggered so not everyone leaves at 8:00
-- **zoning.** residential, commercial, industrial and office. low density lots come in five sizes, from cottages to estates with a pool
+- **zoning.** residential, commercial, industrial and office. lots fill the zone as deep as it goes, low density homes come in five sizes, and they start out worn and plain and get nicer and more modern as they level up
 - **transit.** buses, streetcars, elevated trains and metro
 - **services and parks.** garbage, health, police, fire, education, 22 parks from pocket parks to woodland reserves
 - **the rest.** day/night cycle, info views, budget and loans, residents who complain about stuff

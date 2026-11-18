@@ -53,13 +53,20 @@ window.CB = {};
     R('ramp1', 'One-Lane Ramp', 'highway', { oneway: true, fwd: 1, back: 0, speed: 20, cap: 5, cost: 70, upkeep: 1.2, zonable: false, side: 1.2, med: 'none', unlock: 4, desc: 'One-way. Use it for on and off ramps.' }),
     R('ramp2', 'Two-Lane Ramp', 'highway', { oneway: true, fwd: 2, back: 0, speed: 22, cap: 8, cost: 100, upkeep: 1.6, zonable: false, side: 0.9, med: 'none', unlock: 4 }),
     R('rural', 'Rural Highway', 'highway', { speed: 20, cap: 5, cost: 60, upkeep: 0.8, zonable: false, side: 1.0, med: 'paint', unlock: 4, desc: 'Fast two-lane road. No buildings.' }),
-    R('bikepath', 'Bike Path', 'path', { car: false, zonable: false, cost: 12, upkeep: 0.2, side: 0, med: 'none', unlock: 1, desc: 'Bikes and pedestrians only.' }),
-    R('footpath', 'Pedestrian Path', 'path', { car: false, zonable: false, cost: 8, upkeep: 0.1, side: 0, med: 'none', unlock: 0, desc: 'A shortcut for people on foot.' }),
+    // legacy full-tile paths (converted to half-tile paths when an old save loads)
+    R('bikepath', 'Bike Path', 'legacy', { car: false, zonable: false, cost: 12, upkeep: 0.2, side: 0, med: 'none', unlock: 1 }),
+    R('footpath', 'Pedestrian Path', 'legacy', { car: false, zonable: false, cost: 8, upkeep: 0.1, side: 0, med: 'none', unlock: 0 }),
   ];
   C.ROAD_GROUPS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['highway', 'Highways'], ['path', 'Paths']];
+  // half-tile paths: 4 fit in a tile, they join road sidewalks on their own
+  C.PATHS = [null,
+    { key: 'foot', name: 'Pedestrian Path', cost: 4, upkeep: 0.05, unlock: 0, col: '#cfc6b0', bike: 0.85, desc: 'Half a tile wide. Joins any sidewalk it touches.' },
+    { key: 'bike', name: 'Bike Path', cost: 6, upkeep: 0.08, unlock: 1, col: '#8a4a3c', bike: 1, desc: 'Half a tile wide. Bikes and pedestrians. Joins any sidewalk it touches.' },
+  ];
+  C.FW = C.W * 2;
   C.START_HW = C.ROADS.findIndex(r => r && r.key === 'hw2');
   C.ROAD_BASIC = 1;
-  C.GRP_RANK = { path: 0, small: 1, medium: 2, large: 3, highway: 4 };
+  C.GRP_RANK = { legacy: 0, path: 0, small: 1, medium: 2, large: 3, highway: 4 };
 
   // Cross-section layout of one strip, in metres across the tile (0 = left edge looking "forward").
   const MED_W = { none: 0, paint: 0.3, curb: 0.9, grass: 1.8, trees: 2.2, barrier: 0.8 };
@@ -182,10 +189,10 @@ window.CB = {};
   ];
 
   C.QUALITY = {
-    low: { res: 0.7, shadows: 0, aa: false, view: 1100, cars: 250, trees: 0.35, lighting: 'simple', water: 'simple' },
-    medium: { res: 1, shadows: 1024, aa: true, view: 1700, cars: 500, trees: 0.7, lighting: 'pbr', water: 'simple' },
-    high: { res: 1.25, shadows: 2048, aa: true, view: 2400, cars: 900, trees: 1, lighting: 'pbr', water: 'waves' },
-    ultra: { res: 2, shadows: 4096, aa: true, view: 3200, cars: 1400, trees: 1.4, lighting: 'pbr', water: 'waves' },
+    low: { res: 0.7, shadows: 0, aa: false, view: 1100, cars: 250, trees: 0.35, lighting: 'simple', water: 'simple', detail: false },
+    medium: { res: 1, shadows: 1024, aa: true, view: 1700, cars: 500, trees: 0.7, lighting: 'pbr', water: 'simple', detail: false },
+    high: { res: 1.25, shadows: 2048, aa: true, view: 2400, cars: 900, trees: 1, lighting: 'pbr', water: 'waves', detail: true },
+    ultra: { res: 2, shadows: 4096, aa: true, view: 3200, cars: 1400, trees: 1.4, lighting: 'pbr', water: 'waves', detail: true },
   };
 
   // ---------- Utils ----------

@@ -118,7 +118,7 @@
         this.cone(x, y + 3.0 * s, z, 2.1 * s, 2.6 * s, 6, col);
       }
     }
-    addThree(g, mx, col) {
+    addThree(g, mx, col, st) {
       const ng = g.index ? g.toNonIndexed() : g;
       ng.applyMatrix4(mx);
       ng.computeVertexNormals();
@@ -126,7 +126,7 @@
       const cl = lc(col);
       for (let i = 0; i < p.length; i += 3) {
         this.p.push(p[i], p[i + 1], p[i + 2]); this.n.push(n[i], n[i + 1], n[i + 2]);
-        this.c.push(cl[0], cl[1], cl[2]); this.u.push(0, 0); this.s.push(0);
+        this.c.push(cl[0], cl[1], cl[2]); this.u.push(0, 0); this.s.push(st || 0);
       }
     }
     get count() { return this.p.length / 3; }
@@ -230,6 +230,15 @@
 
   // ---- low density homes ----
   const HOUSE_WALL = ['#efe9dc', '#e6dcc6', '#d9cbb0', '#c9d3d6', '#e8e1c4', '#cfd8cf', '#dad4cc', '#e3d2bd', '#f2efe6', '#c7b7a3', '#b8c7cf', '#e9d9c9', '#a8b8a0'];
+  const WORN_WALL = ['#c9bfa8', '#b8ad96', '#a99f8a', '#c4c0b4', '#b5aa98', '#9fa59a', '#bfb3a0'];
+  const WORN_ROOF = ['#5a5550', '#6a5040', '#4a4d50', '#605a52', '#7a6a5a'];
+  function wornYard(gb, r, LW, LD) {
+    // chain-link fence, gravel patch, a tired shed
+    gb.box(0.2, 0, LD - 0.35, LW - 0.2, 1.1, LD - 0.3, '#8a9095');
+    gb.flat(LW - 3.4, 0.1, LW - 0.6, Math.min(5, LD - 1), 0.1, '#8a8478');
+    if (r() < 0.6 && LD > 12) gb.box(0.8, 0, LD - 3.6, 3.2, 2.0, LD - 1.2, '#8a8a84', 0, { top: '#6e6a62' });
+    if (r() < 0.4) gb.box(LW - 2.6, 0.1, 1.2, LW - 1.2, 0.9, 2.6, '#6a6a60');
+  }
   const HOUSE_ROOF = ['#4b4f57', '#6b3e2e', '#3d4650', '#7a5a44', '#55504a', '#2f3640', '#5e3a33', '#704a3a', '#3c5060'];
   const TRIM = ['#f4f1ea', '#e8e2d4', '#ffffff', '#3a3d42', '#2f4a5a'];
   function houseBlock(gb, r, x0, z0, w, d, floors, roof, wall, rc, opts) {
@@ -246,9 +255,22 @@
   GEN.rlow = function (gb, b, r, LW, LD) {
     foundation(gb, LW, LD, b, U.pick(PAL.lawn, r));
     const lvl = b.level, area = b.w * b.d;
-    const wall = U.pick(HOUSE_WALL, r), rc = U.pick(HOUSE_ROOF, r), trim = U.pick(TRIM, r);
-    const roofK = U.pick(['gable', 'gable', 'hip', 'hip', 'steep', 'flat'], r);
+    // level 1 homes are worn and plain; each level adds care, size and eventually modern design
+    const worn = lvl <= 1, plain = lvl <= 2;
+    const wall = worn ? U.pick(WORN_WALL, r) : U.pick(HOUSE_WALL, r), rc = worn ? U.pick(WORN_ROOF, r) : U.pick(HOUSE_ROOF, r), trim = worn ? '#cfc8b6' : U.pick(TRIM, r);
+    const roofK = plain ? U.pick(['gable', 'gable', 'steep'], r) : U.pick(['gable', 'hip', 'hip', 'steep'], r);
     const doorCol = U.pick(['#5a3d2b', '#8c1c1c', '#25467a', '#2f5a3a', '#3a3d42', '#c8a040'], r);
+    if (area === 1 && lvl >= 4) {
+      // compact modern cube
+      const w = 7, d = 6.2, x0 = (LW - w) / 2, z0 = 2.4, dark = r() < 0.5;
+      gb.box(x0, 0, z0, x0 + w, 3.2, z0 + d, dark ? '#3a3d42' : '#ece9e2', 2);
+      gb.box(x0 + 1.5, 3.2, z0 + 1.2, x0 + w, 5.8, z0 + d, dark ? '#ece9e2' : '#5a6068', 2);
+      gb.box(x0 - 0.1, 3.15, z0 - 0.1, x0 + w + 0.1, 3.4, z0 + d + 0.1, '#2b2b30'); gb.box(x0 + 1.4, 5.8, z0 + 1.1, x0 + w + 0.1, 6.0, z0 + d + 0.1, '#2b2b30');
+      gb.box(x0 + 2.6, 0.4, z0 - 0.06, x0 + w - 0.4, 2.8, z0, '#9fc5d8', 9); door(gb, x0 + 1.4, z0, '#2b2b30');
+      gb.box(x0 - 0.6, 0, z0 - 1.6, x0 + 3, 0.25, z0, '#8a6a4a');
+      bush(gb, 1, 1.2, 0.8); bush(gb, LW - 1, 1.2, 0.8); if (lvl >= 5) yardTree(gb, LW - 1.6, LD - 1.6, r);
+      return;
+    }
     if (area === 1) {
       // cottage
       const w = 6.2 + r() * 0.8, d = 5.6 + r() * 0.6, x0 = (LW - w) / 2, z0 = 2.4;
@@ -257,11 +279,14 @@
       gb.box(x0 + w / 2 - 1.2, 0, z0 - 1.15, x0 + w / 2 - 1.05, 2.4, z0 - 1.0, trim); gb.box(x0 + w / 2 + 1.05, 0, z0 - 1.15, x0 + w / 2 + 1.2, 2.4, z0 - 1.0, trim);
       windowsFront(gb, x0 + 0.3, x0 + w / 2 - 1.3, z0, 1.0, 1); windowsFront(gb, x0 + w / 2 + 1.3, x0 + w - 0.3, z0, 1.0, 1);
       pathStrip(gb, x0 + w / 2 - 0.5, 0.1, x0 + w / 2 + 0.5, z0, '#b5ada0');
-      hedge(gb, 0.3, 0.3, x0 + w / 2 - 0.9, 0.9); hedge(gb, x0 + w / 2 + 0.9, 0.3, LW - 0.3, 0.9);
+      if (!worn) { hedge(gb, 0.3, 0.3, x0 + w / 2 - 0.9, 0.9); hedge(gb, x0 + w / 2 + 0.9, 0.3, LW - 0.3, 0.9); }
+      else wornYard(gb, r, LW, LD);
       if (r() < 0.7) yardTree(gb, LW - 1.4, LD - 1.4, r);
       return;
     }
-    const style = U.pick(area >= 6 ? ['estate', 'estate', 'modernvilla'] : area >= 4 ? ['ranchL', 'twostoryWide', 'duplex', 'modernvilla'] : area === 3 ? ['colonial', 'bungalow', 'modern'] : ['colonial', 'bungalow', 'modern', 'aframe', 'saltbox'], r);
+    const POOLS = area >= 4 ? [null, ['duplex', 'ranchL'], ['duplex', 'ranchL', 'twostoryWide'], ['ranchL', 'twostoryWide', 'estate'], ['twostoryWide', 'estate', 'modernvilla'], ['estate', 'modernvilla', 'modernvilla']]
+      : [null, ['saltbox', 'bungalow'], ['saltbox', 'bungalow', 'colonial'], ['colonial', 'bungalow', 'aframe', 'saltbox'], ['colonial', 'modern', 'aframe'], ['modern', 'modern', 'colonial']];
+    const style = U.pick(POOLS[lvl], r);
     if (style === 'colonial' || style === 'saltbox') {
       const w = Math.min(LW - 2.6, 7.8 + r() * 1.2), d = 7.2 + r() * 1.5, x0 = 1.0 + r() * 0.6, z0 = 3.6 + r();
       const hb = houseBlock(gb, r, x0, z0, w, d, 2, style === 'saltbox' ? 'steep' : (roofK === 'flat' ? 'hip' : roofK), wall, rc, { chimney: true, doorCol });
@@ -364,7 +389,9 @@
       for (let k = 0; k < 3; k++) gb.box(1.2, 0, LD - 9 + k * 2.1, 5.6, 0.3, LD - 8.1 + k * 2.1, '#6a4a32', 0, { top: '#4a7a36' });
     }
     if (area === 2 && r() < 0.8) { yardTree(gb, 1.5 + r() * 2, LD - 2.5 - r() * 3, r); if (r() < 0.5) bush(gb, LW - 1.8, LD - 2.2, 1); }
-    if (area >= 2 && lvl >= 2 && style !== 'ranchL' && style !== 'duplex') { fence(gb, 0.2, LD - 0.4, LW - 0.2, LD - 0.25, '#b49a78'); fence(gb, 0.2, LD * 0.55, 0.35, LD - 0.25, '#b49a78'); fence(gb, LW - 0.35, LD * 0.55, LW - 0.2, LD - 0.25, '#b49a78'); }
+    if (worn) wornYard(gb, r, LW, LD);
+    if (lvl >= 4 && area >= 2) { flowerBed(gb, 0.6, 1.4, 2.6, 2.4, r); bush(gb, LW - 1.2, 1.6, 0.8); }
+    if (area >= 2 && lvl >= 3 && style !== 'ranchL' && style !== 'duplex') { fence(gb, 0.2, LD - 0.4, LW - 0.2, LD - 0.25, '#b49a78'); fence(gb, 0.2, LD * 0.55, 0.35, LD - 0.25, '#b49a78'); fence(gb, LW - 0.35, LD * 0.55, LW - 0.2, LD - 0.25, '#b49a78'); }
   };
   GEN.rmed = function (gb, b, r, LW, LD) {
     foundation(gb, LW, LD, b, r() < 0.5 ? U.pick(PAL.lawn, r) : PAL.paved);
@@ -990,6 +1017,41 @@
     else SGEN[b.svc](gb, b, r, LW, LD);
     gb.tint = null; gb.noLit = false;
   };
+  // ---- 3D thumbnails for menus (rendered once, cached as images) ----
+  const thumbCache = new Map();
+  let TR = null;
+  M.thumb = function (key, spec) {
+    if (thumbCache.has(key)) return thumbCache.get(key);
+    let url = '';
+    try {
+      if (!TR) {
+        const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        r.setPixelRatio(1); r.setSize(176, 128);
+        r.outputColorSpace = CB.Gfx.renderer.outputColorSpace; r.toneMapping = CB.Gfx.renderer.toneMapping; r.toneMappingExposure = CB.Gfx.renderer.toneMappingExposure;
+        const sc = new THREE.Scene();
+        sc.add(new THREE.HemisphereLight(0xdfeeff, 0x6a5a40, 1.4));
+        const sun = new THREE.DirectionalLight(0xfff1dc, 2.6); sun.position.set(-0.6, 1, 0.45); sc.add(sun);
+        TR = { r, sc, cam: new THREE.PerspectiveCamera(28, 176 / 128, 1, 4000) };
+      }
+      const b = Object.assign({ x: 0, y: 0, dir: 2, baseY: 0, minY: -0.5, seed: 1234, level: 3, state: 'live' }, spec);
+      b.fw = b.w; b.fh = b.d;
+      const gb = new GB(); M.genBuilding(gb, b);
+      const geo = gb.geometry(); geo.computeBoundingBox();
+      const mesh = new THREE.Mesh(geo, CB.Gfx.mats.city);
+      TR.sc.add(mesh);
+      const bb = geo.boundingBox, c = new THREE.Vector3(), sz = new THREE.Vector3(); bb.getCenter(c); bb.getSize(sz);
+      const rad = Math.max(sz.x, sz.z, sz.y * 0.9) * 0.62 + 4;
+      const dist = rad / Math.tan(THREE.MathUtils.degToRad(14));
+      TR.cam.position.set(c.x - dist * 0.55, c.y + dist * 0.62, c.z + dist * 0.56);
+      TR.cam.lookAt(c.x, c.y - sz.y * 0.05, c.z);
+      TR.cam.near = dist * 0.2; TR.cam.far = dist * 3; TR.cam.updateProjectionMatrix();
+      TR.r.render(TR.sc, TR.cam);
+      url = TR.r.domElement.toDataURL('image/png');
+      TR.sc.remove(mesh); geo.dispose();
+    } catch (e) { url = ''; }
+    thumbCache.set(key, url);
+    return url;
+  };
   M.buildingHeight = function (b) {
     const gb = new GB(); M.genBuilding(gb, b);
     let mx = 0; for (let i = 1; i < gb.p.length; i += 3) mx = Math.max(mx, gb.p[i] - b.baseY);
@@ -1183,9 +1245,12 @@
       // signal pole / stop sign at the right-hand corner
       const pc = FU(f, T - 0.45, 9.4), px = X0 + pc[0], pz = Z0 + pc[1], py = base(pc[0], pc[1]) + 0.3;
       if (cl.ctrl === 'lights') {
-        gb.box(px - 0.12, py, pz - 0.12, px + 0.12, py + 4.6, pz + 0.12, '#3a3d42');
-        const hp = M.signalPos(ap);
-        gb.box(hp[0] - 0.3, hp[1] - 0.75, hp[2] - 0.3, hp[0] + 0.3, hp[1] + 0.75, hp[2] + 0.3, '#1d1f22');
+        const hp = M.signalPos(ap), top = hp[1] + 1.05;
+        gb.box(px - 0.13, py, pz - 0.13, px + 0.13, top + 0.15, pz + 0.13, '#3a3d42');
+        // mast arm out over the lanes
+        gb.box(Math.min(px, hp[0]) - 0.08, top, Math.min(pz, hp[2]) - 0.08, Math.max(px, hp[0]) + 0.08, top + 0.16, Math.max(pz, hp[2]) + 0.08, '#3a3d42');
+        gb.box(hp[0] - 0.32, hp[1] - 0.85, hp[2] - 0.32, hp[0] + 0.32, hp[1] + 0.85, hp[2] + 0.32, '#16181b');
+        gb.box(hp[0] - 0.05, hp[1] + 0.85, hp[2] - 0.05, hp[0] + 0.05, top, hp[2] + 0.05, '#3a3d42');
       } else if ((cl.ctrl === 'stop' || cl.ctrl === 'allstop') && CB.Traffic.isStopFor(cl, ap.key)) {
         gb.box(px - 0.06, py, pz - 0.06, px + 0.06, py + 2.3, pz + 0.06, '#9a9a9a');
         gb.cyl(px, py + 2.3, pz, 0.42, 0.08, 8, '#c8231c', 5, '#c8231c');
@@ -1204,12 +1269,40 @@
       if ((x + y) % 2 === 0) gb.box(X0 + 4.1, g - 1, Z0 + 4.1, X0 + 5.9, y0 - 1.3, Z0 + 5.9, COL.deck);
     }
   }
+  // half-tile paths: a paved ribbon through each cell, joined to neighbouring cells and to road sidewalks
+  function genPathTile(gb, i) {
+    const Wd = CB.World, FW = C.FW, H = T / 2;
+    for (let q = 0; q < 4; q++) {
+      const f = Wd.cellOf(i, q), k = Wd.pcell[f]; if (!k) continue;
+      const P = C.PATHS[k], fx = f % FW, fy = (f / FW) | 0;
+      const x0 = fx * H, z0 = fy * H, cx = x0 + H / 2, cz = z0 + H / 2, w = k === 2 ? 1.25 : 1.05;
+      const y = (lx, lz) => Math.max(Wd.groundH(lx, lz), C.WATER + 0.3) + 0.2;
+      const quad = (ax, az, bx, bz, col, dy) => gb.quad([ax, y(ax, bz) + (dy || 0), bz], [bx, y(bx, bz) + (dy || 0), bz], [bx, y(bx, az) + (dy || 0), az], [ax, y(ax, az) + (dy || 0), az], col, 14);
+      quad(cx - w, cz - w, cx + w, cz + w, P.col);
+      for (let d = 0; d < 4; d++) {
+        const nx = fx + C.DX[d], ny = fy + C.DY[d];
+        if (nx < 0 || ny < 0 || nx >= FW || ny >= FW) continue;
+        const nf = ny * FW + nx, nt = U.idx(nx >> 1, ny >> 1);
+        const toRoad = nt !== i && Wd.walkRoad(nt);
+        if (!Wd.pcell[nf] && !toRoad) continue;
+        if (d === 0) quad(cx - w, z0, cx + w, cz, P.col); else if (d === 2) quad(cx - w, cz, cx + w, z0 + H, P.col);
+        else if (d === 1) quad(cx, cz - w, x0 + H, cz + w, P.col); else quad(x0, cz - w, cx, cz + w, P.col);
+        if (k === 2) { if (d % 2 === 0) quad(cx - 0.06, d === 0 ? z0 + 0.6 : cz + 0.6, cx + 0.06, d === 0 ? cz - 0.6 : z0 + H - 0.6, COL.white, 0.01); else quad(d === 3 ? x0 + 0.6 : cx + 0.6, cz - 0.06, d === 3 ? cx - 0.6 : x0 + H - 0.6, cz + 0.06, COL.white, 0.01); }
+      }
+    }
+  }
   // world position of the signal head for a junction approach
   M.signalPos = function (ap) {
     const Wd = CB.World, i = ap.tile, f = ap.d;
     const FU = (u, v) => f === 0 ? [u, T - v] : f === 1 ? [v, u] : f === 2 ? [T - u, v] : [T - v, T - u];
-    const p = FU(T - 0.45, 9.4), x = U.tx(i) * T + p[0], z = U.ty(i) * T + p[1];
-    return [x, Wd.roadH(x, z) + 4.2, z];
+    const ln = Wd.lanesToward(i, f), mid = ln.length ? (ln[0] + ln[ln.length - 1]) / 2 : 1.5;
+    const p = FU(T / 2 + mid, 9.4), x = U.tx(i) * T + p[0], z = U.ty(i) * T + p[1];
+    return [x, Wd.roadH(x, z) + 5.2, z];
+  };
+  // the lit lamp sits on the face of the housing pointing at oncoming drivers
+  M.signalLampPos = function (ap) {
+    const p = M.signalPos(ap);
+    return [p[0] - C.DX[ap.d] * 0.42, p[1], p[2] - C.DY[ap.d] * 0.42];
   };
   M.junctionsChanged = function () {
     const Wd = CB.World;
@@ -1413,6 +1506,7 @@
     for (let y = y0; y < Math.min(W, y0 + CS); y++) for (let x = x0; x < Math.min(W, x0 + CS); x++) {
       const i = U.idx(x, y);
       if (Wd.road[i]) genRoadTile(gb, i);
+      if (Wd.pmask[i]) genPathTile(gb, i);
       if (Wd.rail[i] === 1) { genRailTile(gb, i); elev = true; }
     }
     if (CB.Transit) for (const s of CB.Transit.stops) {
@@ -1494,7 +1588,7 @@
     for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
       const i = U.idx(x, y);
       const t = Wd.tree[i];
-      if (!t || Wd.bld[i] || Wd.road[i] || Wd.rail[i] === 1) continue;
+      if (!t || Wd.bld[i] || Wd.road[i] || Wd.pmask[i] === 15 || Wd.rail[i] === 1) continue;
       const play = U.inPlay(x, y);
       let n = t * dens * (play ? 1 : 0.7);
       const base = Math.floor(n); const frac = n - base;
@@ -1683,17 +1777,212 @@
     }
     return gb.geometry();
   }
-  M.VEH_KINDS = ['car', 'suv', 'van', 'truck', 'bus', 'tram', 'police', 'ambulance', 'fire', 'garbage', 'train', 'bike', 'ped'];
+  // ---------------- detailed models (high / ultra) ----------------
+  // side profile [x, y] points (convex, counter-clockwise) extruded across z0..z1
+  function extrude(gb, prof, z0, z1, col, st, inset) {
+    const n = prof.length, k = inset || 0;
+    for (let i = 0; i < n; i++) {
+      const a = prof[i], b = prof[(i + 1) % n];
+      gb.quad([a[0], a[1], z0], [b[0], b[1], z0], [b[0], b[1], z1], [a[0], a[1], z1], col, st);
+    }
+    let cx = 0, cy = 0; for (const p of prof) { cx += p[0]; cy += p[1]; } cx /= n; cy /= n;
+    for (let i = 0; i < n; i++) {
+      const a = prof[i], b = prof[(i + 1) % n];
+      const sh = (p, z) => [p[0] + (cx - p[0]) * k, p[1] + (cy - p[1]) * k, z];
+      gb.tri(sh(a, z1), sh(b, z1), [cx, cy, z1], col, st);
+      gb.tri(sh(b, z0), sh(a, z0), [cx, cy, z0], col, st);
+    }
+  }
+  const WHEEL = new THREE.CylinderGeometry(1, 1, 1, 14).rotateX(Math.PI / 2);
+  const RIM = new THREE.CylinderGeometry(1, 1, 1, 10).rotateX(Math.PI / 2);
+  function wheelHQ(gb, x, z, r, w, rimCol) {
+    gb.addThree(WHEEL, new THREE.Matrix4().makeScale(r, r, w).setPosition(x, r, z), '#141414', 17);
+    const side = z > 0 ? 1 : -1;
+    gb.addThree(RIM, new THREE.Matrix4().makeScale(r * 0.6, r * 0.6, 0.04).setPosition(x, r, z + side * w * 0.5), rimCol || '#b8bcc2', 16);
+  }
+  function lights(gb, xf, xr, y, zs, w) {
+    for (const z of zs) {
+      gb.box(xf - 0.04, y, z - w, xf + 0.04, y + 0.2, z + w, '#fff', 6);
+      gb.box(xr - 0.04, y + 0.05, z - w, xr + 0.04, y + 0.22, z + w, '#fff', 7);
+    }
+  }
+  // window pane on the plane through edge a->b of a side profile, inset along the edge
+  function pane(gb, a, b, z0, z1, t0, t1, out) {
+    const lx = b[0] - a[0], ly = b[1] - a[1], l = Math.hypot(lx, ly), nx = ly / l * out, ny = -lx / l * out;
+    const P = t => [a[0] + lx * t + nx, a[1] + ly * t + ny];
+    const A = P(t0), B = P(t1);
+    gb.quad([A[0], A[1], z0], [A[0], A[1], z1], [B[0], B[1], z1], [B[0], B[1], z0], '#fff', 9);
+    gb.quad([A[0], A[1], z1], [A[0], A[1], z0], [B[0], B[1], z0], [B[0], B[1], z1], '#fff', 9);
+  }
+  function shrink(prof, k, dy) {
+    let cx = 0, cy = 0; for (const p of prof) { cx += p[0]; cy += p[1]; } cx /= prof.length; cy /= prof.length;
+    return prof.map(p => [p[0] + (cx - p[0]) * k, p[1] + (cy - p[1]) * k + (dy || 0)]);
+  }
+  function sideGlass(gb, prof, zs) { for (const z of zs) extrude(gb, prof, z - 0.012, z + 0.012, '#fff', 9); }
+  function chamferRect(x0, y0, x1, y1, c, c2) { const d = c2 === undefined ? c : c2; return [[x0, y0 + d], [x0 + d, y0], [x1 - d, y0], [x1, y0 + d], [x1, y1 - c], [x1 - c, y1], [x0 + c, y1], [x0, y1 - c]]; }
+  function carHQ(gb, L, W, H, kind) {
+    const body = '#fff', trim = '#24262a';
+    const sill = 0.3, belt = H * 0.53, roof = H;
+    const hood = L * 0.44, rear = -L * 0.8;
+    // lower body: rounded nose and tail
+    extrude(gb, [[-L + 0.12, sill], [L - 0.15, sill], [L + 0.03, sill + 0.25], [L, belt - 0.2], [L - 0.35, belt + 0.02], [-L + 0.25, belt + 0.05], [-L - 0.02, belt - 0.12], [-L - 0.04, sill + 0.22]], -W, W, body, 0);
+    // cabin in body colour, glass as separate panes
+    const cab = kind === 'suv'
+      ? [[-L + 0.2, belt], [hood - 0.15, belt], [hood - 0.75, roof - 0.05], [hood - 0.95, roof], [-L + 0.42, roof], [-L + 0.3, roof - 0.08]]
+      : [[rear + 0.1, belt], [hood, belt], [hood - 0.95, roof - 0.04], [hood - 1.15, roof], [rear + 0.8, roof], [rear + 0.65, roof - 0.04]];
+    const cw = W - 0.1;
+    extrude(gb, cab, -cw, cw, body, 0);
+    pane(gb, cab[1], cab[2], -cw + 0.12, cw - 0.12, 0.08, 0.95, 0.012);          // windscreen
+    pane(gb, cab[5], cab[0], -cw + 0.14, cw - 0.14, 0.05, 0.86, 0.012);          // rear window
+    const sg = shrink([cab[0], cab[1], cab[2], cab[3], cab[4], cab[5]], 0.2, 0.03);
+    sideGlass(gb, sg, [-cw - 0.006, cw + 0.006]);
+    for (const z of [-cw - 0.02, cw + 0.02]) gb.box(-0.12, belt, z - 0.015, 0.06, roof - 0.06, z + 0.015, body); // B pillar
+    // bumpers, grille, plates, lights
+    gb.box(L - 0.06, sill - 0.04, -W + 0.08, L + 0.1, sill + 0.3, W - 0.08, trim, 17);
+    gb.box(-L - 0.12, sill - 0.04, -W + 0.08, -L + 0.06, sill + 0.3, W - 0.08, trim, 17);
+    gb.box(L + 0.03, belt - 0.5, -W * 0.42, L + 0.06, belt - 0.3, W * 0.42, '#151618');
+    gb.box(-L - 0.14, sill + 0.33, -0.3, -L - 0.1, sill + 0.5, 0.3, '#e8e8e0');
+    for (const z of [-W + 0.28, W - 0.28]) {
+      gb.box(L - 0.02, belt - 0.42, z - 0.22, L + 0.05, belt - 0.24, z + 0.22, '#fff', 6);
+      gb.box(-L - 0.07, belt - 0.4, z - 0.24, -L, belt - 0.2, z + 0.24, '#fff', 7);
+    }
+    for (const z of [-W - 0.13, W + 0.13]) gb.box(hood - 0.4, belt + 0.03, Math.min(z, z * 0.88) - 0.03, hood - 0.2, belt + 0.2, Math.max(z, z * 0.88) + 0.03, body);
+    for (const z of [-W - 0.004, W + 0.004]) { gb.box(-L * 0.42, sill + 0.4, z - 0.004, -L * 0.42 + 0.04, belt - 0.06, z + 0.004, trim, 17); gb.box(0.2, belt - 0.2, z - 0.006, 0.42, belt - 0.15, z + 0.006, trim, 17); }
+    gb.box(-L + 0.1, sill - 0.02, -W - 0.01, L - 0.1, sill + 0.08, W + 0.01, trim, 17); // rocker strip
+    const wr = kind === 'suv' ? 0.42 : 0.35, wx = L * 0.64;
+    for (const x of [-wx, wx]) for (const z of [-W + 0.17, W - 0.17]) wheelHQ(gb, x, z, wr, 0.26);
+    if (kind === 'suv') { gb.box(-L * 0.6, roof + 0.07, -W + 0.15, L * 0.1, roof + 0.13, -W + 0.22, trim, 17); gb.box(-L * 0.6, roof + 0.07, W - 0.22, L * 0.1, roof + 0.13, W - 0.15, trim, 17); }
+  }
+  // boxy vehicles: chamfered body, window band, cab with sloped screen
+  function cabHQ(gb, x0, x1, H, W, col, opts) {
+    opts = opts || {};
+    const prof = [[x0, 0.45], [x1 - 0.1, 0.45], [x1 + 0.04, 0.7], [x1, H * 0.55], [x1 - (opts.slope || 0.45), H - 0.1], [x1 - (opts.slope || 0.45) - 0.12, H], [x0, H]];
+    extrude(gb, prof, -W, W, col, 0);
+    pane(gb, prof[3], prof[4], -W + 0.15, W - 0.15, 0.06, 0.94, 0.012);
+    const sg = [[x0 + 0.25, H * 0.55], [x1 - 0.15, H * 0.55], [x1 - (opts.slope || 0.45) + 0.05, H - 0.2], [x0 + 0.25, H - 0.2]];
+    sideGlass(gb, sg, [-W - 0.006, W + 0.006]);
+    gb.box(x1 - 0.02, 0.5, -W + 0.1, x1 + 0.12, 0.85, W - 0.1, '#24262a');
+    for (const z of [-W + 0.28, W - 0.28]) gb.box(x1 + 0.02, 0.95, z - 0.2, x1 + 0.07, 1.15, z + 0.2, '#fff', 6);
+    for (const z of [-W - 0.15, W + 0.15]) gb.box(x1 - 0.5, H * 0.55, Math.min(z, z * 0.9) - 0.03, x1 - 0.35, H * 0.55 + 0.35, Math.max(z, z * 0.9) + 0.03, '#24262a');
+  }
+  function boxBody(gb, x0, x1, y0, y1, W, col, st) { extrude(gb, chamferRect(x0, y0, x1, y1, 0.12, 0.05), -W, W, col, st || 0); }
+  function windowBand(gb, x0, x1, y0, y1, W) { for (const z of [-W - 0.006, W + 0.006]) extrude(gb, chamferRect(x0, y0, x1, y1, 0.06), z - 0.012, z + 0.012, '#fff', 9); }
+  function tail(gb, x, W, y) { for (const z of [-W + 0.25, W - 0.25]) gb.box(x - 0.05, y, z - 0.18, x + 0.01, y + 0.25, z + 0.18, '#fff', 7); }
+  function heavyHQ(gb, kind) {
+    switch (kind) {
+      case 'van':
+        boxBody(gb, -2.8, 1.25, 0.4, 2.55, 1.0, '#fff'); cabHQ(gb, 1.2, 2.8, 2.3, 0.98, '#fff', { slope: 0.6 });
+        windowBand(gb, -0.4, 1.0, 1.55, 2.2, 1.0); tail(gb, -2.85, 1.0, 0.8);
+        for (const x of [-1.85, 1.95]) for (const z of [-0.8, 0.8]) wheelHQ(gb, x, z, 0.38, 0.28); break;
+      case 'ambulance':
+        boxBody(gb, -2.8, 1.35, 0.4, 2.8, 1.05, '#f6f6f6'); cabHQ(gb, 1.3, 2.85, 2.25, 1.02, '#f6f6f6', { slope: 0.6 });
+        gb.box(-2.82, 1.15, -1.07, 2.86, 1.45, 1.07, '#d92a2a'); gb.box(0.6, 2.8, -0.75, 1.3, 3.0, -0.05, '#ff3030', 5); gb.box(0.6, 2.8, 0.05, 1.3, 3.0, 0.75, '#2050ff', 5);
+        tail(gb, -2.85, 1.05, 0.8); for (const x of [-1.85, 1.95]) for (const z of [-0.82, 0.82]) wheelHQ(gb, x, z, 0.38, 0.28); break;
+      case 'truck':
+        cabHQ(gb, 1.55, 3.6, 2.95, 1.15, '#fff', { slope: 0.35 }); boxBody(gb, -3.65, 1.45, 0.75, 3.55, 1.22, '#e8e6e0');
+        gb.box(-3.66, 0.55, -1.0, 1.45, 0.75, 1.0, '#2a2c30'); tail(gb, -3.7, 1.2, 0.9);
+        for (const x of [-2.7, -1.5, 2.65]) for (const z of [-0.98, 0.98]) wheelHQ(gb, x, z, 0.46, 0.34); break;
+      case 'garbage':
+        cabHQ(gb, 1.8, 3.6, 2.85, 1.15, '#f0f0f0', { slope: 0.3 }); boxBody(gb, -3.65, 1.7, 0.6, 3.2, 1.2, '#2f7a3b');
+        extrude(gb, [[-3.65, 0.6], [-3.2, 0.6], [-3.2, 3.2], [-3.9, 2.9], [-3.9, 1.0]], -1.15, 1.15, '#27662f');
+        tail(gb, -3.92, 1.1, 1.2); for (const x of [-2.5, 2.6]) for (const z of [-0.98, 0.98]) wheelHQ(gb, x, z, 0.46, 0.34); break;
+      case 'fire':
+        cabHQ(gb, 1.9, 3.6, 2.7, 1.2, '#c8231c', { slope: 0.3 }); boxBody(gb, -3.6, 1.85, 0.5, 2.6, 1.22, '#c8231c');
+        gb.box(-3.3, 2.65, -0.35, 1.7, 2.8, -0.25, '#d8d8d8'); gb.box(-3.3, 2.65, 0.25, 1.7, 2.8, 0.35, '#d8d8d8');
+        for (let k = 0; k < 9; k++) gb.box(-3.2 + k * 0.55, 2.66, -0.3, -3.12 + k * 0.55, 2.76, 0.3, '#d8d8d8');
+        gb.box(2.5, 2.7, -0.8, 3.1, 2.9, 0.8, '#ff3030', 5); for (const z of [-1.23, 1.23]) gb.box(-3.5, 1.2, z - 0.01, 1.8, 1.35, z + 0.01, '#f2d24a', 5);
+        for (const x of [-2.4, 2.5]) for (const z of [-1.0, 1.0]) wheelHQ(gb, x, z, 0.46, 0.34); break;
+      case 'bus':
+        boxBody(gb, -5.2, 5.2, 0.4, 3.1, 1.25, '#fff'); windowBand(gb, -4.9, 4.6, 1.45, 2.65, 1.25);
+        pane(gb, [5.2, 1.3], [5.2, 2.95], -1.1, 1.1, 0.03, 0.97, 0.03);
+        gb.box(5.21, 2.7, -0.7, 5.25, 2.95, 0.7, '#ffb000', 5); gb.box(-5.2, 3.1, -0.9, 3.0, 3.35, 0.9, '#d9d9d9');
+        for (const z of [-0.95, 0.95]) gb.box(5.2, 0.7, z - 0.18, 5.26, 0.9, z + 0.18, '#fff', 6); tail(gb, -5.24, 1.25, 0.8);
+        for (const x of [-3.4, 3.5]) for (const z of [-1.04, 1.04]) wheelHQ(gb, x, z, 0.5, 0.3); break;
+      case 'tram':
+        boxBody(gb, -6.8, 6.8, 0.35, 3.0, 1.25, '#fff'); windowBand(gb, -6.3, 6.3, 1.3, 2.55, 1.25);
+        for (const x of [6.8, -6.8]) pane(gb, [x, 1.2], [x, 2.7], -1.05, 1.05, 0.03, 0.97, x > 0 ? 0.03 : -0.03);
+        gb.box(-6.8, 3.0, -1.0, 6.8, 3.15, 1.0, '#cfcfcf'); gb.box(-0.6, 3.15, -0.05, 0.6, 4.2, 0.05, '#333'); gb.box(-1.2, 4.15, -0.45, 1.2, 4.25, 0.45, '#333');
+        for (const z of [-0.95, 0.95]) gb.box(6.8, 0.6, z - 0.15, 6.86, 0.8, z + 0.15, '#fff', 6);
+        for (const x of [-4.6, 4.6]) gb.box(x - 1.1, 0.0, -0.95, x + 1.1, 0.4, 0.95, '#2a2c30'); break;
+      default: return false;
+    }
+    return true;
+  }
+  function personHQ(gb, pose) {
+    // ~1.75 m tall; shirt takes the instance colour, trousers/skin fixed
+    const skin = '#d9a77f', pants = U.pick(['#2b3445', '#3a3f4a', '#5a4a3a', '#2a2c30'], () => 0.3), shoe = '#1e1e20';
+    const sw = pose ? 0.28 : -0.28;
+    for (const [z, k] of [[-0.11, 1], [0.11, -1]]) {
+      const off = sw * k;
+      gb.box(-0.08 + off * 0.5, 0.45, z - 0.07, 0.08 + off * 0.5, 0.9, z + 0.07, pants, 17);
+      gb.box(-0.07 + off, 0.06, z - 0.065, 0.07 + off, 0.47, z + 0.065, pants, 17);
+      gb.box(-0.06 + off, 0, z - 0.07, 0.17 + off, 0.08, z + 0.07, shoe, 17);
+    }
+    extrude(gb, [[-0.12, 0.88], [0.12, 0.88], [0.14, 1.45], [-0.13, 1.45]], -0.22, 0.22, '#fff', 0);
+    gb.box(-0.1, 1.45, -0.25, 0.1, 1.52, 0.25, '#fff');
+    for (const [z, k] of [[-0.29, -1], [0.29, 1]]) {
+      const off = sw * k * 0.8;
+      gb.box(-0.05 + off * 0.3, 1.12, z - 0.05, 0.05 + off * 0.3, 1.47, z + 0.05, '#fff');
+      gb.box(-0.045 + off, 0.86, z - 0.045, 0.045 + off, 1.14, z + 0.045, skin, 18);
+    }
+    gb.box(-0.05, 1.52, -0.05, 0.05, 1.6, 0.05, skin, 18);
+    gb.addThree(new THREE.IcosahedronGeometry(0.12, 1), new THREE.Matrix4().makeScale(1, 1.12, 0.95).setPosition(0.01, 1.71, 0), skin, 18);
+    gb.addThree(new THREE.SphereGeometry(0.125, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), new THREE.Matrix4().setPosition(-0.01, 1.73, 0), U.pick(['#2a1e16', '#4a3020', '#b08a50', '#151515'], () => 0.6));
+  }
+  function bikeHQ(gb, pose) {
+    const frame = '#fff', dark = '#1a1a1a', skin = '#d9a77f';
+    const ring = new THREE.TorusGeometry(0.33, 0.035, 6, 18);
+    for (const x of [-0.52, 0.52]) { gb.addThree(ring, new THREE.Matrix4().setPosition(x, 0.36, 0), dark, 17); gb.addThree(new THREE.CylinderGeometry(0.03, 0.03, 0.1, 6).rotateX(Math.PI / 2), new THREE.Matrix4().setPosition(x, 0.36, 0), '#999'); }
+    const tube = (a, b, r, col) => {
+      const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), len = d.length();
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+      gb.addThree(new THREE.CylinderGeometry(r, r, 1, 5), new THREE.Matrix4().compose(new THREE.Vector3((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2), q, new THREE.Vector3(1, len, 1)), col);
+    };
+    const bb = [0, 0.38, 0], st = [-0.15, 0.85, 0], ht = [0.4, 0.88, 0];
+    tube([-0.52, 0.36, 0], bb, 0.025, frame); tube(bb, st, 0.028, frame); tube(st, ht, 0.026, frame); tube(bb, ht, 0.03, frame); tube([-0.52, 0.36, 0], st, 0.02, frame); tube(ht, [0.52, 0.36, 0], 0.025, frame);
+    tube([0.4, 0.88, 0], [0.38, 1.0, 0], 0.02, dark, 17); tube([0.36, 1.0, -0.24], [0.36, 1.0, 0.24], 0.018, dark, 17);
+    gb.box(-0.27, 0.9, -0.06, -0.05, 0.95, 0.06, dark, 17);
+    // rider
+    const pants = '#2b3445';
+    const k1 = pose ? 0.16 : -0.16;
+    for (const [z, s] of [[-0.11, 1], [0.11, -1]]) {
+      const knee = [0.08 + k1 * s * 0.5, 0.72 + k1 * s * 0.4, z], hip = [-0.12, 0.98, z], foot = [0.02 + k1 * s, 0.32 + k1 * s * 0.25, z];
+      tube(hip, knee, 0.065, pants); tube(knee, foot, 0.055, pants);
+      gb.box(foot[0] - 0.04, foot[1] - 0.04, z - 0.05, foot[0] + 0.14, foot[1] + 0.03, z + 0.05, '#1e1e20', 17);
+    }
+    tube([-0.12, 0.98, 0], [0.12, 1.45, 0], 0.17, '#fff');
+    for (const z of [-0.2, 0.2]) { tube([0.08, 1.4, z], [0.34, 1.02, z * 1.1], 0.045, '#fff'); }
+    gb.addThree(new THREE.IcosahedronGeometry(0.115, 1), new THREE.Matrix4().setPosition(0.2, 1.62, 0), skin, 18);
+    gb.addThree(new THREE.SphereGeometry(0.135, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.5), new THREE.Matrix4().makeScale(1.15, 0.9, 1).setPosition(0.19, 1.65, 0), '#e8e8e8');
+  }
+  function vehGeomHQ(kind) {
+    const gb = new GB();
+    switch (kind) {
+      case 'car': carHQ(gb, 2.15, 0.86, 1.5, 'car'); break;
+      case 'suv': carHQ(gb, 2.35, 0.95, 1.85, 'suv'); break;
+      case 'police': carHQ(gb, 2.15, 0.86, 1.5, 'car'); gb.box(-0.95, 0.5, -0.875, 1.0, 0.95, 0.875, '#1b3a8a'); gb.box(-0.5, 1.56, -0.55, 0.3, 1.72, -0.05, '#ff2020', 5); gb.box(-0.5, 1.56, 0.05, 0.3, 1.72, 0.55, '#2050ff', 5); break;
+      case 'van': case 'ambulance': case 'truck': case 'garbage': case 'fire': case 'bus': case 'tram': heavyHQ(gb, kind); break;
+      case 'ped': personHQ(gb, 0); break;
+      case 'ped2': personHQ(gb, 1); break;
+      case 'bike': bikeHQ(gb, 0); break;
+      case 'bike2': bikeHQ(gb, 1); break;
+      default: return null;
+    }
+    return gb.geometry();
+  }
+  M._vehGeomHQ = vehGeomHQ;
+  M.VEH_KINDS = ['car', 'suv', 'van', 'truck', 'bus', 'tram', 'police', 'ambulance', 'fire', 'garbage', 'train', 'bike', 'bike2', 'ped', 'ped2'];
   function initVehicles() {
     const G = CB.Gfx;
     M.veh = {};
     const cars = G.settings.cars;
-    const caps = { car: cars, suv: Math.ceil(cars * 0.6), van: 80, truck: Math.ceil(cars * 0.5), bus: 200, tram: 120, police: 80, ambulance: 60, fire: 60, garbage: 120, train: 600, bike: Math.ceil(cars * 0.7), ped: Math.ceil(cars * 0.7) };
+    const caps = { car: cars, suv: Math.ceil(cars * 0.6), van: 80, truck: Math.ceil(cars * 0.5), bus: 200, tram: 120, police: 80, ambulance: 60, fire: 60, garbage: 120, train: 600, bike: Math.ceil(cars * 0.7), bike2: Math.ceil(cars * 0.7), ped: Math.ceil(cars * 0.7), ped2: Math.ceil(cars * 0.7) };
+    const detail = G.settings.detail;
     for (const k of M.VEH_KINDS) {
-      const g = vehGeom(k);
+      const g = (detail && vehGeomHQ(k)) || vehGeom(k === 'ped2' ? 'ped' : k === 'bike2' ? 'bike' : k);
       const mesh = new THREE.InstancedMesh(g, G.mats.city, caps[k]);
       mesh.frustumCulled = false;
-      mesh.castShadow = G.settings.shadows >= 2048;
+      mesh.castShadow = G.settings.shadows >= 2048 && !(k.startsWith('ped') || k.startsWith('bike')) || G.settings.shadows >= 4096;
       mesh.receiveShadow = false;
       mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(caps[k] * 3).fill(1), 3);
       mesh.count = 0;
@@ -1711,7 +2000,7 @@
   const SIG_COLS = [lc('#ff2a1a'), lc('#ffb000'), lc('#28e05a')];
   function initSignals() {
     const G = CB.Gfx, gb = new GB();
-    gb.box(-0.22, -0.22, -0.22, 0.22, 0.22, 0.22, '#fff', 5);
+    gb.box(-0.26, -0.26, -0.26, 0.26, 0.26, 0.26, '#fff', 15);
     M.sig = new THREE.InstancedMesh(gb.geometry(), G.mats.city, 4000);
     M.sig.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(4000 * 3), 3);
     M.sig.frustumCulled = false; M.sig.count = 0;
@@ -1721,7 +2010,7 @@
   M.pushSignal = function (x, y, z, st) {
     if (M.sigN >= 4000) return;
     const j = M.sigN++, a = M.sig.instanceMatrix.array, e = j * 16;
-    const yy = y + (st === 2 ? -0.48 : st === 1 ? 0 : 0.48);
+    const yy = y + (st === 2 ? -0.55 : st === 1 ? 0 : 0.55);
     a.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, yy, z, 1], e);
     const c = SIG_COLS[st], ca = M.sig.instanceColor.array;
     ca[j * 3] = c[0]; ca[j * 3 + 1] = c[1]; ca[j * 3 + 2] = c[2];
@@ -1775,10 +2064,11 @@
     const g = M.ghostTiles, a = g.instanceMatrix.array, c = g.instanceColor.array;
     const n = Math.min(list.length, 600);
     for (let j = 0; j < n; j++) {
-      const t = list[j], x = (U.tx(t.i) + 0.5) * T, z = (U.ty(t.i) + 0.5) * T;
+      const t = list[j], half = t.f !== undefined;
+      const x = half ? ((t.f % C.FW) + 0.5) * T / 2 : (U.tx(t.i) + 0.5) * T, z = half ? (((t.f / C.FW) | 0) + 0.5) * T / 2 : (U.ty(t.i) + 0.5) * T;
       const y = (t.y !== undefined ? t.y : Math.max(Wd.groundH(x, z), C.WATER)) + 0.05;
-      const e = j * 16, hs = t.h || 1;
-      a.set([1, 0, 0, 0, 0, hs, 0, 0, 0, 0, 1, 0, x, y, z, 1], e);
+      const e = j * 16, hs = t.h || 1, sc = half ? 0.5 : 1;
+      a.set([sc, 0, 0, 0, 0, hs, 0, 0, 0, 0, sc, 0, x, y, z, 1], e);
       const col = t.col || (t.ok ? [0.3, 0.9, 0.5] : [1, 0.25, 0.2]);
       c[j * 3] = col[0]; c[j * 3 + 1] = col[1]; c[j * 3 + 2] = col[2];
     }

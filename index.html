@@ -95,14 +95,26 @@ button { font: inherit; color: inherit; }
 .card { width: 104px; flex: none; border: 1px solid var(--line); background: rgba(255,255,255,0.03); border-radius: 7px; padding: 5px; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px; position: relative; }
 .card:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.06); }
 .card.on { border-color: var(--accent); background: rgba(61,139,255,0.16); }
-.card .sw { height: 46px; border-radius: 4px; display: grid; place-items: center; overflow: hidden; }
+.card .sw { height: 54px; border-radius: 4px; display: grid; place-items: center; overflow: hidden; }
 .card .sw svg { width: 26px; height: 26px; fill: none; stroke: rgba(255,255,255,0.92); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .card .sw svg[preserveAspectRatio] { width: 100%; height: 100%; stroke: none; }
+.card .sw img, .ucard .sw img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .card b { font-size: 12px; line-height: 1.15; font-weight: 600; min-height: 28px; }
 .card small { font-size: 11px; color: var(--accent-2); font-variant-numeric: tabular-nums; }
 .card.locked { cursor: not-allowed; opacity: 0.5; }
 .card.locked small { color: var(--mute); }
 .card .lock { position: absolute; top: 7px; right: 7px; font-size: 10px; font-family: var(--cond); text-transform: uppercase; letter-spacing: 0.04em; background: rgba(0,0,0,0.7); padding: 1px 5px; border-radius: 4px; color: #fff; z-index: 1; }
+.tbtn, .ptab { position: relative; }
+.tbtn.new::after, .ptab.new::after { content: ''; position: absolute; top: 6px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 0 2px var(--panel-solid); }
+.ptab.new::after { top: 4px; right: 3px; }
+.card .lock.newb { background: var(--accent-2); color: #1a1205; font-weight: 700; }
+.mbox.wide { width: min(620px, calc(100vw - 32px)); }
+.unl { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; max-height: 300px; overflow-y: auto; text-align: left; }
+.ucard { border: 1px solid var(--line); border-radius: 7px; padding: 5px; display: flex; flex-direction: column; gap: 3px; background: rgba(255,255,255,0.03); }
+.ucard .sw { height: 60px; border-radius: 4px; display: grid; place-items: center; overflow: hidden; }
+.ucard .sw svg { width: 24px; height: 24px; fill: none; stroke: rgba(255,255,255,0.92); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.ucard .sw svg[preserveAspectRatio] { width: 100%; height: 100%; stroke: none; }
+.ucard b { font-size: 12px; line-height: 1.15; } .ucard small { font-size: 10px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--cond); }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; }
 .seg button { height: 30px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); cursor: pointer; font-size: 12px; font-weight: 600; }
 .seg button.on { background: rgba(61,139,255,0.22); border-color: var(--accent); color: #fff; }

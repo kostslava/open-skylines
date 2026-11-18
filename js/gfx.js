@@ -41,6 +41,10 @@ if (st >= 1 && st <= 4) {
   gEmis = litc * win * lit * uNight * (0.28 + 0.42 * hh(id * 3.1 + 1.7));
 } else if (st == 14) { gEmis = diffuseColor.rgb * vec3(1.0, 0.8, 0.55) * 0.5 * uNight; }
 else if (st == 5) { gEmis = diffuseColor.rgb * (0.25 + 1.6 * uNight); }
+else if (st == 16) { diffuseColor.rgb = vec3(0.55, 0.57, 0.6); }
+else if (st == 17) { diffuseColor.rgb = vec3(0.025, 0.026, 0.03); }
+else if (st == 18) { diffuseColor.rgb = vec3(0.62, 0.42, 0.3); }
+else if (st == 15) { gEmis = diffuseColor.rgb * (1.4 + 1.6 * uNight); }
 else if (st == 6) { diffuseColor.rgb = vec3(0.95, 0.93, 0.8); gEmis = vec3(1.0, 0.95, 0.8) * 3.0 * uNight; }
 else if (st == 7) { diffuseColor.rgb = vec3(0.5, 0.03, 0.03); gEmis = vec3(1.0, 0.06, 0.04) * (0.25 + 1.8 * uNight); }
 else if (st == 8) { diffuseColor.rgb = vec3(0.9, 0.85, 0.7); gEmis = vec3(1.0, 0.78, 0.45) * 3.5 * uNight; }
@@ -420,6 +424,9 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     if (py < g2) py = g2;
     G.camera.position.set(px, py, pz);
     G.camera.lookAt(c.tx, c.ty, c.tz);
+    // push the near plane out as the camera pulls back: keeps depth precision (no z-fighting)
+    const nearP = U.clamp(c.dist * 0.04, 0.6, 30);
+    if (Math.abs(G.camera.near - nearP) > 0.05) { G.camera.near = nearP; G.camera.updateProjectionMatrix(); }
     G.sky.position.copy(G.camera.position);
     G.sky.scale.setScalar(G.settings.view * 1.4);
     // shadows follow the view

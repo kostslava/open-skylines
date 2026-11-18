@@ -117,15 +117,20 @@
     return search(src, dst, stepTram, 12);
   };
 
-  // cyclists and pedestrians ignore one-ways and lane arrows; cyclists prefer safe streets
+  // cyclists and pedestrians ignore one-ways and lane arrows, use paths, and cyclists prefer safe streets
+  function tileBikeScore(i) {
+    const Wd = CB.World;
+    if (Wd.walkRoad(i)) return C.bikeScore(C.ROADS[Wd.road[i]]);
+    let best = 0; for (let q = 0; q < 4; q++) { const k = Wd.pcell[Wd.cellOf(i, q)]; if (k) best = Math.max(best, C.PATHS[k].bike); }
+    return best;
+  }
   function softStep(bike) {
     return function (cur, cd, d) {
       const Wd = CB.World;
-      if (!(Wd.roadMask(cur) & (1 << d))) return null;
-      const nb = Wd.neighbor(cur, d); if (nb < 0) return null;
-      const R = C.ROADS[Wd.road[nb]]; if (!R || R.grp === 'highway') return null;
+      if (Wd.softPass(cur, d) < 0) return null;
+      const nb = Wd.neighbor(cur, d);
       res.s = 4;
-      res.c = bike ? T / 5 * (1 + 2.2 * (1 - C.bikeScore(R))) : T / 1.4;
+      res.c = bike ? T / 5 * (1 + 2.2 * (1 - tileBikeScore(nb))) : T / 1.4;
       return res;
     };
   }
@@ -145,9 +150,8 @@
   // how comfortable a bike route is: length-weighted bike score (0..1)
   Tr.bikeSafety = function (path) {
     if (!path || !path.length) return 0;
-    const Wd = CB.World;
     let s = 0;
-    for (const i of path) s += C.bikeScore(C.ROADS[Wd.road[i]]);
+    for (const i of path) s += tileBikeScore(i);
     return s / path.length;
   };
   Tr.findRailPath = function (src, dst) {
@@ -309,25 +313,53 @@
   function softOff(a, i, d) {
     const R = C.ROADS[CB.World.road[i]];
     if (!R) return 2;
-    if (a.kind === 'ped') return R.car ? R.L.walkOff * (R.L.pair ? 1 : a.side) : 0.9 * a.side;
-    if (!R.car) return 1.1;
+    if (a.kind === 'ped') return R.L.walkOff * (R.L.pair ? 1 : a.side);
     if (R.bike) return R.L.bikeOff;
     const ln = CB.World.lanesToward(i, d);
     return ln[0] + 0.9;
   }
+  const HALF = T / 4; // centre of a half-tile cell from the tile edge
+  // point where the agent crosses from tile A into tile B
+  function edgePoint(a, A, B, out) {
+    const Wd = CB.World;
+    const d = dirBetween(A, B), fx = C.DX[d], fz = C.DY[d];
+    const bx = (U.tx(A) + 0.5) * T + fx * T / 2, bz = (U.ty(A) + 0.5) * T + fz * T / 2;
+    const rA = Wd.walkRoad(A), rB = Wd.walkRoad(B);
+    if (rA && rB) { const o = softOff(a, B, d); out[0] = bx - fz * o; out[1] = bz + fx * o; return; }
+    // through a path cell on the shared edge: prefer a row with path on both sides
+    let best = null, bs = -1;
+    const cells = Wd.edgeCells(A, d);
+    for (let k = 0; k < 2; k++) {
+      const [ca, cb] = cells[k];
+      const pa = Wd.pcell[ca], pb = Wd.pcell[cb];
+      if (!((pa || rA) && (pb || rB))) continue;
+      const sc = (pa ? 1 : 0) + (pb ? 1 : 0);
+      if (sc > bs) { bs = sc; best = k; }
+    }
+    if (best === null) best = 0;
+    const lat = (best === 0 ? -1 : 1) * HALF; // row 0 = the lower x / lower z cell
+    if (fx !== 0) { out[0] = bx; out[1] = (U.ty(A) + 0.5) * T + lat; }
+    else { out[0] = (U.tx(A) + 0.5) * T + lat; out[1] = bz; }
+  }
+  function tilePoint(a, i, d, out) {
+    const Wd = CB.World;
+    const cx = (U.tx(i) + 0.5) * T, cz = (U.ty(i) + 0.5) * T;
+    if (Wd.walkRoad(i)) { const o = softOff(a, i, d); out[0] = cx - C.DY[d] * o; out[1] = cz + C.DX[d] * o; return; }
+    for (let q = 0; q < 4; q++) if (Wd.pcell[Wd.cellOf(i, q)]) { out[0] = cx + ((q & 1) ? HALF : -HALF); out[1] = cz + ((q >> 1) ? HALF : -HALF); return; }
+    out[0] = cx; out[1] = cz;
+  }
+  const ep = [0, 0];
   function setupSoft(a) {
     const n = a.path.length, cur = a.path[a.seg], prev = a.seg > 0 ? a.path[a.seg - 1] : -1, next = a.seg + 1 < n ? a.path[a.seg + 1] : -1;
-    const cx = (U.tx(cur) + 0.5) * T, cz = (U.ty(cur) + 0.5) * T;
-    let ix = 0, iz = 0, ox = 0, oz = 0;
-    if (prev >= 0) { ix = Math.sign(U.tx(cur) - U.tx(prev)); iz = Math.sign(U.ty(cur) - U.ty(prev)); }
-    if (next >= 0) { ox = Math.sign(U.tx(next) - U.tx(cur)); oz = Math.sign(U.ty(next) - U.ty(cur)); }
-    if (prev < 0) { ix = ox; iz = oz; } else if (next < 0) { ox = ix; oz = iz; }
-    const oi = softOff(a, cur, dirOf(ix, iz)), oo = softOff(a, next >= 0 ? next : cur, dirOf(ox, oz));
-    const rix = -iz, riz = ix, rox = -oz, roz = ox;
-    a.ex = cx - ix * T / 2 * (prev >= 0 ? 1 : 0) + rix * oi; a.ez = cz - iz * T / 2 * (prev >= 0 ? 1 : 0) + riz * oi;
-    a.xx = cx + ox * T / 2 * (next >= 0 ? 1 : 0) + rox * oo; a.xz = cz + oz * T / 2 * (next >= 0 ? 1 : 0) + roz * oo;
-    if (ix === ox && iz === oz) { a.cx = (a.ex + a.xx) / 2; a.cz = (a.ez + a.xz) / 2; }
-    else { a.cx = cx + rix * oi + rox * oo; a.cz = cz + riz * oi + roz * oo; }
+    const din = prev >= 0 ? dirBetween(prev, cur) : (next >= 0 ? dirBetween(cur, next) : 1);
+    const dout = next >= 0 ? dirBetween(cur, next) : din;
+    if (prev >= 0) edgePoint(a, prev, cur, ep); else tilePoint(a, cur, dout, ep);
+    a.ex = ep[0]; a.ez = ep[1];
+    if (next >= 0) edgePoint(a, cur, next, ep); else tilePoint(a, cur, din, ep);
+    a.xx = ep[0]; a.xz = ep[1];
+    if (din === dout || din === (dout + 2) % 4) { a.cx = (a.ex + a.xx) / 2; a.cz = (a.ez + a.xz) / 2; }
+    else if (din % 2 === 1) { a.cx = a.xx; a.cz = a.ez; }   // came in moving east/west, leaves north/south
+    else { a.cx = a.ex; a.cz = a.xz; }
     a.len = Math.max(0.5, Math.hypot(a.cx - a.ex, a.cz - a.ez) + Math.hypot(a.xx - a.cx, a.xz - a.cz));
   }
 
@@ -379,15 +411,29 @@
   }
   Tr.isStopFor = isStopFor;
 
+  let occ = null;
+  function spawnBusy(tile) {
+    if (!occ) { occ = new Map(); for (const v of Tr.vehicles) { const o = occ.get(v.cur) || 0; occ.set(v.cur, o + (v.t < 0.45 ? 10 : 1)); } }
+    return (occ.get(tile) || 0) >= 3;
+  }
   Tr.update = function (dt) {
     Tr.time += dt;
     const Wd = CB.World;
     let budget = 40;
+    const blocked = new Set(); occ = null;
     while (Tr.queue.length && budget-- > 0) {
       const s = Tr.queue.shift();
+      // don't stack spawns: wait until the first stretch of the start tile is clear
+      if (blocked.has(s.from) || spawnBusy(s.from)) {
+        blocked.add(s.from);
+        s.tries = (s.tries || 0) + 1;
+        if (s.tries < 400) Tr.queue.push(s); else if (s.onFail) s.onFail('cap');
+        continue;
+      }
       const p = Tr.findPath(s.from, s.to, s.static);
       if (!p) { if (s.onFail) s.onFail('noroute'); continue; }
       const v = Tr.spawn({ kind: s.kind, path: p, col: s.col, purpose: s.purpose, data: s.data, onArrive: s.onArrive });
+      if (v && occ) occ.set(v.cur, (occ.get(v.cur) || 0) + 10);
       if (!v && s.onFail) s.onFail('cap');
     }
     updateSignals(dt);
@@ -494,7 +540,7 @@
         const over = (a.t - 1) * a.len;
         if (a.seg + 1 >= a.path.length) { sdone.push(a); a.t = 1; break; }
         a.seg++;
-        if (!Wd.road[a.path[a.seg]]) { sdone.push(a); break; }
+        if (!Wd.road[a.path[a.seg]] && !Wd.pmask[a.path[a.seg]]) { sdone.push(a); break; }
         setupSoft(a); a.t = over / a.len;
       }
       evalPos(a, tmp);
@@ -522,7 +568,7 @@
       else { if (v.loop && v.onBroken) v.onBroken(v); else if (v.onArrive) v.onArrive(v, false); }
     }
     Tr.vehicles = keep;
-    Tr.soft = Tr.soft.filter(a => { for (let s = a.seg; s < a.path.length; s++) if (!Wd.road[a.path[s]]) return false; return true; });
+    Tr.soft = Tr.soft.filter(a => { for (let s = a.seg; s < a.path.length; s++) if (!Wd.road[a.path[s]] && !Wd.pmask[a.path[s]]) return false; return true; });
   };
   Tr.clearAll = function () { Tr.vehicles = []; Tr.soft = []; Tr.queue = []; Tr.load.fill(0); };
 
@@ -539,15 +585,16 @@
       Mx.pushVehicle(v.kind, v.x, y + 0.05, v.z, v.hx, v.hz, v.col, pitch, ws);
     }
     for (const a of Tr.soft) {
-      const y = Wd.roadH(a.x, a.z) + (a.kind === 'ped' ? 0.2 : 0.05);
-      Mx.pushVehicle(a.kind, a.x, y, a.z, a.hx, a.hz, a.col, 0, 1);
+      const y = Wd.roadH(a.x, a.z) + 0.2;
+      const step = ((a.seg * T + a.t * a.len) / (a.kind === 'ped' ? 0.55 : 0.9)) | 0;
+      Mx.pushVehicle(step % 2 ? a.kind + '2' : a.kind, a.x, y, a.z, a.hx, a.hz, a.col, 0, 1);
     }
     // traffic light heads
     for (const cl of Wd.clusters) {
       if (cl.ctrl !== 'lights') continue;
       for (const ap of cl.aps) {
         const st = Tr.signalState(cl, ap.d);
-        const p = CB.Meshes.signalPos(ap);
+        const p = CB.Meshes.signalLampPos(ap);
         Mx.pushSignal(p[0], p[1], p[2], st);
       }
     }

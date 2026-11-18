@@ -107,8 +107,15 @@
     return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}</svg>`;
   }
 
+  function pathSvg(P) {
+    return `<svg viewBox="0 0 60 44" preserveAspectRatio="none"><rect width="60" height="44" fill="#6b9444"/><rect x="0" y="0" width="30" height="44" fill="#aeada6" opacity="0.35"/><rect x="11" y="0" width="8" height="44" fill="${P.col}"/><rect x="11" y="18" width="38" height="8" fill="${P.col}"/>${P.key === 'bike' ? '<line x1="15" y1="2" x2="15" y2="16" stroke="#fff" stroke-dasharray="3 3"/><line x1="22" y1="22" x2="47" y2="22" stroke="#fff" stroke-dasharray="3 3"/>' : ''}<text x="44" y="11" fill="#fff" font-size="8" text-anchor="middle" opacity="0.8">½</text></svg>`;
+  }
   const roadItem = (r) => { const R = C.ROADS[r]; return { name: R.name, cost: U.money(R.cost) + '/tile', unlock: R.unlock, tool: { type: 'road', rt: r }, thumb: roadSvg(R), desc: R.desc + (R.w === 2 ? ' Two tiles wide.' : '') }; };
-  const svcItem = (k) => { const sv = C.SERVICES[k]; return { name: sv.name, cost: U.money(sv.cost), unlock: sv.unlock, tool: { type: 'svc', key: k }, icon: SVC_ICON[k] || (sv.cat === 'parks' ? 'park' : sv.cat === 'landmarks' ? 'landmark' : 'police'), col: SVC_COL[sv.cov] || '#555', desc: (sv.desc || '') + ` ${sv.size[0]}×${sv.size[1]} tiles.` }; };
+  const img = u => u ? `<img src="${u}" alt="">` : '';
+  const svcThumb = k => { const sv = C.SERVICES[k]; return img(CB.Meshes.thumb('svc:' + k, { kind: 'svc', svc: k, w: sv.size[0], d: sv.size[1] })); };
+  const ZONE_SAMPLE = { 1: [1, 2, 3], 2: [2, 2, 3], 3: [2, 2, 4], 4: [1, 2, 3], 5: [2, 2, 3], 6: [2, 3, 3], 7: [2, 2, 3] };
+  const zoneThumb = z => { const [w, d, level] = ZONE_SAMPLE[z]; return img(CB.Meshes.thumb('zone:' + z, { kind: 'zone', zone: z, w, d, level, seed: 4242 + z })); };
+  const svcItem = (k) => { const sv = C.SERVICES[k]; return { thumb: svcThumb(k), name: sv.name, cost: U.money(sv.cost), unlock: sv.unlock, tool: { type: 'svc', key: k }, icon: SVC_ICON[k] || (sv.cat === 'parks' ? 'park' : sv.cat === 'landmarks' ? 'landmark' : 'police'), col: SVC_COL[sv.cov] || '#555', desc: (sv.desc || '') + ` ${sv.size[0]}×${sv.size[1]} tiles.` }; };
   const CATS = [
     { key: 'roads', name: 'Roads', icon: 'avenue', tabs: C.ROAD_GROUPS.concat([['junction', 'Intersections']]) },
     { key: 'zones', name: 'Zoning', icon: 'zones' },
@@ -129,9 +136,11 @@
         items.push({ name: 'Roundabout', cost: 'Free', unlock: 2, tool: { type: 'junction', apply: 'round' }, icon: 'round', col: '#2f5a9a', desc: 'Yield on entry, keep moving.' });
         items.push({ name: 'No Control', cost: 'Free', unlock: 0, tool: { type: 'junction', apply: 'none' }, icon: 'free', col: '#555c66', desc: 'Free-for-all. Fine for quiet streets.' });
         items.push({ name: 'Reset to Auto', cost: 'Free', unlock: 0, tool: { type: 'junction', apply: 'auto' }, icon: 'junction', col: '#444a52', desc: 'Lights on medium and larger roads, nothing on small ones.' });
+      } else if (tab === 'path') {
+        for (let k = 1; k < C.PATHS.length; k++) { const P = C.PATHS[k]; items.push({ name: P.name, cost: U.money(P.cost) + '/cell', unlock: P.unlock, tool: { type: 'path', pk: k }, thumb: pathSvg(P), desc: P.desc }); }
       } else for (let r = 1; r < C.ROADS.length; r++) if (C.ROADS[r].grp === tab) items.push(roadItem(r));
     } else if (key === 'zones') {
-      for (let z = 1; z < C.ZONES.length; z++) { const Z = C.ZONES[z]; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color }); }
+      for (let z = 1; z < C.ZONES.length; z++) { const Z = C.ZONES[z]; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color, thumb: zoneThumb(z), tint: Z.color }); }
       items.push({ name: 'Remove Zoning', cost: 'Free', unlock: 0, tool: { type: 'dezone' }, icon: 'dezone', col: '#555c66' });
     } else if (key === 'transit') {
       const TR = C.TRANSIT;
@@ -157,6 +166,21 @@
     return items;
   }
   UI.catItems = catItems;
+  const idOf = it => JSON.stringify(it.tool);
+  // every buildable item, tagged with its menu and tab
+  function allItems() {
+    const out = [];
+    for (const c of CATS) for (const t of (c.tabs || [[null]])) for (const it of catItems(c.key, t[0])) out.push(Object.assign({ cat: c.key, tab: t[0] }, it));
+    return out;
+  }
+  const isNew = it => (CB.Sim.unseen || []).includes(idOf(it));
+  function refreshBadges() {
+    const un = new Set(CB.Sim.unseen || []);
+    const all = allItems().filter(it => un.has(idOf(it)));
+    document.querySelectorAll('#toolbar [data-cat]').forEach(b => b.classList.toggle('new', all.some(it => it.cat === b.dataset.cat)));
+    document.querySelectorAll('#palette [data-tab]').forEach(b => b.classList.toggle('new', all.some(it => it.cat === UI.cat && it.tab === b.dataset.tab)));
+  }
+  UI.refreshBadges = refreshBadges;
 
   // ---------------- init ----------------
   UI.init = function () {
@@ -171,6 +195,7 @@
     $('demand').innerHTML = D.map(d => `<div class="dbar" id="dm_${d[0]}" title="${d[0]}"><div class="track"><i style="background:${d[2]}"></i></div><span>${d[1]}</span></div>`).join('');
     const titles = { rlow: 'Residential · low density', rmed: 'Residential · medium density', rhigh: 'Residential · high density', com: 'Commercial', ind: 'Industrial', off: 'Office' };
     for (const d of D) $('dm_' + d[0]).title = titles[d[0]] + ' demand';
+    setTimeout(refreshBadges, 0);
     document.addEventListener('pointermove', e => { const t = $('tip'); t.style.left = e.clientX + 'px'; t.style.top = e.clientY + 'px'; });
     UI.goalsOpen = true;
     setInterval(UI.update, 250);
@@ -198,8 +223,8 @@
     p.innerHTML = tabs + `<div class="cards">` + items.map((it, k) => {
       const locked = !S.unlocked(it.unlock);
       return `<button class="card ${locked ? 'locked' : ''}" data-k="${k}" title="${(it.name + (it.desc ? ' — ' + it.desc : '')).replace(/"/g, '&quot;')}">
-        ${locked ? `<span class="lock">${C.MILESTONES[it.unlock].pop.toLocaleString()} pop</span>` : ''}
-        <div class="sw" style="${it.thumb ? 'background:#2a3038' : 'background:' + it.col}">${it.thumb || svg(it.icon)}</div>
+        ${locked ? `<span class="lock">${C.MILESTONES[it.unlock].pop.toLocaleString()} pop</span>` : isNew(it) ? '<span class="lock newb">New</span>' : ''}
+        <div class="sw" style="${it.thumb ? 'background:linear-gradient(#3a4654,#232a33)' : 'background:' + it.col}${it.tint ? ';box-shadow:inset 0 -3px 0 ' + it.tint : ''}">${it.thumb || svg(it.icon)}</div>
         <b>${it.name}</b><small>${locked ? C.MILESTONES[it.unlock].name : it.cost}</small></button>`;
     }).join('') + `</div>`;
     p.dataset.cat = key; p.dataset.tab = tab || '';
@@ -208,10 +233,12 @@
       const it = items[+el.dataset.k];
       if (!it) return;
       if (!S.unlocked(it.unlock)) { UI.toast('Unlocks at ' + C.MILESTONES[it.unlock].name + ' (' + C.MILESTONES[it.unlock].pop.toLocaleString() + ' residents)', 'bad'); return; }
+      if (isNew(it)) { CB.Sim.unseen = CB.Sim.unseen.filter(x => x !== idOf(it)); const nb = el.querySelector('.newb'); if (nb) nb.remove(); refreshBadges(); }
       const same = JSON.stringify(CB.Tools.tool) === JSON.stringify(it.tool);
       CB.Tools.setTool(same ? null : it.tool);
     }));
     markPalette();
+    refreshBadges();
   }
   function markPalette() {
     const p = $('palette');
@@ -349,12 +376,21 @@
   };
 
   UI.milestone = function (m) {
+    const idx = C.MILESTONES.indexOf(m);
+    const seen = new Set();
+    const items = allItems().filter(it => it.unlock === idx && !seen.has(idOf(it)) && seen.add(idOf(it)));
+    const S = CB.Sim;
+    for (const it of items) if (!S.unseen.includes(idOf(it))) S.unseen.push(idOf(it));
+    const catName = k => CATS.find(c => c.key === k).name;
+    const show = items.slice(0, 18);
     const M = $('modal');
-    M.innerHTML = `<div class="glass mbox"><div class="eyebrow">Milestone reached</div><h2>${m.name}</h2>
-      <p>${CB.Sim.name} now has ${m.pop.toLocaleString()} residents. The city treasury receives a grant of <b style="color:var(--accent-2)">${U.money(m.reward)}</b>.</p>
-      <p><b style="color:var(--fg)">Unlocked:</b> ${m.unlocks}</p><button class="btn primary" id="mok">Keep building</button></div>`;
+    M.innerHTML = `<div class="glass mbox wide"><div class="eyebrow">Milestone reached</div><h2>${m.name}</h2>
+      <p>${S.name} now has ${m.pop.toLocaleString()} residents. The city treasury receives a grant of <b style="color:var(--accent-2)">${U.money(m.reward)}</b>.</p>
+      ${show.length ? `<div class="lbl" style="text-align:left;margin-bottom:6px">Unlocked</div><div class="unl">${show.map(it => `<div class="ucard"><div class="sw" style="${it.thumb ? 'background:linear-gradient(#3a4654,#232a33)' : 'background:' + it.col}">${it.thumb || svg(it.icon)}</div><b>${it.name}</b><small>${catName(it.cat)}</small></div>`).join('')}</div>${items.length > show.length ? `<div class="sub" style="margin-top:6px">and ${items.length - show.length} more</div>` : ''}` : ''}
+      <button class="btn primary" id="mok" style="margin-top:14px">Keep building</button></div>`;
     M.hidden = false;
-    $('mok').onclick = () => { M.hidden = true; renderPalette(); };
+    $('mok').onclick = () => { M.hidden = true; renderPalette(); refreshBadges(); };
+    refreshBadges();
     UI.sfx('build');
   };
 
@@ -547,6 +583,7 @@
         ${opt('st_aa', 'Anti-aliasing', [[0, 'Off'], [1, 'On']], s.aa ? 1 : 0)}
         ${opt('st_view', 'View distance', [[1100, 'Near'], [1700, 'Medium'], [2400, 'Far'], [3200, 'Very far']], s.view)}
         ${opt('st_cars', 'Vehicle limit', [[150, '150'], [250, '250'], [500, '500'], [900, '900'], [1400, '1,400'], [2000, '2,000']], s.cars)}
+        ${opt('st_detail', 'Vehicle & people detail', [[0, 'Simple'], [1, 'Detailed']], s.detail ? 1 : 0)}
         ${opt('st_trees', 'Tree density', [[0.2, 'Sparse'], [0.35, 'Low'], [0.7, 'Medium'], [1, 'High'], [1.4, 'Lush']], s.trees)}
         ${opt('st_lighting', 'Lighting', [['simple', 'Simple (fast)'], ['pbr', 'Realistic']], s.lighting)}
         ${opt('st_water', 'Water', [['simple', 'Still'], ['waves', 'Animated waves']], s.water)}
@@ -569,7 +606,7 @@
       } else {
         let v = sel.value;
         if (['res', 'shadows', 'view', 'cars', 'trees'].includes(k)) v = +v;
-        if (['aa', 'dayNight', 'fps'].includes(k)) v = v === '1';
+        if (['aa', 'dayNight', 'fps', 'detail'].includes(k)) v = v === '1';
         ns[k] = v; ns.preset = 'custom';
       }
       CB.Game.applySettings(ns);

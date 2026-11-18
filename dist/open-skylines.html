@@ -95,14 +95,26 @@ button { font: inherit; color: inherit; }
 .card { width: 104px; flex: none; border: 1px solid var(--line); background: rgba(255,255,255,0.03); border-radius: 7px; padding: 5px; cursor: pointer; text-align: left; display: flex; flex-direction: column; gap: 4px; position: relative; }
 .card:hover { border-color: rgba(255,255,255,0.3); background: rgba(255,255,255,0.06); }
 .card.on { border-color: var(--accent); background: rgba(61,139,255,0.16); }
-.card .sw { height: 46px; border-radius: 4px; display: grid; place-items: center; overflow: hidden; }
+.card .sw { height: 54px; border-radius: 4px; display: grid; place-items: center; overflow: hidden; }
 .card .sw svg { width: 26px; height: 26px; fill: none; stroke: rgba(255,255,255,0.92); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .card .sw svg[preserveAspectRatio] { width: 100%; height: 100%; stroke: none; }
+.card .sw img, .ucard .sw img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .card b { font-size: 12px; line-height: 1.15; font-weight: 600; min-height: 28px; }
 .card small { font-size: 11px; color: var(--accent-2); font-variant-numeric: tabular-nums; }
 .card.locked { cursor: not-allowed; opacity: 0.5; }
 .card.locked small { color: var(--mute); }
 .card .lock { position: absolute; top: 7px; right: 7px; font-size: 10px; font-family: var(--cond); text-transform: uppercase; letter-spacing: 0.04em; background: rgba(0,0,0,0.7); padding: 1px 5px; border-radius: 4px; color: #fff; z-index: 1; }
+.tbtn, .ptab { position: relative; }
+.tbtn.new::after, .ptab.new::after { content: ''; position: absolute; top: 6px; right: 10px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent-2); box-shadow: 0 0 0 2px var(--panel-solid); }
+.ptab.new::after { top: 4px; right: 3px; }
+.card .lock.newb { background: var(--accent-2); color: #1a1205; font-weight: 700; }
+.mbox.wide { width: min(620px, calc(100vw - 32px)); }
+.unl { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; max-height: 300px; overflow-y: auto; text-align: left; }
+.ucard { border: 1px solid var(--line); border-radius: 7px; padding: 5px; display: flex; flex-direction: column; gap: 3px; background: rgba(255,255,255,0.03); }
+.ucard .sw { height: 60px; border-radius: 4px; display: grid; place-items: center; overflow: hidden; }
+.ucard .sw svg { width: 24px; height: 24px; fill: none; stroke: rgba(255,255,255,0.92); stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.ucard .sw svg[preserveAspectRatio] { width: 100%; height: 100%; stroke: none; }
+.ucard b { font-size: 12px; line-height: 1.15; } .ucard small { font-size: 10px; color: var(--mute); text-transform: uppercase; letter-spacing: 0.05em; font-family: var(--cond); }
 .seg { display: flex; flex-wrap: wrap; gap: 4px; }
 .seg button { height: 30px; padding: 0 9px; border-radius: 6px; border: 1px solid var(--line); background: rgba(255,255,255,0.04); cursor: pointer; font-size: 12px; font-weight: 600; }
 .seg button.on { background: rgba(61,139,255,0.22); border-color: var(--accent); color: #fff; }
@@ -322,13 +334,20 @@ window.CB = {};
     R('ramp1', 'One-Lane Ramp', 'highway', { oneway: true, fwd: 1, back: 0, speed: 20, cap: 5, cost: 70, upkeep: 1.2, zonable: false, side: 1.2, med: 'none', unlock: 4, desc: 'One-way. Use it for on and off ramps.' }),
     R('ramp2', 'Two-Lane Ramp', 'highway', { oneway: true, fwd: 2, back: 0, speed: 22, cap: 8, cost: 100, upkeep: 1.6, zonable: false, side: 0.9, med: 'none', unlock: 4 }),
     R('rural', 'Rural Highway', 'highway', { speed: 20, cap: 5, cost: 60, upkeep: 0.8, zonable: false, side: 1.0, med: 'paint', unlock: 4, desc: 'Fast two-lane road. No buildings.' }),
-    R('bikepath', 'Bike Path', 'path', { car: false, zonable: false, cost: 12, upkeep: 0.2, side: 0, med: 'none', unlock: 1, desc: 'Bikes and pedestrians only.' }),
-    R('footpath', 'Pedestrian Path', 'path', { car: false, zonable: false, cost: 8, upkeep: 0.1, side: 0, med: 'none', unlock: 0, desc: 'A shortcut for people on foot.' }),
+    // legacy full-tile paths (converted to half-tile paths when an old save loads)
+    R('bikepath', 'Bike Path', 'legacy', { car: false, zonable: false, cost: 12, upkeep: 0.2, side: 0, med: 'none', unlock: 1 }),
+    R('footpath', 'Pedestrian Path', 'legacy', { car: false, zonable: false, cost: 8, upkeep: 0.1, side: 0, med: 'none', unlock: 0 }),
   ];
   C.ROAD_GROUPS = [['small', 'Small'], ['medium', 'Medium'], ['large', 'Large'], ['highway', 'Highways'], ['path', 'Paths']];
+  // half-tile paths: 4 fit in a tile, they join road sidewalks on their own
+  C.PATHS = [null,
+    { key: 'foot', name: 'Pedestrian Path', cost: 4, upkeep: 0.05, unlock: 0, col: '#cfc6b0', bike: 0.85, desc: 'Half a tile wide. Joins any sidewalk it touches.' },
+    { key: 'bike', name: 'Bike Path', cost: 6, upkeep: 0.08, unlock: 1, col: '#8a4a3c', bike: 1, desc: 'Half a tile wide. Bikes and pedestrians. Joins any sidewalk it touches.' },
+  ];
+  C.FW = C.W * 2;
   C.START_HW = C.ROADS.findIndex(r => r && r.key === 'hw2');
   C.ROAD_BASIC = 1;
-  C.GRP_RANK = { path: 0, small: 1, medium: 2, large: 3, highway: 4 };
+  C.GRP_RANK = { legacy: 0, path: 0, small: 1, medium: 2, large: 3, highway: 4 };
 
   // Cross-section layout of one strip, in metres across the tile (0 = left edge looking "forward").
   const MED_W = { none: 0, paint: 0.3, curb: 0.9, grass: 1.8, trees: 2.2, barrier: 0.8 };
@@ -451,10 +470,10 @@ window.CB = {};
   ];
 
   C.QUALITY = {
-    low: { res: 0.7, shadows: 0, aa: false, view: 1100, cars: 250, trees: 0.35, lighting: 'simple', water: 'simple' },
-    medium: { res: 1, shadows: 1024, aa: true, view: 1700, cars: 500, trees: 0.7, lighting: 'pbr', water: 'simple' },
-    high: { res: 1.25, shadows: 2048, aa: true, view: 2400, cars: 900, trees: 1, lighting: 'pbr', water: 'waves' },
-    ultra: { res: 2, shadows: 4096, aa: true, view: 3200, cars: 1400, trees: 1.4, lighting: 'pbr', water: 'waves' },
+    low: { res: 0.7, shadows: 0, aa: false, view: 1100, cars: 250, trees: 0.35, lighting: 'simple', water: 'simple', detail: false },
+    medium: { res: 1, shadows: 1024, aa: true, view: 1700, cars: 500, trees: 0.7, lighting: 'pbr', water: 'simple', detail: false },
+    high: { res: 1.25, shadows: 2048, aa: true, view: 2400, cars: 900, trees: 1, lighting: 'pbr', water: 'waves', detail: true },
+    ultra: { res: 2, shadows: 4096, aa: true, view: 3200, cars: 1400, trees: 1.4, lighting: 'pbr', water: 'waves', detail: true },
   };
 
   // ---------- Utils ----------
@@ -611,6 +630,8 @@ window.CB = {};
     Wd.hc = new Float32Array((W + 1) * (W + 1));
     Wd.road = new Uint8Array(W * W);
     Wd.link = new Uint8Array(W * W);
+    Wd.pcell = new Uint8Array(C.FW * C.FW);
+    Wd.pmask = new Uint8Array(W * W);
     Wd.rdir = new Uint8Array(W * W);
     Wd.rpart = new Uint8Array(W * W);
     Wd.jcl = new Int32Array(W * W).fill(-1);
@@ -768,6 +789,51 @@ window.CB = {};
     }
     Wd.link[i] = 0;
   };
+  // older saves: roads that end right against another road get joined to it
+  Wd.joinDeadEnds = function () {
+    for (let i = 0; i < W * W; i++) {
+      if (!Wd.road[i] || !C.ROADS[Wd.road[i]].car) continue;
+      const m = Wd.link[i];
+      let n = 0, d0 = -1; for (let d = 0; d < 4; d++) if (m & (1 << d)) { n++; d0 = d; }
+      if (n > 1) continue;
+      const dirs = n === 1 ? [(d0 + 2) % 4] : [0, 1, 2, 3];
+      for (const d of dirs) { const o = Wd.neighbor(i, d); if (o >= 0 && Wd.road[o] && C.ROADS[Wd.road[o]].car && !(Wd.rpart[i] && Wd.rpart[i] - 1 === d)) { Wd.linkTiles(i, o); break; } }
+    }
+  };
+  // ---------- half-tile paths ----------
+  const FW = C.FW;
+  Wd.fidx = (fx, fy) => fy * FW + fx;
+  Wd.cellOf = (i, q) => Wd.fidx(U.tx(i) * 2 + (q & 1), U.ty(i) * 2 + (q >> 1));
+  Wd.setPath = function (f, k) {
+    Wd.pcell[f] = k;
+    const fx = f % FW, fy = (f / FW) | 0, i = U.idx(fx >> 1, fy >> 1), q = (fy & 1) * 2 + (fx & 1);
+    if (k) Wd.pmask[i] |= 1 << q; else Wd.pmask[i] &= ~(1 << q);
+  };
+  Wd.rebuildPmask = function () {
+    Wd.pmask.fill(0);
+    for (let f = 0; f < FW * FW; f++) if (Wd.pcell[f]) { const fx = f % FW, fy = (f / FW) | 0; Wd.pmask[U.idx(fx >> 1, fy >> 1)] |= 1 << ((fy & 1) * 2 + (fx & 1)); }
+  };
+  Wd.walkRoad = i => { const R = C.ROADS[Wd.road[i]]; return !!R && R.grp !== 'highway' && R.grp !== 'legacy'; };
+  // the two cell pairs straddling the edge between tile i and its neighbour in direction d: [[cellInI, cellInJ], ...]
+  Wd.edgeCells = function (i, d) {
+    const x = U.tx(i) * 2, y = U.ty(i) * 2;
+    if (d === 1) return [[Wd.fidx(x + 1, y), Wd.fidx(x + 2, y)], [Wd.fidx(x + 1, y + 1), Wd.fidx(x + 2, y + 1)]];
+    if (d === 3) return [[Wd.fidx(x, y), Wd.fidx(x - 1, y)], [Wd.fidx(x, y + 1), Wd.fidx(x - 1, y + 1)]];
+    if (d === 2) return [[Wd.fidx(x, y + 1), Wd.fidx(x, y + 2)], [Wd.fidx(x + 1, y + 1), Wd.fidx(x + 1, y + 2)]];
+    return [[Wd.fidx(x, y), Wd.fidx(x, y - 1)], [Wd.fidx(x + 1, y), Wd.fidx(x + 1, y - 1)]];
+  };
+  // can a pedestrian / cyclist cross from tile i into its neighbour in direction d?
+  Wd.softPass = function (i, d) {
+    const j = Wd.neighbor(i, d); if (j < 0) return -1;
+    const ri = Wd.walkRoad(i), rj = Wd.walkRoad(j);
+    if (ri && rj) return 0;
+    if (!Wd.pmask[i] && !Wd.pmask[j]) return -1;
+    for (const [a, b] of Wd.edgeCells(i, d)) {
+      const ok = (Wd.pcell[a] || ri) && (Wd.pcell[b] || rj) && (Wd.pcell[a] || Wd.pcell[b]);
+      if (ok) return 1;
+    }
+    return -1;
+  };
   Wd.linked = (i, d) => (Wd.link[i] & (1 << d)) !== 0;
   // forward lanes only (one-way strip)?
   Wd.isOneway = function (i) { const R = C.ROADS[Wd.road[i]]; return !!R && (R.oneway || R.w === 2); };
@@ -806,7 +872,7 @@ window.CB = {};
           const nx = x + C.DX[d] * k, ny = y + C.DY[d] * k;
           if (!U.inPlay(nx, ny)) break;
           const j = U.idx(nx, ny);
-          if (Wd.road[j]) break;
+          if (Wd.road[j] || Wd.pmask[j]) break;
           if (!Wd.buildable(j) || Wd.rail[j] === 1) break;
           z[j] = 1;
         }
@@ -965,6 +1031,10 @@ if (st >= 1 && st <= 4) {
   gEmis = litc * win * lit * uNight * (0.28 + 0.42 * hh(id * 3.1 + 1.7));
 } else if (st == 14) { gEmis = diffuseColor.rgb * vec3(1.0, 0.8, 0.55) * 0.5 * uNight; }
 else if (st == 5) { gEmis = diffuseColor.rgb * (0.25 + 1.6 * uNight); }
+else if (st == 16) { diffuseColor.rgb = vec3(0.55, 0.57, 0.6); }
+else if (st == 17) { diffuseColor.rgb = vec3(0.025, 0.026, 0.03); }
+else if (st == 18) { diffuseColor.rgb = vec3(0.62, 0.42, 0.3); }
+else if (st == 15) { gEmis = diffuseColor.rgb * (1.4 + 1.6 * uNight); }
 else if (st == 6) { diffuseColor.rgb = vec3(0.95, 0.93, 0.8); gEmis = vec3(1.0, 0.95, 0.8) * 3.0 * uNight; }
 else if (st == 7) { diffuseColor.rgb = vec3(0.5, 0.03, 0.03); gEmis = vec3(1.0, 0.06, 0.04) * (0.25 + 1.8 * uNight); }
 else if (st == 8) { diffuseColor.rgb = vec3(0.9, 0.85, 0.7); gEmis = vec3(1.0, 0.78, 0.45) * 3.5 * uNight; }
@@ -1344,6 +1414,9 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     if (py < g2) py = g2;
     G.camera.position.set(px, py, pz);
     G.camera.lookAt(c.tx, c.ty, c.tz);
+    // push the near plane out as the camera pulls back: keeps depth precision (no z-fighting)
+    const nearP = U.clamp(c.dist * 0.04, 0.6, 30);
+    if (Math.abs(G.camera.near - nearP) > 0.05) { G.camera.near = nearP; G.camera.updateProjectionMatrix(); }
     G.sky.position.copy(G.camera.position);
     G.sky.scale.setScalar(G.settings.view * 1.4);
     // shadows follow the view
@@ -1527,7 +1600,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
         this.cone(x, y + 3.0 * s, z, 2.1 * s, 2.6 * s, 6, col);
       }
     }
-    addThree(g, mx, col) {
+    addThree(g, mx, col, st) {
       const ng = g.index ? g.toNonIndexed() : g;
       ng.applyMatrix4(mx);
       ng.computeVertexNormals();
@@ -1535,7 +1608,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       const cl = lc(col);
       for (let i = 0; i < p.length; i += 3) {
         this.p.push(p[i], p[i + 1], p[i + 2]); this.n.push(n[i], n[i + 1], n[i + 2]);
-        this.c.push(cl[0], cl[1], cl[2]); this.u.push(0, 0); this.s.push(0);
+        this.c.push(cl[0], cl[1], cl[2]); this.u.push(0, 0); this.s.push(st || 0);
       }
     }
     get count() { return this.p.length / 3; }
@@ -1639,6 +1712,15 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
 
   // ---- low density homes ----
   const HOUSE_WALL = ['#efe9dc', '#e6dcc6', '#d9cbb0', '#c9d3d6', '#e8e1c4', '#cfd8cf', '#dad4cc', '#e3d2bd', '#f2efe6', '#c7b7a3', '#b8c7cf', '#e9d9c9', '#a8b8a0'];
+  const WORN_WALL = ['#c9bfa8', '#b8ad96', '#a99f8a', '#c4c0b4', '#b5aa98', '#9fa59a', '#bfb3a0'];
+  const WORN_ROOF = ['#5a5550', '#6a5040', '#4a4d50', '#605a52', '#7a6a5a'];
+  function wornYard(gb, r, LW, LD) {
+    // chain-link fence, gravel patch, a tired shed
+    gb.box(0.2, 0, LD - 0.35, LW - 0.2, 1.1, LD - 0.3, '#8a9095');
+    gb.flat(LW - 3.4, 0.1, LW - 0.6, Math.min(5, LD - 1), 0.1, '#8a8478');
+    if (r() < 0.6 && LD > 12) gb.box(0.8, 0, LD - 3.6, 3.2, 2.0, LD - 1.2, '#8a8a84', 0, { top: '#6e6a62' });
+    if (r() < 0.4) gb.box(LW - 2.6, 0.1, 1.2, LW - 1.2, 0.9, 2.6, '#6a6a60');
+  }
   const HOUSE_ROOF = ['#4b4f57', '#6b3e2e', '#3d4650', '#7a5a44', '#55504a', '#2f3640', '#5e3a33', '#704a3a', '#3c5060'];
   const TRIM = ['#f4f1ea', '#e8e2d4', '#ffffff', '#3a3d42', '#2f4a5a'];
   function houseBlock(gb, r, x0, z0, w, d, floors, roof, wall, rc, opts) {
@@ -1655,9 +1737,22 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   GEN.rlow = function (gb, b, r, LW, LD) {
     foundation(gb, LW, LD, b, U.pick(PAL.lawn, r));
     const lvl = b.level, area = b.w * b.d;
-    const wall = U.pick(HOUSE_WALL, r), rc = U.pick(HOUSE_ROOF, r), trim = U.pick(TRIM, r);
-    const roofK = U.pick(['gable', 'gable', 'hip', 'hip', 'steep', 'flat'], r);
+    // level 1 homes are worn and plain; each level adds care, size and eventually modern design
+    const worn = lvl <= 1, plain = lvl <= 2;
+    const wall = worn ? U.pick(WORN_WALL, r) : U.pick(HOUSE_WALL, r), rc = worn ? U.pick(WORN_ROOF, r) : U.pick(HOUSE_ROOF, r), trim = worn ? '#cfc8b6' : U.pick(TRIM, r);
+    const roofK = plain ? U.pick(['gable', 'gable', 'steep'], r) : U.pick(['gable', 'hip', 'hip', 'steep'], r);
     const doorCol = U.pick(['#5a3d2b', '#8c1c1c', '#25467a', '#2f5a3a', '#3a3d42', '#c8a040'], r);
+    if (area === 1 && lvl >= 4) {
+      // compact modern cube
+      const w = 7, d = 6.2, x0 = (LW - w) / 2, z0 = 2.4, dark = r() < 0.5;
+      gb.box(x0, 0, z0, x0 + w, 3.2, z0 + d, dark ? '#3a3d42' : '#ece9e2', 2);
+      gb.box(x0 + 1.5, 3.2, z0 + 1.2, x0 + w, 5.8, z0 + d, dark ? '#ece9e2' : '#5a6068', 2);
+      gb.box(x0 - 0.1, 3.15, z0 - 0.1, x0 + w + 0.1, 3.4, z0 + d + 0.1, '#2b2b30'); gb.box(x0 + 1.4, 5.8, z0 + 1.1, x0 + w + 0.1, 6.0, z0 + d + 0.1, '#2b2b30');
+      gb.box(x0 + 2.6, 0.4, z0 - 0.06, x0 + w - 0.4, 2.8, z0, '#9fc5d8', 9); door(gb, x0 + 1.4, z0, '#2b2b30');
+      gb.box(x0 - 0.6, 0, z0 - 1.6, x0 + 3, 0.25, z0, '#8a6a4a');
+      bush(gb, 1, 1.2, 0.8); bush(gb, LW - 1, 1.2, 0.8); if (lvl >= 5) yardTree(gb, LW - 1.6, LD - 1.6, r);
+      return;
+    }
     if (area === 1) {
       // cottage
       const w = 6.2 + r() * 0.8, d = 5.6 + r() * 0.6, x0 = (LW - w) / 2, z0 = 2.4;
@@ -1666,11 +1761,14 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       gb.box(x0 + w / 2 - 1.2, 0, z0 - 1.15, x0 + w / 2 - 1.05, 2.4, z0 - 1.0, trim); gb.box(x0 + w / 2 + 1.05, 0, z0 - 1.15, x0 + w / 2 + 1.2, 2.4, z0 - 1.0, trim);
       windowsFront(gb, x0 + 0.3, x0 + w / 2 - 1.3, z0, 1.0, 1); windowsFront(gb, x0 + w / 2 + 1.3, x0 + w - 0.3, z0, 1.0, 1);
       pathStrip(gb, x0 + w / 2 - 0.5, 0.1, x0 + w / 2 + 0.5, z0, '#b5ada0');
-      hedge(gb, 0.3, 0.3, x0 + w / 2 - 0.9, 0.9); hedge(gb, x0 + w / 2 + 0.9, 0.3, LW - 0.3, 0.9);
+      if (!worn) { hedge(gb, 0.3, 0.3, x0 + w / 2 - 0.9, 0.9); hedge(gb, x0 + w / 2 + 0.9, 0.3, LW - 0.3, 0.9); }
+      else wornYard(gb, r, LW, LD);
       if (r() < 0.7) yardTree(gb, LW - 1.4, LD - 1.4, r);
       return;
     }
-    const style = U.pick(area >= 6 ? ['estate', 'estate', 'modernvilla'] : area >= 4 ? ['ranchL', 'twostoryWide', 'duplex', 'modernvilla'] : area === 3 ? ['colonial', 'bungalow', 'modern'] : ['colonial', 'bungalow', 'modern', 'aframe', 'saltbox'], r);
+    const POOLS = area >= 4 ? [null, ['duplex', 'ranchL'], ['duplex', 'ranchL', 'twostoryWide'], ['ranchL', 'twostoryWide', 'estate'], ['twostoryWide', 'estate', 'modernvilla'], ['estate', 'modernvilla', 'modernvilla']]
+      : [null, ['saltbox', 'bungalow'], ['saltbox', 'bungalow', 'colonial'], ['colonial', 'bungalow', 'aframe', 'saltbox'], ['colonial', 'modern', 'aframe'], ['modern', 'modern', 'colonial']];
+    const style = U.pick(POOLS[lvl], r);
     if (style === 'colonial' || style === 'saltbox') {
       const w = Math.min(LW - 2.6, 7.8 + r() * 1.2), d = 7.2 + r() * 1.5, x0 = 1.0 + r() * 0.6, z0 = 3.6 + r();
       const hb = houseBlock(gb, r, x0, z0, w, d, 2, style === 'saltbox' ? 'steep' : (roofK === 'flat' ? 'hip' : roofK), wall, rc, { chimney: true, doorCol });
@@ -1773,7 +1871,9 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       for (let k = 0; k < 3; k++) gb.box(1.2, 0, LD - 9 + k * 2.1, 5.6, 0.3, LD - 8.1 + k * 2.1, '#6a4a32', 0, { top: '#4a7a36' });
     }
     if (area === 2 && r() < 0.8) { yardTree(gb, 1.5 + r() * 2, LD - 2.5 - r() * 3, r); if (r() < 0.5) bush(gb, LW - 1.8, LD - 2.2, 1); }
-    if (area >= 2 && lvl >= 2 && style !== 'ranchL' && style !== 'duplex') { fence(gb, 0.2, LD - 0.4, LW - 0.2, LD - 0.25, '#b49a78'); fence(gb, 0.2, LD * 0.55, 0.35, LD - 0.25, '#b49a78'); fence(gb, LW - 0.35, LD * 0.55, LW - 0.2, LD - 0.25, '#b49a78'); }
+    if (worn) wornYard(gb, r, LW, LD);
+    if (lvl >= 4 && area >= 2) { flowerBed(gb, 0.6, 1.4, 2.6, 2.4, r); bush(gb, LW - 1.2, 1.6, 0.8); }
+    if (area >= 2 && lvl >= 3 && style !== 'ranchL' && style !== 'duplex') { fence(gb, 0.2, LD - 0.4, LW - 0.2, LD - 0.25, '#b49a78'); fence(gb, 0.2, LD * 0.55, 0.35, LD - 0.25, '#b49a78'); fence(gb, LW - 0.35, LD * 0.55, LW - 0.2, LD - 0.25, '#b49a78'); }
   };
   GEN.rmed = function (gb, b, r, LW, LD) {
     foundation(gb, LW, LD, b, r() < 0.5 ? U.pick(PAL.lawn, r) : PAL.paved);
@@ -2399,6 +2499,41 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     else SGEN[b.svc](gb, b, r, LW, LD);
     gb.tint = null; gb.noLit = false;
   };
+  // ---- 3D thumbnails for menus (rendered once, cached as images) ----
+  const thumbCache = new Map();
+  let TR = null;
+  M.thumb = function (key, spec) {
+    if (thumbCache.has(key)) return thumbCache.get(key);
+    let url = '';
+    try {
+      if (!TR) {
+        const r = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+        r.setPixelRatio(1); r.setSize(176, 128);
+        r.outputColorSpace = CB.Gfx.renderer.outputColorSpace; r.toneMapping = CB.Gfx.renderer.toneMapping; r.toneMappingExposure = CB.Gfx.renderer.toneMappingExposure;
+        const sc = new THREE.Scene();
+        sc.add(new THREE.HemisphereLight(0xdfeeff, 0x6a5a40, 1.4));
+        const sun = new THREE.DirectionalLight(0xfff1dc, 2.6); sun.position.set(-0.6, 1, 0.45); sc.add(sun);
+        TR = { r, sc, cam: new THREE.PerspectiveCamera(28, 176 / 128, 1, 4000) };
+      }
+      const b = Object.assign({ x: 0, y: 0, dir: 2, baseY: 0, minY: -0.5, seed: 1234, level: 3, state: 'live' }, spec);
+      b.fw = b.w; b.fh = b.d;
+      const gb = new GB(); M.genBuilding(gb, b);
+      const geo = gb.geometry(); geo.computeBoundingBox();
+      const mesh = new THREE.Mesh(geo, CB.Gfx.mats.city);
+      TR.sc.add(mesh);
+      const bb = geo.boundingBox, c = new THREE.Vector3(), sz = new THREE.Vector3(); bb.getCenter(c); bb.getSize(sz);
+      const rad = Math.max(sz.x, sz.z, sz.y * 0.9) * 0.62 + 4;
+      const dist = rad / Math.tan(THREE.MathUtils.degToRad(14));
+      TR.cam.position.set(c.x - dist * 0.55, c.y + dist * 0.62, c.z + dist * 0.56);
+      TR.cam.lookAt(c.x, c.y - sz.y * 0.05, c.z);
+      TR.cam.near = dist * 0.2; TR.cam.far = dist * 3; TR.cam.updateProjectionMatrix();
+      TR.r.render(TR.sc, TR.cam);
+      url = TR.r.domElement.toDataURL('image/png');
+      TR.sc.remove(mesh); geo.dispose();
+    } catch (e) { url = ''; }
+    thumbCache.set(key, url);
+    return url;
+  };
   M.buildingHeight = function (b) {
     const gb = new GB(); M.genBuilding(gb, b);
     let mx = 0; for (let i = 1; i < gb.p.length; i += 3) mx = Math.max(mx, gb.p[i] - b.baseY);
@@ -2592,9 +2727,12 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       // signal pole / stop sign at the right-hand corner
       const pc = FU(f, T - 0.45, 9.4), px = X0 + pc[0], pz = Z0 + pc[1], py = base(pc[0], pc[1]) + 0.3;
       if (cl.ctrl === 'lights') {
-        gb.box(px - 0.12, py, pz - 0.12, px + 0.12, py + 4.6, pz + 0.12, '#3a3d42');
-        const hp = M.signalPos(ap);
-        gb.box(hp[0] - 0.3, hp[1] - 0.75, hp[2] - 0.3, hp[0] + 0.3, hp[1] + 0.75, hp[2] + 0.3, '#1d1f22');
+        const hp = M.signalPos(ap), top = hp[1] + 1.05;
+        gb.box(px - 0.13, py, pz - 0.13, px + 0.13, top + 0.15, pz + 0.13, '#3a3d42');
+        // mast arm out over the lanes
+        gb.box(Math.min(px, hp[0]) - 0.08, top, Math.min(pz, hp[2]) - 0.08, Math.max(px, hp[0]) + 0.08, top + 0.16, Math.max(pz, hp[2]) + 0.08, '#3a3d42');
+        gb.box(hp[0] - 0.32, hp[1] - 0.85, hp[2] - 0.32, hp[0] + 0.32, hp[1] + 0.85, hp[2] + 0.32, '#16181b');
+        gb.box(hp[0] - 0.05, hp[1] + 0.85, hp[2] - 0.05, hp[0] + 0.05, top, hp[2] + 0.05, '#3a3d42');
       } else if ((cl.ctrl === 'stop' || cl.ctrl === 'allstop') && CB.Traffic.isStopFor(cl, ap.key)) {
         gb.box(px - 0.06, py, pz - 0.06, px + 0.06, py + 2.3, pz + 0.06, '#9a9a9a');
         gb.cyl(px, py + 2.3, pz, 0.42, 0.08, 8, '#c8231c', 5, '#c8231c');
@@ -2613,12 +2751,40 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       if ((x + y) % 2 === 0) gb.box(X0 + 4.1, g - 1, Z0 + 4.1, X0 + 5.9, y0 - 1.3, Z0 + 5.9, COL.deck);
     }
   }
+  // half-tile paths: a paved ribbon through each cell, joined to neighbouring cells and to road sidewalks
+  function genPathTile(gb, i) {
+    const Wd = CB.World, FW = C.FW, H = T / 2;
+    for (let q = 0; q < 4; q++) {
+      const f = Wd.cellOf(i, q), k = Wd.pcell[f]; if (!k) continue;
+      const P = C.PATHS[k], fx = f % FW, fy = (f / FW) | 0;
+      const x0 = fx * H, z0 = fy * H, cx = x0 + H / 2, cz = z0 + H / 2, w = k === 2 ? 1.25 : 1.05;
+      const y = (lx, lz) => Math.max(Wd.groundH(lx, lz), C.WATER + 0.3) + 0.2;
+      const quad = (ax, az, bx, bz, col, dy) => gb.quad([ax, y(ax, bz) + (dy || 0), bz], [bx, y(bx, bz) + (dy || 0), bz], [bx, y(bx, az) + (dy || 0), az], [ax, y(ax, az) + (dy || 0), az], col, 14);
+      quad(cx - w, cz - w, cx + w, cz + w, P.col);
+      for (let d = 0; d < 4; d++) {
+        const nx = fx + C.DX[d], ny = fy + C.DY[d];
+        if (nx < 0 || ny < 0 || nx >= FW || ny >= FW) continue;
+        const nf = ny * FW + nx, nt = U.idx(nx >> 1, ny >> 1);
+        const toRoad = nt !== i && Wd.walkRoad(nt);
+        if (!Wd.pcell[nf] && !toRoad) continue;
+        if (d === 0) quad(cx - w, z0, cx + w, cz, P.col); else if (d === 2) quad(cx - w, cz, cx + w, z0 + H, P.col);
+        else if (d === 1) quad(cx, cz - w, x0 + H, cz + w, P.col); else quad(x0, cz - w, cx, cz + w, P.col);
+        if (k === 2) { if (d % 2 === 0) quad(cx - 0.06, d === 0 ? z0 + 0.6 : cz + 0.6, cx + 0.06, d === 0 ? cz - 0.6 : z0 + H - 0.6, COL.white, 0.01); else quad(d === 3 ? x0 + 0.6 : cx + 0.6, cz - 0.06, d === 3 ? cx - 0.6 : x0 + H - 0.6, cz + 0.06, COL.white, 0.01); }
+      }
+    }
+  }
   // world position of the signal head for a junction approach
   M.signalPos = function (ap) {
     const Wd = CB.World, i = ap.tile, f = ap.d;
     const FU = (u, v) => f === 0 ? [u, T - v] : f === 1 ? [v, u] : f === 2 ? [T - u, v] : [T - v, T - u];
-    const p = FU(T - 0.45, 9.4), x = U.tx(i) * T + p[0], z = U.ty(i) * T + p[1];
-    return [x, Wd.roadH(x, z) + 4.2, z];
+    const ln = Wd.lanesToward(i, f), mid = ln.length ? (ln[0] + ln[ln.length - 1]) / 2 : 1.5;
+    const p = FU(T / 2 + mid, 9.4), x = U.tx(i) * T + p[0], z = U.ty(i) * T + p[1];
+    return [x, Wd.roadH(x, z) + 5.2, z];
+  };
+  // the lit lamp sits on the face of the housing pointing at oncoming drivers
+  M.signalLampPos = function (ap) {
+    const p = M.signalPos(ap);
+    return [p[0] - C.DX[ap.d] * 0.42, p[1], p[2] - C.DY[ap.d] * 0.42];
   };
   M.junctionsChanged = function () {
     const Wd = CB.World;
@@ -2822,6 +2988,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     for (let y = y0; y < Math.min(W, y0 + CS); y++) for (let x = x0; x < Math.min(W, x0 + CS); x++) {
       const i = U.idx(x, y);
       if (Wd.road[i]) genRoadTile(gb, i);
+      if (Wd.pmask[i]) genPathTile(gb, i);
       if (Wd.rail[i] === 1) { genRailTile(gb, i); elev = true; }
     }
     if (CB.Transit) for (const s of CB.Transit.stops) {
@@ -2903,7 +3070,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
       const i = U.idx(x, y);
       const t = Wd.tree[i];
-      if (!t || Wd.bld[i] || Wd.road[i] || Wd.rail[i] === 1) continue;
+      if (!t || Wd.bld[i] || Wd.road[i] || Wd.pmask[i] === 15 || Wd.rail[i] === 1) continue;
       const play = U.inPlay(x, y);
       let n = t * dens * (play ? 1 : 0.7);
       const base = Math.floor(n); const frac = n - base;
@@ -3092,17 +3259,212 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     }
     return gb.geometry();
   }
-  M.VEH_KINDS = ['car', 'suv', 'van', 'truck', 'bus', 'tram', 'police', 'ambulance', 'fire', 'garbage', 'train', 'bike', 'ped'];
+  // ---------------- detailed models (high / ultra) ----------------
+  // side profile [x, y] points (convex, counter-clockwise) extruded across z0..z1
+  function extrude(gb, prof, z0, z1, col, st, inset) {
+    const n = prof.length, k = inset || 0;
+    for (let i = 0; i < n; i++) {
+      const a = prof[i], b = prof[(i + 1) % n];
+      gb.quad([a[0], a[1], z0], [b[0], b[1], z0], [b[0], b[1], z1], [a[0], a[1], z1], col, st);
+    }
+    let cx = 0, cy = 0; for (const p of prof) { cx += p[0]; cy += p[1]; } cx /= n; cy /= n;
+    for (let i = 0; i < n; i++) {
+      const a = prof[i], b = prof[(i + 1) % n];
+      const sh = (p, z) => [p[0] + (cx - p[0]) * k, p[1] + (cy - p[1]) * k, z];
+      gb.tri(sh(a, z1), sh(b, z1), [cx, cy, z1], col, st);
+      gb.tri(sh(b, z0), sh(a, z0), [cx, cy, z0], col, st);
+    }
+  }
+  const WHEEL = new THREE.CylinderGeometry(1, 1, 1, 14).rotateX(Math.PI / 2);
+  const RIM = new THREE.CylinderGeometry(1, 1, 1, 10).rotateX(Math.PI / 2);
+  function wheelHQ(gb, x, z, r, w, rimCol) {
+    gb.addThree(WHEEL, new THREE.Matrix4().makeScale(r, r, w).setPosition(x, r, z), '#141414', 17);
+    const side = z > 0 ? 1 : -1;
+    gb.addThree(RIM, new THREE.Matrix4().makeScale(r * 0.6, r * 0.6, 0.04).setPosition(x, r, z + side * w * 0.5), rimCol || '#b8bcc2', 16);
+  }
+  function lights(gb, xf, xr, y, zs, w) {
+    for (const z of zs) {
+      gb.box(xf - 0.04, y, z - w, xf + 0.04, y + 0.2, z + w, '#fff', 6);
+      gb.box(xr - 0.04, y + 0.05, z - w, xr + 0.04, y + 0.22, z + w, '#fff', 7);
+    }
+  }
+  // window pane on the plane through edge a->b of a side profile, inset along the edge
+  function pane(gb, a, b, z0, z1, t0, t1, out) {
+    const lx = b[0] - a[0], ly = b[1] - a[1], l = Math.hypot(lx, ly), nx = ly / l * out, ny = -lx / l * out;
+    const P = t => [a[0] + lx * t + nx, a[1] + ly * t + ny];
+    const A = P(t0), B = P(t1);
+    gb.quad([A[0], A[1], z0], [A[0], A[1], z1], [B[0], B[1], z1], [B[0], B[1], z0], '#fff', 9);
+    gb.quad([A[0], A[1], z1], [A[0], A[1], z0], [B[0], B[1], z0], [B[0], B[1], z1], '#fff', 9);
+  }
+  function shrink(prof, k, dy) {
+    let cx = 0, cy = 0; for (const p of prof) { cx += p[0]; cy += p[1]; } cx /= prof.length; cy /= prof.length;
+    return prof.map(p => [p[0] + (cx - p[0]) * k, p[1] + (cy - p[1]) * k + (dy || 0)]);
+  }
+  function sideGlass(gb, prof, zs) { for (const z of zs) extrude(gb, prof, z - 0.012, z + 0.012, '#fff', 9); }
+  function chamferRect(x0, y0, x1, y1, c, c2) { const d = c2 === undefined ? c : c2; return [[x0, y0 + d], [x0 + d, y0], [x1 - d, y0], [x1, y0 + d], [x1, y1 - c], [x1 - c, y1], [x0 + c, y1], [x0, y1 - c]]; }
+  function carHQ(gb, L, W, H, kind) {
+    const body = '#fff', trim = '#24262a';
+    const sill = 0.3, belt = H * 0.53, roof = H;
+    const hood = L * 0.44, rear = -L * 0.8;
+    // lower body: rounded nose and tail
+    extrude(gb, [[-L + 0.12, sill], [L - 0.15, sill], [L + 0.03, sill + 0.25], [L, belt - 0.2], [L - 0.35, belt + 0.02], [-L + 0.25, belt + 0.05], [-L - 0.02, belt - 0.12], [-L - 0.04, sill + 0.22]], -W, W, body, 0);
+    // cabin in body colour, glass as separate panes
+    const cab = kind === 'suv'
+      ? [[-L + 0.2, belt], [hood - 0.15, belt], [hood - 0.75, roof - 0.05], [hood - 0.95, roof], [-L + 0.42, roof], [-L + 0.3, roof - 0.08]]
+      : [[rear + 0.1, belt], [hood, belt], [hood - 0.95, roof - 0.04], [hood - 1.15, roof], [rear + 0.8, roof], [rear + 0.65, roof - 0.04]];
+    const cw = W - 0.1;
+    extrude(gb, cab, -cw, cw, body, 0);
+    pane(gb, cab[1], cab[2], -cw + 0.12, cw - 0.12, 0.08, 0.95, 0.012);          // windscreen
+    pane(gb, cab[5], cab[0], -cw + 0.14, cw - 0.14, 0.05, 0.86, 0.012);          // rear window
+    const sg = shrink([cab[0], cab[1], cab[2], cab[3], cab[4], cab[5]], 0.2, 0.03);
+    sideGlass(gb, sg, [-cw - 0.006, cw + 0.006]);
+    for (const z of [-cw - 0.02, cw + 0.02]) gb.box(-0.12, belt, z - 0.015, 0.06, roof - 0.06, z + 0.015, body); // B pillar
+    // bumpers, grille, plates, lights
+    gb.box(L - 0.06, sill - 0.04, -W + 0.08, L + 0.1, sill + 0.3, W - 0.08, trim, 17);
+    gb.box(-L - 0.12, sill - 0.04, -W + 0.08, -L + 0.06, sill + 0.3, W - 0.08, trim, 17);
+    gb.box(L + 0.03, belt - 0.5, -W * 0.42, L + 0.06, belt - 0.3, W * 0.42, '#151618');
+    gb.box(-L - 0.14, sill + 0.33, -0.3, -L - 0.1, sill + 0.5, 0.3, '#e8e8e0');
+    for (const z of [-W + 0.28, W - 0.28]) {
+      gb.box(L - 0.02, belt - 0.42, z - 0.22, L + 0.05, belt - 0.24, z + 0.22, '#fff', 6);
+      gb.box(-L - 0.07, belt - 0.4, z - 0.24, -L, belt - 0.2, z + 0.24, '#fff', 7);
+    }
+    for (const z of [-W - 0.13, W + 0.13]) gb.box(hood - 0.4, belt + 0.03, Math.min(z, z * 0.88) - 0.03, hood - 0.2, belt + 0.2, Math.max(z, z * 0.88) + 0.03, body);
+    for (const z of [-W - 0.004, W + 0.004]) { gb.box(-L * 0.42, sill + 0.4, z - 0.004, -L * 0.42 + 0.04, belt - 0.06, z + 0.004, trim, 17); gb.box(0.2, belt - 0.2, z - 0.006, 0.42, belt - 0.15, z + 0.006, trim, 17); }
+    gb.box(-L + 0.1, sill - 0.02, -W - 0.01, L - 0.1, sill + 0.08, W + 0.01, trim, 17); // rocker strip
+    const wr = kind === 'suv' ? 0.42 : 0.35, wx = L * 0.64;
+    for (const x of [-wx, wx]) for (const z of [-W + 0.17, W - 0.17]) wheelHQ(gb, x, z, wr, 0.26);
+    if (kind === 'suv') { gb.box(-L * 0.6, roof + 0.07, -W + 0.15, L * 0.1, roof + 0.13, -W + 0.22, trim, 17); gb.box(-L * 0.6, roof + 0.07, W - 0.22, L * 0.1, roof + 0.13, W - 0.15, trim, 17); }
+  }
+  // boxy vehicles: chamfered body, window band, cab with sloped screen
+  function cabHQ(gb, x0, x1, H, W, col, opts) {
+    opts = opts || {};
+    const prof = [[x0, 0.45], [x1 - 0.1, 0.45], [x1 + 0.04, 0.7], [x1, H * 0.55], [x1 - (opts.slope || 0.45), H - 0.1], [x1 - (opts.slope || 0.45) - 0.12, H], [x0, H]];
+    extrude(gb, prof, -W, W, col, 0);
+    pane(gb, prof[3], prof[4], -W + 0.15, W - 0.15, 0.06, 0.94, 0.012);
+    const sg = [[x0 + 0.25, H * 0.55], [x1 - 0.15, H * 0.55], [x1 - (opts.slope || 0.45) + 0.05, H - 0.2], [x0 + 0.25, H - 0.2]];
+    sideGlass(gb, sg, [-W - 0.006, W + 0.006]);
+    gb.box(x1 - 0.02, 0.5, -W + 0.1, x1 + 0.12, 0.85, W - 0.1, '#24262a');
+    for (const z of [-W + 0.28, W - 0.28]) gb.box(x1 + 0.02, 0.95, z - 0.2, x1 + 0.07, 1.15, z + 0.2, '#fff', 6);
+    for (const z of [-W - 0.15, W + 0.15]) gb.box(x1 - 0.5, H * 0.55, Math.min(z, z * 0.9) - 0.03, x1 - 0.35, H * 0.55 + 0.35, Math.max(z, z * 0.9) + 0.03, '#24262a');
+  }
+  function boxBody(gb, x0, x1, y0, y1, W, col, st) { extrude(gb, chamferRect(x0, y0, x1, y1, 0.12, 0.05), -W, W, col, st || 0); }
+  function windowBand(gb, x0, x1, y0, y1, W) { for (const z of [-W - 0.006, W + 0.006]) extrude(gb, chamferRect(x0, y0, x1, y1, 0.06), z - 0.012, z + 0.012, '#fff', 9); }
+  function tail(gb, x, W, y) { for (const z of [-W + 0.25, W - 0.25]) gb.box(x - 0.05, y, z - 0.18, x + 0.01, y + 0.25, z + 0.18, '#fff', 7); }
+  function heavyHQ(gb, kind) {
+    switch (kind) {
+      case 'van':
+        boxBody(gb, -2.8, 1.25, 0.4, 2.55, 1.0, '#fff'); cabHQ(gb, 1.2, 2.8, 2.3, 0.98, '#fff', { slope: 0.6 });
+        windowBand(gb, -0.4, 1.0, 1.55, 2.2, 1.0); tail(gb, -2.85, 1.0, 0.8);
+        for (const x of [-1.85, 1.95]) for (const z of [-0.8, 0.8]) wheelHQ(gb, x, z, 0.38, 0.28); break;
+      case 'ambulance':
+        boxBody(gb, -2.8, 1.35, 0.4, 2.8, 1.05, '#f6f6f6'); cabHQ(gb, 1.3, 2.85, 2.25, 1.02, '#f6f6f6', { slope: 0.6 });
+        gb.box(-2.82, 1.15, -1.07, 2.86, 1.45, 1.07, '#d92a2a'); gb.box(0.6, 2.8, -0.75, 1.3, 3.0, -0.05, '#ff3030', 5); gb.box(0.6, 2.8, 0.05, 1.3, 3.0, 0.75, '#2050ff', 5);
+        tail(gb, -2.85, 1.05, 0.8); for (const x of [-1.85, 1.95]) for (const z of [-0.82, 0.82]) wheelHQ(gb, x, z, 0.38, 0.28); break;
+      case 'truck':
+        cabHQ(gb, 1.55, 3.6, 2.95, 1.15, '#fff', { slope: 0.35 }); boxBody(gb, -3.65, 1.45, 0.75, 3.55, 1.22, '#e8e6e0');
+        gb.box(-3.66, 0.55, -1.0, 1.45, 0.75, 1.0, '#2a2c30'); tail(gb, -3.7, 1.2, 0.9);
+        for (const x of [-2.7, -1.5, 2.65]) for (const z of [-0.98, 0.98]) wheelHQ(gb, x, z, 0.46, 0.34); break;
+      case 'garbage':
+        cabHQ(gb, 1.8, 3.6, 2.85, 1.15, '#f0f0f0', { slope: 0.3 }); boxBody(gb, -3.65, 1.7, 0.6, 3.2, 1.2, '#2f7a3b');
+        extrude(gb, [[-3.65, 0.6], [-3.2, 0.6], [-3.2, 3.2], [-3.9, 2.9], [-3.9, 1.0]], -1.15, 1.15, '#27662f');
+        tail(gb, -3.92, 1.1, 1.2); for (const x of [-2.5, 2.6]) for (const z of [-0.98, 0.98]) wheelHQ(gb, x, z, 0.46, 0.34); break;
+      case 'fire':
+        cabHQ(gb, 1.9, 3.6, 2.7, 1.2, '#c8231c', { slope: 0.3 }); boxBody(gb, -3.6, 1.85, 0.5, 2.6, 1.22, '#c8231c');
+        gb.box(-3.3, 2.65, -0.35, 1.7, 2.8, -0.25, '#d8d8d8'); gb.box(-3.3, 2.65, 0.25, 1.7, 2.8, 0.35, '#d8d8d8');
+        for (let k = 0; k < 9; k++) gb.box(-3.2 + k * 0.55, 2.66, -0.3, -3.12 + k * 0.55, 2.76, 0.3, '#d8d8d8');
+        gb.box(2.5, 2.7, -0.8, 3.1, 2.9, 0.8, '#ff3030', 5); for (const z of [-1.23, 1.23]) gb.box(-3.5, 1.2, z - 0.01, 1.8, 1.35, z + 0.01, '#f2d24a', 5);
+        for (const x of [-2.4, 2.5]) for (const z of [-1.0, 1.0]) wheelHQ(gb, x, z, 0.46, 0.34); break;
+      case 'bus':
+        boxBody(gb, -5.2, 5.2, 0.4, 3.1, 1.25, '#fff'); windowBand(gb, -4.9, 4.6, 1.45, 2.65, 1.25);
+        pane(gb, [5.2, 1.3], [5.2, 2.95], -1.1, 1.1, 0.03, 0.97, 0.03);
+        gb.box(5.21, 2.7, -0.7, 5.25, 2.95, 0.7, '#ffb000', 5); gb.box(-5.2, 3.1, -0.9, 3.0, 3.35, 0.9, '#d9d9d9');
+        for (const z of [-0.95, 0.95]) gb.box(5.2, 0.7, z - 0.18, 5.26, 0.9, z + 0.18, '#fff', 6); tail(gb, -5.24, 1.25, 0.8);
+        for (const x of [-3.4, 3.5]) for (const z of [-1.04, 1.04]) wheelHQ(gb, x, z, 0.5, 0.3); break;
+      case 'tram':
+        boxBody(gb, -6.8, 6.8, 0.35, 3.0, 1.25, '#fff'); windowBand(gb, -6.3, 6.3, 1.3, 2.55, 1.25);
+        for (const x of [6.8, -6.8]) pane(gb, [x, 1.2], [x, 2.7], -1.05, 1.05, 0.03, 0.97, x > 0 ? 0.03 : -0.03);
+        gb.box(-6.8, 3.0, -1.0, 6.8, 3.15, 1.0, '#cfcfcf'); gb.box(-0.6, 3.15, -0.05, 0.6, 4.2, 0.05, '#333'); gb.box(-1.2, 4.15, -0.45, 1.2, 4.25, 0.45, '#333');
+        for (const z of [-0.95, 0.95]) gb.box(6.8, 0.6, z - 0.15, 6.86, 0.8, z + 0.15, '#fff', 6);
+        for (const x of [-4.6, 4.6]) gb.box(x - 1.1, 0.0, -0.95, x + 1.1, 0.4, 0.95, '#2a2c30'); break;
+      default: return false;
+    }
+    return true;
+  }
+  function personHQ(gb, pose) {
+    // ~1.75 m tall; shirt takes the instance colour, trousers/skin fixed
+    const skin = '#d9a77f', pants = U.pick(['#2b3445', '#3a3f4a', '#5a4a3a', '#2a2c30'], () => 0.3), shoe = '#1e1e20';
+    const sw = pose ? 0.28 : -0.28;
+    for (const [z, k] of [[-0.11, 1], [0.11, -1]]) {
+      const off = sw * k;
+      gb.box(-0.08 + off * 0.5, 0.45, z - 0.07, 0.08 + off * 0.5, 0.9, z + 0.07, pants, 17);
+      gb.box(-0.07 + off, 0.06, z - 0.065, 0.07 + off, 0.47, z + 0.065, pants, 17);
+      gb.box(-0.06 + off, 0, z - 0.07, 0.17 + off, 0.08, z + 0.07, shoe, 17);
+    }
+    extrude(gb, [[-0.12, 0.88], [0.12, 0.88], [0.14, 1.45], [-0.13, 1.45]], -0.22, 0.22, '#fff', 0);
+    gb.box(-0.1, 1.45, -0.25, 0.1, 1.52, 0.25, '#fff');
+    for (const [z, k] of [[-0.29, -1], [0.29, 1]]) {
+      const off = sw * k * 0.8;
+      gb.box(-0.05 + off * 0.3, 1.12, z - 0.05, 0.05 + off * 0.3, 1.47, z + 0.05, '#fff');
+      gb.box(-0.045 + off, 0.86, z - 0.045, 0.045 + off, 1.14, z + 0.045, skin, 18);
+    }
+    gb.box(-0.05, 1.52, -0.05, 0.05, 1.6, 0.05, skin, 18);
+    gb.addThree(new THREE.IcosahedronGeometry(0.12, 1), new THREE.Matrix4().makeScale(1, 1.12, 0.95).setPosition(0.01, 1.71, 0), skin, 18);
+    gb.addThree(new THREE.SphereGeometry(0.125, 8, 6, 0, Math.PI * 2, 0, Math.PI * 0.55), new THREE.Matrix4().setPosition(-0.01, 1.73, 0), U.pick(['#2a1e16', '#4a3020', '#b08a50', '#151515'], () => 0.6));
+  }
+  function bikeHQ(gb, pose) {
+    const frame = '#fff', dark = '#1a1a1a', skin = '#d9a77f';
+    const ring = new THREE.TorusGeometry(0.33, 0.035, 6, 18);
+    for (const x of [-0.52, 0.52]) { gb.addThree(ring, new THREE.Matrix4().setPosition(x, 0.36, 0), dark, 17); gb.addThree(new THREE.CylinderGeometry(0.03, 0.03, 0.1, 6).rotateX(Math.PI / 2), new THREE.Matrix4().setPosition(x, 0.36, 0), '#999'); }
+    const tube = (a, b, r, col) => {
+      const d = new THREE.Vector3(b[0] - a[0], b[1] - a[1], b[2] - a[2]), len = d.length();
+      const q = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), d.normalize());
+      gb.addThree(new THREE.CylinderGeometry(r, r, 1, 5), new THREE.Matrix4().compose(new THREE.Vector3((a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2), q, new THREE.Vector3(1, len, 1)), col);
+    };
+    const bb = [0, 0.38, 0], st = [-0.15, 0.85, 0], ht = [0.4, 0.88, 0];
+    tube([-0.52, 0.36, 0], bb, 0.025, frame); tube(bb, st, 0.028, frame); tube(st, ht, 0.026, frame); tube(bb, ht, 0.03, frame); tube([-0.52, 0.36, 0], st, 0.02, frame); tube(ht, [0.52, 0.36, 0], 0.025, frame);
+    tube([0.4, 0.88, 0], [0.38, 1.0, 0], 0.02, dark, 17); tube([0.36, 1.0, -0.24], [0.36, 1.0, 0.24], 0.018, dark, 17);
+    gb.box(-0.27, 0.9, -0.06, -0.05, 0.95, 0.06, dark, 17);
+    // rider
+    const pants = '#2b3445';
+    const k1 = pose ? 0.16 : -0.16;
+    for (const [z, s] of [[-0.11, 1], [0.11, -1]]) {
+      const knee = [0.08 + k1 * s * 0.5, 0.72 + k1 * s * 0.4, z], hip = [-0.12, 0.98, z], foot = [0.02 + k1 * s, 0.32 + k1 * s * 0.25, z];
+      tube(hip, knee, 0.065, pants); tube(knee, foot, 0.055, pants);
+      gb.box(foot[0] - 0.04, foot[1] - 0.04, z - 0.05, foot[0] + 0.14, foot[1] + 0.03, z + 0.05, '#1e1e20', 17);
+    }
+    tube([-0.12, 0.98, 0], [0.12, 1.45, 0], 0.17, '#fff');
+    for (const z of [-0.2, 0.2]) { tube([0.08, 1.4, z], [0.34, 1.02, z * 1.1], 0.045, '#fff'); }
+    gb.addThree(new THREE.IcosahedronGeometry(0.115, 1), new THREE.Matrix4().setPosition(0.2, 1.62, 0), skin, 18);
+    gb.addThree(new THREE.SphereGeometry(0.135, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.5), new THREE.Matrix4().makeScale(1.15, 0.9, 1).setPosition(0.19, 1.65, 0), '#e8e8e8');
+  }
+  function vehGeomHQ(kind) {
+    const gb = new GB();
+    switch (kind) {
+      case 'car': carHQ(gb, 2.15, 0.86, 1.5, 'car'); break;
+      case 'suv': carHQ(gb, 2.35, 0.95, 1.85, 'suv'); break;
+      case 'police': carHQ(gb, 2.15, 0.86, 1.5, 'car'); gb.box(-0.95, 0.5, -0.875, 1.0, 0.95, 0.875, '#1b3a8a'); gb.box(-0.5, 1.56, -0.55, 0.3, 1.72, -0.05, '#ff2020', 5); gb.box(-0.5, 1.56, 0.05, 0.3, 1.72, 0.55, '#2050ff', 5); break;
+      case 'van': case 'ambulance': case 'truck': case 'garbage': case 'fire': case 'bus': case 'tram': heavyHQ(gb, kind); break;
+      case 'ped': personHQ(gb, 0); break;
+      case 'ped2': personHQ(gb, 1); break;
+      case 'bike': bikeHQ(gb, 0); break;
+      case 'bike2': bikeHQ(gb, 1); break;
+      default: return null;
+    }
+    return gb.geometry();
+  }
+  M._vehGeomHQ = vehGeomHQ;
+  M.VEH_KINDS = ['car', 'suv', 'van', 'truck', 'bus', 'tram', 'police', 'ambulance', 'fire', 'garbage', 'train', 'bike', 'bike2', 'ped', 'ped2'];
   function initVehicles() {
     const G = CB.Gfx;
     M.veh = {};
     const cars = G.settings.cars;
-    const caps = { car: cars, suv: Math.ceil(cars * 0.6), van: 80, truck: Math.ceil(cars * 0.5), bus: 200, tram: 120, police: 80, ambulance: 60, fire: 60, garbage: 120, train: 600, bike: Math.ceil(cars * 0.7), ped: Math.ceil(cars * 0.7) };
+    const caps = { car: cars, suv: Math.ceil(cars * 0.6), van: 80, truck: Math.ceil(cars * 0.5), bus: 200, tram: 120, police: 80, ambulance: 60, fire: 60, garbage: 120, train: 600, bike: Math.ceil(cars * 0.7), bike2: Math.ceil(cars * 0.7), ped: Math.ceil(cars * 0.7), ped2: Math.ceil(cars * 0.7) };
+    const detail = G.settings.detail;
     for (const k of M.VEH_KINDS) {
-      const g = vehGeom(k);
+      const g = (detail && vehGeomHQ(k)) || vehGeom(k === 'ped2' ? 'ped' : k === 'bike2' ? 'bike' : k);
       const mesh = new THREE.InstancedMesh(g, G.mats.city, caps[k]);
       mesh.frustumCulled = false;
-      mesh.castShadow = G.settings.shadows >= 2048;
+      mesh.castShadow = G.settings.shadows >= 2048 && !(k.startsWith('ped') || k.startsWith('bike')) || G.settings.shadows >= 4096;
       mesh.receiveShadow = false;
       mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(caps[k] * 3).fill(1), 3);
       mesh.count = 0;
@@ -3120,7 +3482,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   const SIG_COLS = [lc('#ff2a1a'), lc('#ffb000'), lc('#28e05a')];
   function initSignals() {
     const G = CB.Gfx, gb = new GB();
-    gb.box(-0.22, -0.22, -0.22, 0.22, 0.22, 0.22, '#fff', 5);
+    gb.box(-0.26, -0.26, -0.26, 0.26, 0.26, 0.26, '#fff', 15);
     M.sig = new THREE.InstancedMesh(gb.geometry(), G.mats.city, 4000);
     M.sig.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(4000 * 3), 3);
     M.sig.frustumCulled = false; M.sig.count = 0;
@@ -3130,7 +3492,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   M.pushSignal = function (x, y, z, st) {
     if (M.sigN >= 4000) return;
     const j = M.sigN++, a = M.sig.instanceMatrix.array, e = j * 16;
-    const yy = y + (st === 2 ? -0.48 : st === 1 ? 0 : 0.48);
+    const yy = y + (st === 2 ? -0.55 : st === 1 ? 0 : 0.55);
     a.set([1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, x, yy, z, 1], e);
     const c = SIG_COLS[st], ca = M.sig.instanceColor.array;
     ca[j * 3] = c[0]; ca[j * 3 + 1] = c[1]; ca[j * 3 + 2] = c[2];
@@ -3184,10 +3546,11 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     const g = M.ghostTiles, a = g.instanceMatrix.array, c = g.instanceColor.array;
     const n = Math.min(list.length, 600);
     for (let j = 0; j < n; j++) {
-      const t = list[j], x = (U.tx(t.i) + 0.5) * T, z = (U.ty(t.i) + 0.5) * T;
+      const t = list[j], half = t.f !== undefined;
+      const x = half ? ((t.f % C.FW) + 0.5) * T / 2 : (U.tx(t.i) + 0.5) * T, z = half ? (((t.f / C.FW) | 0) + 0.5) * T / 2 : (U.ty(t.i) + 0.5) * T;
       const y = (t.y !== undefined ? t.y : Math.max(Wd.groundH(x, z), C.WATER)) + 0.05;
-      const e = j * 16, hs = t.h || 1;
-      a.set([1, 0, 0, 0, 0, hs, 0, 0, 0, 0, 1, 0, x, y, z, 1], e);
+      const e = j * 16, hs = t.h || 1, sc = half ? 0.5 : 1;
+      a.set([sc, 0, 0, 0, 0, hs, 0, 0, 0, 0, sc, 0, x, y, z, 1], e);
       const col = t.col || (t.ok ? [0.3, 0.9, 0.5] : [1, 0.25, 0.2]);
       c[j * 3] = col[0]; c[j * 3 + 1] = col[1]; c[j * 3 + 2] = col[2];
     }
@@ -3438,15 +3801,20 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     return search(src, dst, stepTram, 12);
   };
 
-  // cyclists and pedestrians ignore one-ways and lane arrows; cyclists prefer safe streets
+  // cyclists and pedestrians ignore one-ways and lane arrows, use paths, and cyclists prefer safe streets
+  function tileBikeScore(i) {
+    const Wd = CB.World;
+    if (Wd.walkRoad(i)) return C.bikeScore(C.ROADS[Wd.road[i]]);
+    let best = 0; for (let q = 0; q < 4; q++) { const k = Wd.pcell[Wd.cellOf(i, q)]; if (k) best = Math.max(best, C.PATHS[k].bike); }
+    return best;
+  }
   function softStep(bike) {
     return function (cur, cd, d) {
       const Wd = CB.World;
-      if (!(Wd.roadMask(cur) & (1 << d))) return null;
-      const nb = Wd.neighbor(cur, d); if (nb < 0) return null;
-      const R = C.ROADS[Wd.road[nb]]; if (!R || R.grp === 'highway') return null;
+      if (Wd.softPass(cur, d) < 0) return null;
+      const nb = Wd.neighbor(cur, d);
       res.s = 4;
-      res.c = bike ? T / 5 * (1 + 2.2 * (1 - C.bikeScore(R))) : T / 1.4;
+      res.c = bike ? T / 5 * (1 + 2.2 * (1 - tileBikeScore(nb))) : T / 1.4;
       return res;
     };
   }
@@ -3466,9 +3834,8 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   // how comfortable a bike route is: length-weighted bike score (0..1)
   Tr.bikeSafety = function (path) {
     if (!path || !path.length) return 0;
-    const Wd = CB.World;
     let s = 0;
-    for (const i of path) s += C.bikeScore(C.ROADS[Wd.road[i]]);
+    for (const i of path) s += tileBikeScore(i);
     return s / path.length;
   };
   Tr.findRailPath = function (src, dst) {
@@ -3630,25 +3997,53 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   function softOff(a, i, d) {
     const R = C.ROADS[CB.World.road[i]];
     if (!R) return 2;
-    if (a.kind === 'ped') return R.car ? R.L.walkOff * (R.L.pair ? 1 : a.side) : 0.9 * a.side;
-    if (!R.car) return 1.1;
+    if (a.kind === 'ped') return R.L.walkOff * (R.L.pair ? 1 : a.side);
     if (R.bike) return R.L.bikeOff;
     const ln = CB.World.lanesToward(i, d);
     return ln[0] + 0.9;
   }
+  const HALF = T / 4; // centre of a half-tile cell from the tile edge
+  // point where the agent crosses from tile A into tile B
+  function edgePoint(a, A, B, out) {
+    const Wd = CB.World;
+    const d = dirBetween(A, B), fx = C.DX[d], fz = C.DY[d];
+    const bx = (U.tx(A) + 0.5) * T + fx * T / 2, bz = (U.ty(A) + 0.5) * T + fz * T / 2;
+    const rA = Wd.walkRoad(A), rB = Wd.walkRoad(B);
+    if (rA && rB) { const o = softOff(a, B, d); out[0] = bx - fz * o; out[1] = bz + fx * o; return; }
+    // through a path cell on the shared edge: prefer a row with path on both sides
+    let best = null, bs = -1;
+    const cells = Wd.edgeCells(A, d);
+    for (let k = 0; k < 2; k++) {
+      const [ca, cb] = cells[k];
+      const pa = Wd.pcell[ca], pb = Wd.pcell[cb];
+      if (!((pa || rA) && (pb || rB))) continue;
+      const sc = (pa ? 1 : 0) + (pb ? 1 : 0);
+      if (sc > bs) { bs = sc; best = k; }
+    }
+    if (best === null) best = 0;
+    const lat = (best === 0 ? -1 : 1) * HALF; // row 0 = the lower x / lower z cell
+    if (fx !== 0) { out[0] = bx; out[1] = (U.ty(A) + 0.5) * T + lat; }
+    else { out[0] = (U.tx(A) + 0.5) * T + lat; out[1] = bz; }
+  }
+  function tilePoint(a, i, d, out) {
+    const Wd = CB.World;
+    const cx = (U.tx(i) + 0.5) * T, cz = (U.ty(i) + 0.5) * T;
+    if (Wd.walkRoad(i)) { const o = softOff(a, i, d); out[0] = cx - C.DY[d] * o; out[1] = cz + C.DX[d] * o; return; }
+    for (let q = 0; q < 4; q++) if (Wd.pcell[Wd.cellOf(i, q)]) { out[0] = cx + ((q & 1) ? HALF : -HALF); out[1] = cz + ((q >> 1) ? HALF : -HALF); return; }
+    out[0] = cx; out[1] = cz;
+  }
+  const ep = [0, 0];
   function setupSoft(a) {
     const n = a.path.length, cur = a.path[a.seg], prev = a.seg > 0 ? a.path[a.seg - 1] : -1, next = a.seg + 1 < n ? a.path[a.seg + 1] : -1;
-    const cx = (U.tx(cur) + 0.5) * T, cz = (U.ty(cur) + 0.5) * T;
-    let ix = 0, iz = 0, ox = 0, oz = 0;
-    if (prev >= 0) { ix = Math.sign(U.tx(cur) - U.tx(prev)); iz = Math.sign(U.ty(cur) - U.ty(prev)); }
-    if (next >= 0) { ox = Math.sign(U.tx(next) - U.tx(cur)); oz = Math.sign(U.ty(next) - U.ty(cur)); }
-    if (prev < 0) { ix = ox; iz = oz; } else if (next < 0) { ox = ix; oz = iz; }
-    const oi = softOff(a, cur, dirOf(ix, iz)), oo = softOff(a, next >= 0 ? next : cur, dirOf(ox, oz));
-    const rix = -iz, riz = ix, rox = -oz, roz = ox;
-    a.ex = cx - ix * T / 2 * (prev >= 0 ? 1 : 0) + rix * oi; a.ez = cz - iz * T / 2 * (prev >= 0 ? 1 : 0) + riz * oi;
-    a.xx = cx + ox * T / 2 * (next >= 0 ? 1 : 0) + rox * oo; a.xz = cz + oz * T / 2 * (next >= 0 ? 1 : 0) + roz * oo;
-    if (ix === ox && iz === oz) { a.cx = (a.ex + a.xx) / 2; a.cz = (a.ez + a.xz) / 2; }
-    else { a.cx = cx + rix * oi + rox * oo; a.cz = cz + riz * oi + roz * oo; }
+    const din = prev >= 0 ? dirBetween(prev, cur) : (next >= 0 ? dirBetween(cur, next) : 1);
+    const dout = next >= 0 ? dirBetween(cur, next) : din;
+    if (prev >= 0) edgePoint(a, prev, cur, ep); else tilePoint(a, cur, dout, ep);
+    a.ex = ep[0]; a.ez = ep[1];
+    if (next >= 0) edgePoint(a, cur, next, ep); else tilePoint(a, cur, din, ep);
+    a.xx = ep[0]; a.xz = ep[1];
+    if (din === dout || din === (dout + 2) % 4) { a.cx = (a.ex + a.xx) / 2; a.cz = (a.ez + a.xz) / 2; }
+    else if (din % 2 === 1) { a.cx = a.xx; a.cz = a.ez; }   // came in moving east/west, leaves north/south
+    else { a.cx = a.ex; a.cz = a.xz; }
     a.len = Math.max(0.5, Math.hypot(a.cx - a.ex, a.cz - a.ez) + Math.hypot(a.xx - a.cx, a.xz - a.cz));
   }
 
@@ -3700,15 +4095,29 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   }
   Tr.isStopFor = isStopFor;
 
+  let occ = null;
+  function spawnBusy(tile) {
+    if (!occ) { occ = new Map(); for (const v of Tr.vehicles) { const o = occ.get(v.cur) || 0; occ.set(v.cur, o + (v.t < 0.45 ? 10 : 1)); } }
+    return (occ.get(tile) || 0) >= 3;
+  }
   Tr.update = function (dt) {
     Tr.time += dt;
     const Wd = CB.World;
     let budget = 40;
+    const blocked = new Set(); occ = null;
     while (Tr.queue.length && budget-- > 0) {
       const s = Tr.queue.shift();
+      // don't stack spawns: wait until the first stretch of the start tile is clear
+      if (blocked.has(s.from) || spawnBusy(s.from)) {
+        blocked.add(s.from);
+        s.tries = (s.tries || 0) + 1;
+        if (s.tries < 400) Tr.queue.push(s); else if (s.onFail) s.onFail('cap');
+        continue;
+      }
       const p = Tr.findPath(s.from, s.to, s.static);
       if (!p) { if (s.onFail) s.onFail('noroute'); continue; }
       const v = Tr.spawn({ kind: s.kind, path: p, col: s.col, purpose: s.purpose, data: s.data, onArrive: s.onArrive });
+      if (v && occ) occ.set(v.cur, (occ.get(v.cur) || 0) + 10);
       if (!v && s.onFail) s.onFail('cap');
     }
     updateSignals(dt);
@@ -3815,7 +4224,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
         const over = (a.t - 1) * a.len;
         if (a.seg + 1 >= a.path.length) { sdone.push(a); a.t = 1; break; }
         a.seg++;
-        if (!Wd.road[a.path[a.seg]]) { sdone.push(a); break; }
+        if (!Wd.road[a.path[a.seg]] && !Wd.pmask[a.path[a.seg]]) { sdone.push(a); break; }
         setupSoft(a); a.t = over / a.len;
       }
       evalPos(a, tmp);
@@ -3843,7 +4252,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       else { if (v.loop && v.onBroken) v.onBroken(v); else if (v.onArrive) v.onArrive(v, false); }
     }
     Tr.vehicles = keep;
-    Tr.soft = Tr.soft.filter(a => { for (let s = a.seg; s < a.path.length; s++) if (!Wd.road[a.path[s]]) return false; return true; });
+    Tr.soft = Tr.soft.filter(a => { for (let s = a.seg; s < a.path.length; s++) if (!Wd.road[a.path[s]] && !Wd.pmask[a.path[s]]) return false; return true; });
   };
   Tr.clearAll = function () { Tr.vehicles = []; Tr.soft = []; Tr.queue = []; Tr.load.fill(0); };
 
@@ -3860,15 +4269,16 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       Mx.pushVehicle(v.kind, v.x, y + 0.05, v.z, v.hx, v.hz, v.col, pitch, ws);
     }
     for (const a of Tr.soft) {
-      const y = Wd.roadH(a.x, a.z) + (a.kind === 'ped' ? 0.2 : 0.05);
-      Mx.pushVehicle(a.kind, a.x, y, a.z, a.hx, a.hz, a.col, 0, 1);
+      const y = Wd.roadH(a.x, a.z) + 0.2;
+      const step = ((a.seg * T + a.t * a.len) / (a.kind === 'ped' ? 0.55 : 0.9)) | 0;
+      Mx.pushVehicle(step % 2 ? a.kind + '2' : a.kind, a.x, y, a.z, a.hx, a.hz, a.col, 0, 1);
     }
     // traffic light heads
     for (const cl of Wd.clusters) {
       if (cl.ctrl !== 'lights') continue;
       for (const ap of cl.aps) {
         const st = Tr.signalState(cl, ap.d);
-        const p = CB.Meshes.signalPos(ap);
+        const p = CB.Meshes.signalLampPos(ap);
         Mx.pushSignal(p[0], p[1], p[2], st);
       }
     }
@@ -4356,6 +4766,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     S.tickAcc = 0; S.hourAcc = 0; S.resRot = 0;
     S.icons = [];
     S.notices = [];
+    S.unseen = [];
     S.rng = U.rng((opts.seed || 1) * 31 + 7);
     computeWaterNear();
   };
@@ -4465,7 +4876,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   }
   function tileFree(t, z) {
     const Wd = CB.World;
-    return Wd.zone[t] === z && !Wd.bld[t] && !Wd.road[t] && Wd.rail[t] !== 1 && Wd.buildable(t);
+    return Wd.zone[t] === z && !Wd.bld[t] && !Wd.road[t] && !Wd.pmask[t] && Wd.rail[t] !== 1 && Wd.buildable(t);
   }
   function rebuildLots() {
     const Wd = CB.World;
@@ -4506,8 +4917,20 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       for (let d = 0; d < 4; d++) { const j = frontOK(i, d); if (j >= 0 && Wd.conn[j]) dirs.push(d); }
       if (!dirs.length) continue;
       const f = U.pick(dirs, S.rng);
-      // weighted random order: each lot type gets a random key biased by its weight
-      const sizes = C.ZONES[z].lots.map(l => [l[0], l[1], Math.pow(S.rng(), 1 / (l[2] || 1))]).sort((p, q) => q[2] - p[2]);
+      // fill the zone as deep as it goes from this frontage, then pick a width
+      const Z = C.ZONES[z], g = (f + 2) % 4;
+      let maxD = 0;
+      for (let j = 0; j < 3; j++) { const tx = U.tx(i) + C.DX[g] * j, ty = U.ty(i) + C.DY[g] * j; if (!U.inPlay(tx, ty) || !tileFree(U.idx(tx, ty), z)) break; maxD++; }
+      let depths = [...new Set(Z.lots.map(l => l[1]))].filter(dd => dd <= maxD).sort((p, q) => q - p);
+      if (!depths.length) continue;
+      const sizes = [];
+      for (const dd of depths) {
+        const opts = Z.lots.filter(l => l[1] === dd).map(l => [l[0], l[1], (z === 1 && l[0] === 1 ? 2.2 : 1) * (l[2] || 1) * (z === 1 ? 1 : l[0])]);
+        // weighted shuffle within one depth
+        opts.forEach(o => { o[2] = Math.pow(S.rng(), 1 / o[2]); });
+        opts.sort((p, q) => q[2] - p[2]);
+        sizes.push(...opts);
+      }
       for (const [w, d] of sizes) {
         const spec = fitLot(i, f, w, d, z);
         if (spec) {
@@ -4551,6 +4974,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
         const t = U.idx(xx, yy);
         if (!Wd.buildable(t)) { ok = false; reason = 'Ground is too steep or wet'; }
         else if (Wd.road[t]) { ok = false; reason = 'Blocked by a road'; }
+        else if (Wd.pmask[t]) { ok = false; reason = 'Blocked by a path'; }
         else if (Wd.rail[t] === 1) { ok = false; reason = 'Blocked by elevated track'; }
         else if (Wd.bld[t]) { const b = S.buildings.get(Wd.bld[t]); if (!b || b.kind === 'svc') { ok = false; reason = 'Blocked by a building'; } }
       }
@@ -4764,7 +5188,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       }
       // occupancy
       if (res) {
-        if (!noConn && b.res < b.cap && resDemand > 5 && b.happy > 30) b.res = Math.min(b.cap, b.res + Math.max(1, Math.ceil((b.cap - b.res) * 0.25)));
+        if (!noConn && b.res < b.cap && resDemand > 3 && b.happy > 25) b.res = Math.min(b.cap, b.res + Math.max(1, Math.ceil((b.cap - b.res) * 0.4)));
         if (b.happy < 28 && b.res > 0 && S.rng() < 0.35) b.res = Math.max(0, b.res - Math.max(1, Math.ceil(b.res * 0.12)));
         const wk = Math.round(b.res * 0.55);
         let e = employedOf(b);
@@ -4924,12 +5348,12 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     if (S.lotsDirty) rebuildLots();
     let constructing = 0;
     S.buildings.forEach(b => { if (b.state === 'build') constructing++; });
-    const maxCons = 6 + Math.floor(S.stats.pop / 50);
+    const maxCons = 10 + Math.floor(S.stats.pop / 25);
     for (let z = 1; z < C.ZONES.length; z++) {
       if (!S.unlocked(C.ZONES[z].unlock)) continue;
       const d = S.zoneDemand(z);
       if (d < 6 || !S.lots[z] || !S.lots[z].length) continue;
-      const tries = 1 + Math.floor(d / 20);
+      const tries = (1 + Math.floor(d / 20)) * (C.ZONES[z].cat === 'res' ? 2 : 1);
       for (let t = 0; t < tries && constructing < maxCons; t++) {
         if (S.rng() < d / 100 * 0.95) { if (tryGrow(z)) constructing++; }
       }
@@ -5114,7 +5538,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     A.home += st.employed * toHome * dtH / ppc;
     A.shop += st.pop * 0.22 * dayCurve(h) * dtH / ppc;
     let indF = 0; for (const b of indList) indF += b.filled + b.outside;
-    A.freight += indF * 0.3 * dayCurve(h) * dtH / Math.max(1, ppc * 0.7) + comList.length * 0.12 * dayCurve(h) * dtH;
+    A.freight += indF * 0.14 * dayCurve(h) * dtH / Math.max(1, ppc * 1.2) + comList.length * 0.05 * dayCurve(h) * dtH / Math.max(1, ppc * 0.5);
     A.visit += (st.pop * 0.015 + visitList.length * 2) * dayCurve(h) * dtH / ppc;
     A.cin += st.outsideIn * toWork * dtH / ppc;
     A.cout += st.outsideIn * toHome * dtH / ppc;
@@ -5201,6 +5625,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     let roads = 0;
     for (let i = 0; i < N; i++) {
       if (Wd.road[i] && U.inPlay(U.tx(i), U.ty(i))) { const R = C.ROADS[Wd.road[i]]; roads += R.upkeep / R.w; }
+      if (Wd.pmask[i]) for (let q = 0; q < 4; q++) { const k = Wd.pcell[Wd.cellOf(i, q)]; if (k) roads += C.PATHS[k].upkeep; }
       if (Wd.rail[i]) roads += C.RAIL[Wd.rail[i]].upkeep;
     }
     let transit = 0;
@@ -5362,7 +5787,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     return {
       v: 2, seed: Wd.seed, name: S.name, money: S.money, month: S.month, hour: S.hour, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
       history: S.history, last: S.last, budget: S.budget,
-      road: U.encodeRLE(Wd.road), link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart),
+      road: U.encodeRLE(Wd.road), pcell: U.encodeRLE(Wd.pcell), unseen: S.unseen || [], link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart),
       jcfg: Wd.clusters.map(cl => ({ t: cl.tiles[0], c: cl.cfg })), rail: U.encodeRLE(Wd.rail), zone: U.encodeRLE(Wd.zone), tree: U.encodeRLE(Wd.tree),
       buildings: bl, transit: CB.Transit.serialize(),
     };
@@ -5376,9 +5801,21 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     Wd.rdir.set(U.decodeRLE(d.rdir, Uint8Array, N));
     Wd.rpart.set(U.decodeRLE(d.rpart, Uint8Array, N));
     Wd.jcfg = new Map(); for (const j of d.jcfg || []) Wd.jcfg.set(j.t, j.c);
+    if (d.pcell) Wd.pcell.set(U.decodeRLE(d.pcell, Uint8Array, C.FW * C.FW)); else Wd.pcell.fill(0);
+    S.unseen = d.unseen || [];
+    // old full-tile paths become four half-tile paths
+    for (let i = 0; i < N; i++) {
+      const R = C.ROADS[Wd.road[i]];
+      if (!R || R.grp !== 'legacy') continue;
+      const k = R.key === 'bikepath' ? 2 : 1;
+      for (let q = 0; q < 4; q++) Wd.pcell[Wd.cellOf(i, q)] = k;
+      Wd.unlinkAll(i); Wd.road[i] = 0;
+    }
+    Wd.rebuildPmask();
     Wd.rail.set(U.decodeRLE(d.rail, Uint8Array, N));
     Wd.zone.set(U.decodeRLE(d.zone, Uint8Array, N));
     Wd.tree.set(U.decodeRLE(d.tree, Uint8Array, N));
+    Wd.joinDeadEnds();
     Wd.updateZonable(); Wd.updateConn(); Wd.updateJunctions(); Wd.roadVer++;
     for (const o of d.buildings) {
       const b = Object.assign({ cust: 0, gTarget: false, vehOut: 0, fire: 0, prob: null }, o);
@@ -5474,6 +5911,35 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     return strips;
   }
   Tl.roadStrips = roadStrips;
+  // ---- half-tile paths ----
+  const FW = C.FW;
+  const fcellAt = h => U.clamp(Math.floor(h.z / (T / 2)), 0, FW - 1) * FW + U.clamp(Math.floor(h.x / (T / 2)), 0, FW - 1);
+  function lPathF(a, b) {
+    const ax = a % FW, ay = (a / FW) | 0, bx = b % FW, by = (b / FW) | 0, out = [];
+    const hf = Math.abs(bx - ax) >= Math.abs(by - ay);
+    let x = ax, y = ay; out.push(y * FW + x);
+    const sx = Math.sign(bx - ax), sy = Math.sign(by - ay);
+    if (hf) { while (x !== bx) { x += sx; out.push(y * FW + x); } while (y !== by) { y += sy; out.push(y * FW + x); } }
+    else { while (y !== by) { y += sy; out.push(y * FW + x); } while (x !== bx) { x += sx; out.push(y * FW + x); } }
+    return out;
+  }
+  function pathEval(cells, pk) {
+    const Wd = CB.World, P = C.PATHS[pk];
+    let cost = 0, bad = null;
+    const list = cells.map(f => {
+      const i = U.idx((f % FW) >> 1, ((f / FW) | 0) >> 1);
+      let ok = true, col = null;
+      if (!U.inPlay(U.tx(i), U.ty(i))) { ok = false; bad = 'Outside the city limits'; }
+      else if (Wd.road[i]) { ok = false; bad = 'Paths go beside roads, not on them'; }
+      else if (Wd.bld[i]) { ok = false; bad = 'A building is in the way'; }
+      else if (Wd.isWater(i) || Wd.slope(i) > 6) { ok = false; bad = 'Too steep or wet here'; }
+      else if (Wd.rail[i] === 1) { ok = false; bad = 'Elevated track is in the way'; }
+      else if (Wd.pcell[f] === pk) col = [0.5, 0.7, 1];
+      else cost += P.cost;
+      return { f, ok, col, h: 0.3 };
+    });
+    return { list, cost, bad };
+  }
   function roadEval(strips, rt) {
     const Wd = CB.World, R = C.ROADS[rt];
     let cost = 0, bad = null;
@@ -5509,13 +5975,15 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
         if (k > 0 && !Wd.linked(T2[k - 1], dirOf(T2[k - 1], i))) { Wd.linkTiles(T2[k - 1], i); changed = true; }
       }
     }
-    // snap: connect the ends to a road that continues straight on
+    // snap: a road that starts or ends right next to another road joins it (straight on or as a T)
     for (const st of strips) {
       const A = st.tiles, n = A.length;
       const ends = [[A[0], (st.dirs[0] + 2) % 4], [A[n - 1], st.dirs[n - 1]]];
       for (const [t, d] of ends) {
         const o = Wd.neighbor(t, d);
-        if (o >= 0 && Wd.road[o] && !Wd.linked(t, d) && (Wd.link[o] & (1 << ((d + 2) % 4) | 1 << d)) !== 0 && Wd.degree(o) <= 2) { Wd.linkTiles(t, o); changed = true; }
+        if (o < 0 || !Wd.road[o] || Wd.linked(t, d)) continue;
+        if (strips.length === 2 && strips.some(q => q.tiles.includes(o))) continue; // own partner strip
+        Wd.linkTiles(t, o); changed = true;
       }
     }
     // dual carriageway ends: let vehicles turn around at a dead end
@@ -5611,6 +6079,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     const h = Tl.hover; if (!h || h.i < 0) return;
     const t = Tl.tool.type;
     if (t === 'road' || t === 'rail' || t === 'zone' || t === 'dezone' || t === 'bulldoze') Tl.drag = { start: h.i };
+    if (t === 'path') Tl.drag = { start: h.i, f: fcellAt(h) };
   }
   function onUp() {
     const h = Tl.hover;
@@ -5634,6 +6103,21 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return; }
       if (!spend(ev.cost)) return;
       if (placeRoad(strips, t.rt)) { S.networkChanged(); CB.UI.sfx('build'); }
+      return;
+    }
+    if (t.type === 'path' && Tl.drag) {
+      const cells = lPathF(Tl.drag.f, h ? fcellAt(h) : Tl.drag.f);
+      const ev = pathEval(cells, t.pk);
+      Tl.drag = null; clearPreview();
+      if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return; }
+      if (!spend(ev.cost)) return;
+      for (const f of cells) {
+        Wd.setPath(f, t.pk);
+        const i = U.idx((f % FW) >> 1, ((f / FW) | 0) >> 1);
+        Wd.zone[i] = 0; Wd.tree[i] = 0; CB.Meshes.markInfra(i);
+      }
+      CB.Meshes.treesDirty = true;
+      S.networkChanged(); CB.UI.sfx('build');
       return;
     }
     if (t.type === 'junction') {
@@ -5710,6 +6194,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       if (b) { if (b.kind === 'svc') refund += C.SERVICES[b.svc].cost * 0.25; S.removeBuilding(b); any = true; }
     };
     const killStops = i => { for (const s of X.stops.filter(s => s.tile === i)) { X.removeStop(s); any = true; } };
+    const killPath = i => { for (let q = 0; q < 4; q++) Wd.setPath(Wd.cellOf(i, q), 0); CB.Meshes.markInfra(i); net = true; any = true; };
     const killRail = i => { S.setRail(i, 0); net = true; any = true; };
     const killRoad = i => {
       const R = C.ROADS[Wd.road[i]]; if (!R) return;
@@ -5721,6 +6206,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       if (!U.inPlay(r.x0, r.y0)) return;
       const i = U.idx(r.x0, r.y0);
       if (Wd.bld[i]) killB(i);
+      else if (Wd.pmask[i]) killPath(i);
       else if (X.stops.some(s => s.tile === i)) killStops(i);
       else if (Wd.rail[i]) killRail(i);
       else if (Wd.road[i]) {
@@ -5734,6 +6220,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
         if (!U.inPlay(x, y)) continue;
         const i = U.idx(x, y);
         if (Wd.bld[i]) killB(i);
+        if (Wd.pmask[i]) killPath(i);
         killStops(i);
         if (Wd.rail[i]) killRail(i);
         if (Wd.road[i]) killRoad(i);
@@ -5810,6 +6297,13 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     onUp();
   };
 
+  Tl._simulateAt = function (tool, ax, az, bx, bz) {
+    Tl.setTool(tool);
+    const mk = (x, z) => { const tx = Math.floor(x / T), ty = Math.floor(z / T); return { i: U.idx(tx, ty), tx, ty, x, z }; };
+    Tl.hover = mk(ax, az); mouse.moved = false; onDown();
+    Tl.hover = mk(bx, bz); onUp();
+  };
+
   // ---------------- per-frame hover & previews ----------------
   Tl.update = function () {
     const G = CB.Gfx, Mx = CB.Meshes, Wd = CB.World, S = CB.Sim;
@@ -5826,6 +6320,11 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       Mx.setFlowArrows(strips, t.rt);
       const R = C.ROADS[t.rt];
       Tl.tip = R.name + ' · ' + (Tl.drag ? strips[0].tiles.length + ' tiles · ' : '') + U.money(ev.cost) + (ev.bad ? ' · ' + ev.bad : (R.oneway ? ' · drag in the direction of travel' : ''));
+    } else if (t.type === 'path') {
+      const cells = Tl.drag ? lPathF(Tl.drag.f, fcellAt(h)) : [fcellAt(h)];
+      const ev = pathEval(cells, t.pk);
+      Mx.setGhostTiles(ev.list);
+      Tl.tip = C.PATHS[t.pk].name + ' · ' + U.money(ev.cost) + (ev.bad ? ' · ' + ev.bad : ' · joins sidewalks it touches');
     } else if (t.type === 'junction') {
       const cl = junctionNear(h.i);
       Mx.setGhostTiles(cl ? cl.tiles.map(i => ({ i, ok: true, h: 0.6, col: [0.4, 0.8, 1] })) : []);
@@ -5994,8 +6493,15 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">${g}</svg>`;
   }
 
+  function pathSvg(P) {
+    return `<svg viewBox="0 0 60 44" preserveAspectRatio="none"><rect width="60" height="44" fill="#6b9444"/><rect x="0" y="0" width="30" height="44" fill="#aeada6" opacity="0.35"/><rect x="11" y="0" width="8" height="44" fill="${P.col}"/><rect x="11" y="18" width="38" height="8" fill="${P.col}"/>${P.key === 'bike' ? '<line x1="15" y1="2" x2="15" y2="16" stroke="#fff" stroke-dasharray="3 3"/><line x1="22" y1="22" x2="47" y2="22" stroke="#fff" stroke-dasharray="3 3"/>' : ''}<text x="44" y="11" fill="#fff" font-size="8" text-anchor="middle" opacity="0.8">½</text></svg>`;
+  }
   const roadItem = (r) => { const R = C.ROADS[r]; return { name: R.name, cost: U.money(R.cost) + '/tile', unlock: R.unlock, tool: { type: 'road', rt: r }, thumb: roadSvg(R), desc: R.desc + (R.w === 2 ? ' Two tiles wide.' : '') }; };
-  const svcItem = (k) => { const sv = C.SERVICES[k]; return { name: sv.name, cost: U.money(sv.cost), unlock: sv.unlock, tool: { type: 'svc', key: k }, icon: SVC_ICON[k] || (sv.cat === 'parks' ? 'park' : sv.cat === 'landmarks' ? 'landmark' : 'police'), col: SVC_COL[sv.cov] || '#555', desc: (sv.desc || '') + ` ${sv.size[0]}×${sv.size[1]} tiles.` }; };
+  const img = u => u ? `<img src="${u}" alt="">` : '';
+  const svcThumb = k => { const sv = C.SERVICES[k]; return img(CB.Meshes.thumb('svc:' + k, { kind: 'svc', svc: k, w: sv.size[0], d: sv.size[1] })); };
+  const ZONE_SAMPLE = { 1: [1, 2, 3], 2: [2, 2, 3], 3: [2, 2, 4], 4: [1, 2, 3], 5: [2, 2, 3], 6: [2, 3, 3], 7: [2, 2, 3] };
+  const zoneThumb = z => { const [w, d, level] = ZONE_SAMPLE[z]; return img(CB.Meshes.thumb('zone:' + z, { kind: 'zone', zone: z, w, d, level, seed: 4242 + z })); };
+  const svcItem = (k) => { const sv = C.SERVICES[k]; return { thumb: svcThumb(k), name: sv.name, cost: U.money(sv.cost), unlock: sv.unlock, tool: { type: 'svc', key: k }, icon: SVC_ICON[k] || (sv.cat === 'parks' ? 'park' : sv.cat === 'landmarks' ? 'landmark' : 'police'), col: SVC_COL[sv.cov] || '#555', desc: (sv.desc || '') + ` ${sv.size[0]}×${sv.size[1]} tiles.` }; };
   const CATS = [
     { key: 'roads', name: 'Roads', icon: 'avenue', tabs: C.ROAD_GROUPS.concat([['junction', 'Intersections']]) },
     { key: 'zones', name: 'Zoning', icon: 'zones' },
@@ -6016,9 +6522,11 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
         items.push({ name: 'Roundabout', cost: 'Free', unlock: 2, tool: { type: 'junction', apply: 'round' }, icon: 'round', col: '#2f5a9a', desc: 'Yield on entry, keep moving.' });
         items.push({ name: 'No Control', cost: 'Free', unlock: 0, tool: { type: 'junction', apply: 'none' }, icon: 'free', col: '#555c66', desc: 'Free-for-all. Fine for quiet streets.' });
         items.push({ name: 'Reset to Auto', cost: 'Free', unlock: 0, tool: { type: 'junction', apply: 'auto' }, icon: 'junction', col: '#444a52', desc: 'Lights on medium and larger roads, nothing on small ones.' });
+      } else if (tab === 'path') {
+        for (let k = 1; k < C.PATHS.length; k++) { const P = C.PATHS[k]; items.push({ name: P.name, cost: U.money(P.cost) + '/cell', unlock: P.unlock, tool: { type: 'path', pk: k }, thumb: pathSvg(P), desc: P.desc }); }
       } else for (let r = 1; r < C.ROADS.length; r++) if (C.ROADS[r].grp === tab) items.push(roadItem(r));
     } else if (key === 'zones') {
-      for (let z = 1; z < C.ZONES.length; z++) { const Z = C.ZONES[z]; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color }); }
+      for (let z = 1; z < C.ZONES.length; z++) { const Z = C.ZONES[z]; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color, thumb: zoneThumb(z), tint: Z.color }); }
       items.push({ name: 'Remove Zoning', cost: 'Free', unlock: 0, tool: { type: 'dezone' }, icon: 'dezone', col: '#555c66' });
     } else if (key === 'transit') {
       const TR = C.TRANSIT;
@@ -6044,6 +6552,21 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     return items;
   }
   UI.catItems = catItems;
+  const idOf = it => JSON.stringify(it.tool);
+  // every buildable item, tagged with its menu and tab
+  function allItems() {
+    const out = [];
+    for (const c of CATS) for (const t of (c.tabs || [[null]])) for (const it of catItems(c.key, t[0])) out.push(Object.assign({ cat: c.key, tab: t[0] }, it));
+    return out;
+  }
+  const isNew = it => (CB.Sim.unseen || []).includes(idOf(it));
+  function refreshBadges() {
+    const un = new Set(CB.Sim.unseen || []);
+    const all = allItems().filter(it => un.has(idOf(it)));
+    document.querySelectorAll('#toolbar [data-cat]').forEach(b => b.classList.toggle('new', all.some(it => it.cat === b.dataset.cat)));
+    document.querySelectorAll('#palette [data-tab]').forEach(b => b.classList.toggle('new', all.some(it => it.cat === UI.cat && it.tab === b.dataset.tab)));
+  }
+  UI.refreshBadges = refreshBadges;
 
   // ---------------- init ----------------
   UI.init = function () {
@@ -6058,6 +6581,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     $('demand').innerHTML = D.map(d => `<div class="dbar" id="dm_${d[0]}" title="${d[0]}"><div class="track"><i style="background:${d[2]}"></i></div><span>${d[1]}</span></div>`).join('');
     const titles = { rlow: 'Residential · low density', rmed: 'Residential · medium density', rhigh: 'Residential · high density', com: 'Commercial', ind: 'Industrial', off: 'Office' };
     for (const d of D) $('dm_' + d[0]).title = titles[d[0]] + ' demand';
+    setTimeout(refreshBadges, 0);
     document.addEventListener('pointermove', e => { const t = $('tip'); t.style.left = e.clientX + 'px'; t.style.top = e.clientY + 'px'; });
     UI.goalsOpen = true;
     setInterval(UI.update, 250);
@@ -6085,8 +6609,8 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     p.innerHTML = tabs + `<div class="cards">` + items.map((it, k) => {
       const locked = !S.unlocked(it.unlock);
       return `<button class="card ${locked ? 'locked' : ''}" data-k="${k}" title="${(it.name + (it.desc ? ' — ' + it.desc : '')).replace(/"/g, '&quot;')}">
-        ${locked ? `<span class="lock">${C.MILESTONES[it.unlock].pop.toLocaleString()} pop</span>` : ''}
-        <div class="sw" style="${it.thumb ? 'background:#2a3038' : 'background:' + it.col}">${it.thumb || svg(it.icon)}</div>
+        ${locked ? `<span class="lock">${C.MILESTONES[it.unlock].pop.toLocaleString()} pop</span>` : isNew(it) ? '<span class="lock newb">New</span>' : ''}
+        <div class="sw" style="${it.thumb ? 'background:linear-gradient(#3a4654,#232a33)' : 'background:' + it.col}${it.tint ? ';box-shadow:inset 0 -3px 0 ' + it.tint : ''}">${it.thumb || svg(it.icon)}</div>
         <b>${it.name}</b><small>${locked ? C.MILESTONES[it.unlock].name : it.cost}</small></button>`;
     }).join('') + `</div>`;
     p.dataset.cat = key; p.dataset.tab = tab || '';
@@ -6095,10 +6619,12 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       const it = items[+el.dataset.k];
       if (!it) return;
       if (!S.unlocked(it.unlock)) { UI.toast('Unlocks at ' + C.MILESTONES[it.unlock].name + ' (' + C.MILESTONES[it.unlock].pop.toLocaleString() + ' residents)', 'bad'); return; }
+      if (isNew(it)) { CB.Sim.unseen = CB.Sim.unseen.filter(x => x !== idOf(it)); const nb = el.querySelector('.newb'); if (nb) nb.remove(); refreshBadges(); }
       const same = JSON.stringify(CB.Tools.tool) === JSON.stringify(it.tool);
       CB.Tools.setTool(same ? null : it.tool);
     }));
     markPalette();
+    refreshBadges();
   }
   function markPalette() {
     const p = $('palette');
@@ -6236,12 +6762,21 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   };
 
   UI.milestone = function (m) {
+    const idx = C.MILESTONES.indexOf(m);
+    const seen = new Set();
+    const items = allItems().filter(it => it.unlock === idx && !seen.has(idOf(it)) && seen.add(idOf(it)));
+    const S = CB.Sim;
+    for (const it of items) if (!S.unseen.includes(idOf(it))) S.unseen.push(idOf(it));
+    const catName = k => CATS.find(c => c.key === k).name;
+    const show = items.slice(0, 18);
     const M = $('modal');
-    M.innerHTML = `<div class="glass mbox"><div class="eyebrow">Milestone reached</div><h2>${m.name}</h2>
-      <p>${CB.Sim.name} now has ${m.pop.toLocaleString()} residents. The city treasury receives a grant of <b style="color:var(--accent-2)">${U.money(m.reward)}</b>.</p>
-      <p><b style="color:var(--fg)">Unlocked:</b> ${m.unlocks}</p><button class="btn primary" id="mok">Keep building</button></div>`;
+    M.innerHTML = `<div class="glass mbox wide"><div class="eyebrow">Milestone reached</div><h2>${m.name}</h2>
+      <p>${S.name} now has ${m.pop.toLocaleString()} residents. The city treasury receives a grant of <b style="color:var(--accent-2)">${U.money(m.reward)}</b>.</p>
+      ${show.length ? `<div class="lbl" style="text-align:left;margin-bottom:6px">Unlocked</div><div class="unl">${show.map(it => `<div class="ucard"><div class="sw" style="${it.thumb ? 'background:linear-gradient(#3a4654,#232a33)' : 'background:' + it.col}">${it.thumb || svg(it.icon)}</div><b>${it.name}</b><small>${catName(it.cat)}</small></div>`).join('')}</div>${items.length > show.length ? `<div class="sub" style="margin-top:6px">and ${items.length - show.length} more</div>` : ''}` : ''}
+      <button class="btn primary" id="mok" style="margin-top:14px">Keep building</button></div>`;
     M.hidden = false;
-    $('mok').onclick = () => { M.hidden = true; renderPalette(); };
+    $('mok').onclick = () => { M.hidden = true; renderPalette(); refreshBadges(); };
+    refreshBadges();
     UI.sfx('build');
   };
 
@@ -6434,6 +6969,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
         ${opt('st_aa', 'Anti-aliasing', [[0, 'Off'], [1, 'On']], s.aa ? 1 : 0)}
         ${opt('st_view', 'View distance', [[1100, 'Near'], [1700, 'Medium'], [2400, 'Far'], [3200, 'Very far']], s.view)}
         ${opt('st_cars', 'Vehicle limit', [[150, '150'], [250, '250'], [500, '500'], [900, '900'], [1400, '1,400'], [2000, '2,000']], s.cars)}
+        ${opt('st_detail', 'Vehicle & people detail', [[0, 'Simple'], [1, 'Detailed']], s.detail ? 1 : 0)}
         ${opt('st_trees', 'Tree density', [[0.2, 'Sparse'], [0.35, 'Low'], [0.7, 'Medium'], [1, 'High'], [1.4, 'Lush']], s.trees)}
         ${opt('st_lighting', 'Lighting', [['simple', 'Simple (fast)'], ['pbr', 'Realistic']], s.lighting)}
         ${opt('st_water', 'Water', [['simple', 'Still'], ['waves', 'Animated waves']], s.water)}
@@ -6456,7 +6992,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       } else {
         let v = sel.value;
         if (['res', 'shadows', 'view', 'cars', 'trees'].includes(k)) v = +v;
-        if (['aa', 'dayNight', 'fps'].includes(k)) v = v === '1';
+        if (['aa', 'dayNight', 'fps', 'detail'].includes(k)) v = v === '1';
         ns[k] = v; ns.preset = 'custom';
       }
       CB.Game.applySettings(ns);
@@ -6744,7 +7280,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   Game.applySettings = function (ns) {
     const old = CB.Gfx.settings;
     CB.Gfx.applySettings(ns);
-    if (old.cars !== ns.cars || old.shadows !== ns.shadows) CB.Meshes.resizeVehicles();
+    if (old.cars !== ns.cars || old.shadows !== ns.shadows || old.detail !== ns.detail) CB.Meshes.resizeVehicles();
     if (old.trees !== ns.trees) CB.Meshes.treesDirty = true;
     store(C.SET_KEY, JSON.stringify(ns));
   };

@@ -30,6 +30,7 @@
     S.tickAcc = 0; S.hourAcc = 0; S.resRot = 0;
     S.icons = [];
     S.notices = [];
+    S.unseen = [];
     S.rng = U.rng((opts.seed || 1) * 31 + 7);
     computeWaterNear();
   };
@@ -139,7 +140,7 @@
   }
   function tileFree(t, z) {
     const Wd = CB.World;
-    return Wd.zone[t] === z && !Wd.bld[t] && !Wd.road[t] && Wd.rail[t] !== 1 && Wd.buildable(t);
+    return Wd.zone[t] === z && !Wd.bld[t] && !Wd.road[t] && !Wd.pmask[t] && Wd.rail[t] !== 1 && Wd.buildable(t);
   }
   function rebuildLots() {
     const Wd = CB.World;
@@ -180,8 +181,20 @@
       for (let d = 0; d < 4; d++) { const j = frontOK(i, d); if (j >= 0 && Wd.conn[j]) dirs.push(d); }
       if (!dirs.length) continue;
       const f = U.pick(dirs, S.rng);
-      // weighted random order: each lot type gets a random key biased by its weight
-      const sizes = C.ZONES[z].lots.map(l => [l[0], l[1], Math.pow(S.rng(), 1 / (l[2] || 1))]).sort((p, q) => q[2] - p[2]);
+      // fill the zone as deep as it goes from this frontage, then pick a width
+      const Z = C.ZONES[z], g = (f + 2) % 4;
+      let maxD = 0;
+      for (let j = 0; j < 3; j++) { const tx = U.tx(i) + C.DX[g] * j, ty = U.ty(i) + C.DY[g] * j; if (!U.inPlay(tx, ty) || !tileFree(U.idx(tx, ty), z)) break; maxD++; }
+      let depths = [...new Set(Z.lots.map(l => l[1]))].filter(dd => dd <= maxD).sort((p, q) => q - p);
+      if (!depths.length) continue;
+      const sizes = [];
+      for (const dd of depths) {
+        const opts = Z.lots.filter(l => l[1] === dd).map(l => [l[0], l[1], (z === 1 && l[0] === 1 ? 2.2 : 1) * (l[2] || 1) * (z === 1 ? 1 : l[0])]);
+        // weighted shuffle within one depth
+        opts.forEach(o => { o[2] = Math.pow(S.rng(), 1 / o[2]); });
+        opts.sort((p, q) => q[2] - p[2]);
+        sizes.push(...opts);
+      }
       for (const [w, d] of sizes) {
         const spec = fitLot(i, f, w, d, z);
         if (spec) {
@@ -225,6 +238,7 @@
         const t = U.idx(xx, yy);
         if (!Wd.buildable(t)) { ok = false; reason = 'Ground is too steep or wet'; }
         else if (Wd.road[t]) { ok = false; reason = 'Blocked by a road'; }
+        else if (Wd.pmask[t]) { ok = false; reason = 'Blocked by a path'; }
         else if (Wd.rail[t] === 1) { ok = false; reason = 'Blocked by elevated track'; }
         else if (Wd.bld[t]) { const b = S.buildings.get(Wd.bld[t]); if (!b || b.kind === 'svc') { ok = false; reason = 'Blocked by a building'; } }
       }
@@ -438,7 +452,7 @@
       }
       // occupancy
       if (res) {
-        if (!noConn && b.res < b.cap && resDemand > 5 && b.happy > 30) b.res = Math.min(b.cap, b.res + Math.max(1, Math.ceil((b.cap - b.res) * 0.25)));
+        if (!noConn && b.res < b.cap && resDemand > 3 && b.happy > 25) b.res = Math.min(b.cap, b.res + Math.max(1, Math.ceil((b.cap - b.res) * 0.4)));
         if (b.happy < 28 && b.res > 0 && S.rng() < 0.35) b.res = Math.max(0, b.res - Math.max(1, Math.ceil(b.res * 0.12)));
         const wk = Math.round(b.res * 0.55);
         let e = employedOf(b);
@@ -598,12 +612,12 @@
     if (S.lotsDirty) rebuildLots();
     let constructing = 0;
     S.buildings.forEach(b => { if (b.state === 'build') constructing++; });
-    const maxCons = 6 + Math.floor(S.stats.pop / 50);
+    const maxCons = 10 + Math.floor(S.stats.pop / 25);
     for (let z = 1; z < C.ZONES.length; z++) {
       if (!S.unlocked(C.ZONES[z].unlock)) continue;
       const d = S.zoneDemand(z);
       if (d < 6 || !S.lots[z] || !S.lots[z].length) continue;
-      const tries = 1 + Math.floor(d / 20);
+      const tries = (1 + Math.floor(d / 20)) * (C.ZONES[z].cat === 'res' ? 2 : 1);
       for (let t = 0; t < tries && constructing < maxCons; t++) {
         if (S.rng() < d / 100 * 0.95) { if (tryGrow(z)) constructing++; }
       }
@@ -788,7 +802,7 @@
     A.home += st.employed * toHome * dtH / ppc;
     A.shop += st.pop * 0.22 * dayCurve(h) * dtH / ppc;
     let indF = 0; for (const b of indList) indF += b.filled + b.outside;
-    A.freight += indF * 0.3 * dayCurve(h) * dtH / Math.max(1, ppc * 0.7) + comList.length * 0.12 * dayCurve(h) * dtH;
+    A.freight += indF * 0.14 * dayCurve(h) * dtH / Math.max(1, ppc * 1.2) + comList.length * 0.05 * dayCurve(h) * dtH / Math.max(1, ppc * 0.5);
     A.visit += (st.pop * 0.015 + visitList.length * 2) * dayCurve(h) * dtH / ppc;
     A.cin += st.outsideIn * toWork * dtH / ppc;
     A.cout += st.outsideIn * toHome * dtH / ppc;
@@ -875,6 +889,7 @@
     let roads = 0;
     for (let i = 0; i < N; i++) {
       if (Wd.road[i] && U.inPlay(U.tx(i), U.ty(i))) { const R = C.ROADS[Wd.road[i]]; roads += R.upkeep / R.w; }
+      if (Wd.pmask[i]) for (let q = 0; q < 4; q++) { const k = Wd.pcell[Wd.cellOf(i, q)]; if (k) roads += C.PATHS[k].upkeep; }
       if (Wd.rail[i]) roads += C.RAIL[Wd.rail[i]].upkeep;
     }
     let transit = 0;
@@ -1036,7 +1051,7 @@
     return {
       v: 2, seed: Wd.seed, name: S.name, money: S.money, month: S.month, hour: S.hour, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
       history: S.history, last: S.last, budget: S.budget,
-      road: U.encodeRLE(Wd.road), link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart),
+      road: U.encodeRLE(Wd.road), pcell: U.encodeRLE(Wd.pcell), unseen: S.unseen || [], link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart),
       jcfg: Wd.clusters.map(cl => ({ t: cl.tiles[0], c: cl.cfg })), rail: U.encodeRLE(Wd.rail), zone: U.encodeRLE(Wd.zone), tree: U.encodeRLE(Wd.tree),
       buildings: bl, transit: CB.Transit.serialize(),
     };
@@ -1050,9 +1065,21 @@
     Wd.rdir.set(U.decodeRLE(d.rdir, Uint8Array, N));
     Wd.rpart.set(U.decodeRLE(d.rpart, Uint8Array, N));
     Wd.jcfg = new Map(); for (const j of d.jcfg || []) Wd.jcfg.set(j.t, j.c);
+    if (d.pcell) Wd.pcell.set(U.decodeRLE(d.pcell, Uint8Array, C.FW * C.FW)); else Wd.pcell.fill(0);
+    S.unseen = d.unseen || [];
+    // old full-tile paths become four half-tile paths
+    for (let i = 0; i < N; i++) {
+      const R = C.ROADS[Wd.road[i]];
+      if (!R || R.grp !== 'legacy') continue;
+      const k = R.key === 'bikepath' ? 2 : 1;
+      for (let q = 0; q < 4; q++) Wd.pcell[Wd.cellOf(i, q)] = k;
+      Wd.unlinkAll(i); Wd.road[i] = 0;
+    }
+    Wd.rebuildPmask();
     Wd.rail.set(U.decodeRLE(d.rail, Uint8Array, N));
     Wd.zone.set(U.decodeRLE(d.zone, Uint8Array, N));
     Wd.tree.set(U.decodeRLE(d.tree, Uint8Array, N));
+    Wd.joinDeadEnds();
     Wd.updateZonable(); Wd.updateConn(); Wd.updateJunctions(); Wd.roadVer++;
     for (const o of d.buildings) {
       const b = Object.assign({ cust: 0, gTarget: false, vehOut: 0, fire: 0, prob: null }, o);

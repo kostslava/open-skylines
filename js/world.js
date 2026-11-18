@@ -30,6 +30,8 @@
     Wd.hc = new Float32Array((W + 1) * (W + 1));
     Wd.road = new Uint8Array(W * W);
     Wd.link = new Uint8Array(W * W);
+    Wd.pcell = new Uint8Array(C.FW * C.FW);
+    Wd.pmask = new Uint8Array(W * W);
     Wd.rdir = new Uint8Array(W * W);
     Wd.rpart = new Uint8Array(W * W);
     Wd.jcl = new Int32Array(W * W).fill(-1);
@@ -187,6 +189,51 @@
     }
     Wd.link[i] = 0;
   };
+  // older saves: roads that end right against another road get joined to it
+  Wd.joinDeadEnds = function () {
+    for (let i = 0; i < W * W; i++) {
+      if (!Wd.road[i] || !C.ROADS[Wd.road[i]].car) continue;
+      const m = Wd.link[i];
+      let n = 0, d0 = -1; for (let d = 0; d < 4; d++) if (m & (1 << d)) { n++; d0 = d; }
+      if (n > 1) continue;
+      const dirs = n === 1 ? [(d0 + 2) % 4] : [0, 1, 2, 3];
+      for (const d of dirs) { const o = Wd.neighbor(i, d); if (o >= 0 && Wd.road[o] && C.ROADS[Wd.road[o]].car && !(Wd.rpart[i] && Wd.rpart[i] - 1 === d)) { Wd.linkTiles(i, o); break; } }
+    }
+  };
+  // ---------- half-tile paths ----------
+  const FW = C.FW;
+  Wd.fidx = (fx, fy) => fy * FW + fx;
+  Wd.cellOf = (i, q) => Wd.fidx(U.tx(i) * 2 + (q & 1), U.ty(i) * 2 + (q >> 1));
+  Wd.setPath = function (f, k) {
+    Wd.pcell[f] = k;
+    const fx = f % FW, fy = (f / FW) | 0, i = U.idx(fx >> 1, fy >> 1), q = (fy & 1) * 2 + (fx & 1);
+    if (k) Wd.pmask[i] |= 1 << q; else Wd.pmask[i] &= ~(1 << q);
+  };
+  Wd.rebuildPmask = function () {
+    Wd.pmask.fill(0);
+    for (let f = 0; f < FW * FW; f++) if (Wd.pcell[f]) { const fx = f % FW, fy = (f / FW) | 0; Wd.pmask[U.idx(fx >> 1, fy >> 1)] |= 1 << ((fy & 1) * 2 + (fx & 1)); }
+  };
+  Wd.walkRoad = i => { const R = C.ROADS[Wd.road[i]]; return !!R && R.grp !== 'highway' && R.grp !== 'legacy'; };
+  // the two cell pairs straddling the edge between tile i and its neighbour in direction d: [[cellInI, cellInJ], ...]
+  Wd.edgeCells = function (i, d) {
+    const x = U.tx(i) * 2, y = U.ty(i) * 2;
+    if (d === 1) return [[Wd.fidx(x + 1, y), Wd.fidx(x + 2, y)], [Wd.fidx(x + 1, y + 1), Wd.fidx(x + 2, y + 1)]];
+    if (d === 3) return [[Wd.fidx(x, y), Wd.fidx(x - 1, y)], [Wd.fidx(x, y + 1), Wd.fidx(x - 1, y + 1)]];
+    if (d === 2) return [[Wd.fidx(x, y + 1), Wd.fidx(x, y + 2)], [Wd.fidx(x + 1, y + 1), Wd.fidx(x + 1, y + 2)]];
+    return [[Wd.fidx(x, y), Wd.fidx(x, y - 1)], [Wd.fidx(x + 1, y), Wd.fidx(x + 1, y - 1)]];
+  };
+  // can a pedestrian / cyclist cross from tile i into its neighbour in direction d?
+  Wd.softPass = function (i, d) {
+    const j = Wd.neighbor(i, d); if (j < 0) return -1;
+    const ri = Wd.walkRoad(i), rj = Wd.walkRoad(j);
+    if (ri && rj) return 0;
+    if (!Wd.pmask[i] && !Wd.pmask[j]) return -1;
+    for (const [a, b] of Wd.edgeCells(i, d)) {
+      const ok = (Wd.pcell[a] || ri) && (Wd.pcell[b] || rj) && (Wd.pcell[a] || Wd.pcell[b]);
+      if (ok) return 1;
+    }
+    return -1;
+  };
   Wd.linked = (i, d) => (Wd.link[i] & (1 << d)) !== 0;
   // forward lanes only (one-way strip)?
   Wd.isOneway = function (i) { const R = C.ROADS[Wd.road[i]]; return !!R && (R.oneway || R.w === 2); };
@@ -225,7 +272,7 @@
           const nx = x + C.DX[d] * k, ny = y + C.DY[d] * k;
           if (!U.inPlay(nx, ny)) break;
           const j = U.idx(nx, ny);
-          if (Wd.road[j]) break;
+          if (Wd.road[j] || Wd.pmask[j]) break;
           if (!Wd.buildable(j) || Wd.rail[j] === 1) break;
           z[j] = 1;
         }

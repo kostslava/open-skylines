@@ -31,7 +31,7 @@
   Game.applySettings = function (ns) {
     const old = CB.Gfx.settings;
     CB.Gfx.applySettings(ns);
-    if (old.cars !== ns.cars || old.shadows !== ns.shadows) CB.Meshes.resizeVehicles();
+    if (old.cars !== ns.cars || old.shadows !== ns.shadows || old.detail !== ns.detail) CB.Meshes.resizeVehicles();
     if (old.trees !== ns.trees) CB.Meshes.treesDirty = true;
     store(C.SET_KEY, JSON.stringify(ns));
   };
