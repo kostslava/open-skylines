@@ -438,7 +438,7 @@
     const S = CB.Sim;
     const rowsI = [['res', 'Residential tax'], ['com', 'Commercial tax'], ['ind', 'Industrial tax'], ['off', 'Office tax'], ['fares', 'Transit fares']];
     const rowsE = [['services', 'City services'], ['roads', 'Road & track upkeep'], ['transit', 'Transit vehicles'], ['utilities', 'Water & power (automatic)'], ['loans', 'Loan payments']];
-    p.innerHTML = head('Budget', 'Monthly figures. One day is one month.') +
+    p.innerHTML = head('Budget', 'Monthly figures.') +
       `<table class="bud"><tr><td class="lbl">Income</td><td class="lbl">This month</td><td class="lbl">Last month</td></tr>
       ${rowsI.map(r => `<tr><td>${r[1]}</td><td data-v="ti_${r[0]}"></td><td data-v="li_${r[0]}"></td></tr>`).join('')}
       <tr><td class="lbl" style="padding-top:8px">Expenses</td><td></td><td></td></tr>
@@ -559,7 +559,7 @@
     sv(p, 'unemp', (st.unemp * 100).toFixed(1) + '%');
     sv(p, 'cin', U.num(st.outsideIn));
     sv(p, 'edu', Math.round(st.edu * 100) + '%');
-    sv(p, 'comm', st.commute ? Math.round(st.commute) + ' min' : '–');
+    sv(p, 'comm', st.commute ? Math.round(st.commute * 60 / C.HOUR_SEC) + ' min' : '–');
     sv(p, 'flow', Math.round(Tr.stats.flow * 100) + '%');
     sv(p, 'veh', U.num(Tr.stats.active));
     sv(p, 'stuck', U.num(Tr.stats.stuck));
@@ -668,7 +668,7 @@
     sv(p, 'road', rt ? C.ROADS[rt].name : '–');
     const nl = CB.World.lanesToward(v.cur, v.din).length;
     sv(p, 'lane', nl > 1 ? 'Lane ' + (v.laneIn + 1) + ' of ' + nl + (v.laneIn === 0 ? ' (right)' : v.laneIn === nl - 1 ? ' (left)' : '') : 'Single lane');
-    sv(p, 'trip', Math.round(CB.Traffic.time - v.born) + ' min');
+    sv(p, 'trip', Math.round((CB.Traffic.time - v.born) * 60 / C.HOUR_SEC) + ' min');
     if (v.line) sv(p, 'pax', (v.load || 0) + ' / ' + C.TRANSIT[v.line.type].cap);
   }
   UI.selectStop = function (s) {
@@ -747,7 +747,7 @@
     if (res) {
       sv(p, 'res', b.res + ' / ' + b.cap + (z.perBuilding ? ' (1 household)' : ' (' + Math.max(1, Math.round(b.cap / 2.6)) + ' households)'));
       sv(p, 'emp', S.employedOf(b) + ' of ' + Math.round(b.res * 0.55) + ' workers');
-      sv(p, 'comm', b.commute ? Math.round(b.commute) + ' min' : '–');
+      sv(p, 'comm', b.commute ? Math.round(b.commute * 60 / C.HOUR_SEC) + ' min' : '–');
     } else {
       sv(p, 'wk', (b.filled + b.outside) + ' / ' + b.jobs);
       sv(p, 'out', b.outside);

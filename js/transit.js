@@ -216,7 +216,7 @@
     veh.pass = stay;
     // board
     const left = [];
-    const fare = C.TRANSIT[l.type].fare;
+    const fare = C.TRANSIT[l.type].fare * C.TRIP_K;
     for (const p of stop.waiting) {
       const leg = p.legs[p.li];
       if (leg.line === l.id && veh.load + p.n <= cap) {

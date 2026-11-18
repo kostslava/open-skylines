@@ -188,7 +188,7 @@
   // Test helpers (URL params): ?demo=1 builds a starter town, ?ff=N runs N game hours
   function fastForward(hours) {
     const S = CB.Sim;
-    const steps = Math.round(hours * C.HOUR_SEC / 0.25);
+    const steps = Math.round(hours * C.SIM_SEC / 0.25);
     const trace = new URLSearchParams(location.search).get('trace');
     for (let k = 0; k < steps; k++) {
       if (trace) console.log('ff ' + k + ' S h=' + S.hour.toFixed(2));

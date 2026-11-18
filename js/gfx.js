@@ -132,7 +132,6 @@ else if (st == 9) { diffuseColor.rgb = vec3(0.04, 0.055, 0.07); gWin = 0.8; }
 else if (st == 11) { diffuseColor.rgb = vec3(0.03); }
 else if (st == 12) { diffuseColor.rgb = vec3(0.20, 0.13, 0.08); }
 else if (st == 13) { diffuseColor.rgb = vec3(0.12, 0.30, 0.38); gWin = 1.0; }
-if (gRough >= 0.0) gWin = max(gWin, 0.0);
 if (uOvOn > 0.5) {
   vec4 ov = texture2D(uOvTex, vWP.xz / uWorld);
   float l = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));
@@ -158,7 +157,7 @@ vWP = (modelMatrix * wp4).xyz;`);
         .replace('#include <common>', '#include <common>\n' + CITY_COMMON)
         .replace('#include <color_fragment>', CITY_COLOR)
         .replace('#include <emissivemap_fragment>', '#include <emissivemap_fragment>\ntotalEmissiveRadiance += gEmis;');
-      if (pbr) fs = fs.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nroughnessFactor = mix(roughnessFactor, 0.18, gWin);');
+      if (pbr) fs = fs.replace('#include <roughnessmap_fragment>', '#include <roughnessmap_fragment>\nif (gRough >= 0.0) roughnessFactor = gRough;\nroughnessFactor = mix(roughnessFactor, 0.18, gWin);');
       sh.fragmentShader = fs;
     };
     mat.customProgramCacheKey = () => 'city' + (pbr ? 1 : 0);
@@ -169,7 +168,7 @@ vWP = (modelMatrix * wp4).xyz;`);
       const u = G.uni;
       Object.assign(sh.uniforms, {
         uZoneTex: u.uZoneTex, uOvTex: u.uOvTex, uOvOn: u.uOvOn, uWorld: u.uWorld, uGrid: u.uGrid,
-        uBrush: u.uBrush, uBrushOn: u.uBrushOn, uBrushCol: u.uBrushCol, uTile: { value: T }, uPlay: u.uPlay,
+        uBrush: u.uBrush, uBrushOn: u.uBrushOn, uBrushCol: u.uBrushCol, uTile: { value: T }, uPlay: u.uPlay, uDetail: u.uDetail,
       });
       sh.vertexShader = sh.vertexShader
         .replace('#include <common>', '#include <common>\nvarying vec3 vWP;')
@@ -177,9 +176,21 @@ vWP = (modelMatrix * wp4).xyz;`);
       sh.fragmentShader = sh.fragmentShader
         .replace('#include <common>', `#include <common>
 uniform sampler2D uZoneTex; uniform sampler2D uOvTex; uniform float uOvOn; uniform float uWorld; uniform float uGrid;
-uniform vec4 uBrush; uniform float uBrushOn; uniform vec3 uBrushCol; uniform float uTile; uniform vec2 uPlay;
-varying vec3 vWP;`)
+uniform vec4 uBrush; uniform float uBrushOn; uniform vec3 uBrushCol; uniform float uTile; uniform vec2 uPlay; uniform float uDetail;
+varying vec3 vWP;
+float th(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+float tn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f);
+  return mix(mix(th(i), th(i+vec2(1,0)), f.x), mix(th(i+vec2(0,1)), th(i+vec2(1,1)), f.x), f.y); }`)
         .replace('#include <color_fragment>', `#include <color_fragment>
+if (uDetail > 0.5) {
+  // grass: patchy colour at a few scales, fading the fine detail with distance
+  vec2 p = vWP.xz;
+  float fine = clamp(1.4 - length(fwidth(p * 2.5)) * 3.0, 0.0, 1.0);
+  float n = tn(p * 0.05) * 0.45 + tn(p * 0.3) * 0.35 + tn(p * 2.5) * 0.2 * fine;
+  float green = step(diffuseColor.r * 1.05, diffuseColor.g);
+  diffuseColor.rgb *= mix(1.0, 0.8 + 0.4 * n, green);
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * vec3(1.12, 1.05, 0.72), green * smoothstep(0.6, 0.85, tn(p * 0.012)) * 0.7);
+}
 vec2 tuv = vWP.xz / uWorld;
 vec4 zt = texture2D(uZoneTex, tuv);
 diffuseColor.rgb = mix(diffuseColor.rgb, zt.rgb, zt.a);
@@ -188,7 +199,6 @@ if (uGrid > 0.5 && zt.a > 0.01) {
   vec2 e = smoothstep(vec2(0.0), fw, g) * smoothstep(vec2(0.0), fw, 1.0 - g);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.95), (1.0 - e.x * e.y) * 0.6);
 }
-if (gRough >= 0.0) gWin = max(gWin, 0.0);
 if (uOvOn > 0.5) {
   vec4 ov = texture2D(uOvTex, tuv);
   float l = dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11));

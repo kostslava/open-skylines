@@ -8,7 +8,8 @@ window.CB = {};
     PAD: 32,           // scenic border (not buildable)
     N: 144,            // playable tiles per side
     WATER: 0,
-    HOUR_SEC: 10,      // real seconds per game hour at 1x
+    HOUR_SEC: 120,     // real seconds per clock hour at 1x (day/night, commute schedule)
+    SIM_SEC: 10,       // real seconds per simulation tick-hour at 1x (growth, construction, budget)
     CHUNK: 16,
     VEH_SPEED: 1.8,    // visual speed multiplier for agents
     START_MONEY: 70000,
@@ -17,6 +18,7 @@ window.CB = {};
     SET_KEY: 'openskylines.settings.v1',
   };
   C.P0 = C.PAD; C.P1 = C.PAD + C.N;
+  C.TRIP_K = C.HOUR_SEC / C.SIM_SEC; // trips are rarer per sim-hour, so each one counts for more
   C.DX = [0, 1, 0, -1]; C.DY = [-1, 0, 1, 0]; // N E S W (y grows south / +z)
   C.WORLD = C.W * C.TILE;
 

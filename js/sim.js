@@ -843,7 +843,7 @@
       for (let k = 0; k < 5; k++) { const c = randomOf(comList); const d = U.dist(c.road, b.road) + S.rng() * 8; if (d < bd) { bd = d; best = c; } }
       if (!best) continue;
       const shop = best;
-      personTrip(b.road, shop.road, 'Going shopping', ppc, () => { if (S.buildings.has(shop.id)) shop.cust += ppc; }, b.zone, b, shop);
+      personTrip(b.road, shop.road, 'Going shopping', ppc, () => { if (S.buildings.has(shop.id)) shop.cust += ppc * C.TRIP_K; }, b.zone, b, shop);
     }
     while (A.freight >= 1 && guard++ < 110) {
       A.freight--;
@@ -857,7 +857,7 @@
     while (A.visit >= 1 && guard++ < 130) {
       A.visit--;
       const tgt = randomOf(visitList); if (!tgt) continue;
-      carTrip(inT, tgt.road, 'Visiting the city', ppc, () => { if (S.buildings.has(tgt.id) && tgt.kind === 'zone') tgt.cust += ppc; }, null, null, tgt);
+      carTrip(inT, tgt.road, 'Visiting the city', ppc, () => { if (S.buildings.has(tgt.id) && tgt.kind === 'zone') tgt.cust += ppc * C.TRIP_K; }, null, null, tgt);
     }
     while (A.cin >= 1 && guard++ < 150) {
       A.cin--;
@@ -930,7 +930,7 @@
     let inc = 0, exp = 0;
     for (const k in src.inc) inc += src.inc[k];
     for (const k in src.exp) exp += src.exp[k];
-    if (S.month === 0) { const f = 24 / Math.max(1, S.hour - 7 + 1); inc *= f; exp *= f; }
+    if (S.month === 0) { const f = 24 / Math.max(1, S.dayAcc || 0); inc *= f; exp *= f; }
     return { inc, exp, net: inc - exp };
   };
   S.takeLoan = function (amt) {
@@ -994,15 +994,14 @@
   // Main step (dt in sim seconds)
   // ------------------------------------------------------------------
   S.step = function (dt) {
-    const dtH = dt / C.HOUR_SEC;
-    const prevHour = S.hour;
+    const dtH = dt / C.HOUR_SEC;   // clock hours: time of day, commuting schedule
+    const dtS = dt / C.SIM_SEC;    // simulation hours: growth, construction, economy
     S.hour += dtH;
-    let newDay = false;
-    if (S.hour >= 24) { S.hour -= 24; newDay = true; }
+    if (S.hour >= 24) S.hour -= 24;
     // construction
     S.buildings.forEach(b => {
       if (b.state === 'build') {
-        b.st += dtH;
+        b.st += dtS;
         if (b.st >= b.buildT) {
           b.state = 'live'; b.st = 0;
           CB.Meshes.refreshBuilding(b);
@@ -1013,7 +1012,7 @@
       }
     });
     generateTrips(dtH);
-    S.tickAcc += dtH;
+    S.tickAcc += dtS;
     if (S.tickAcc >= 0.25) {
       S.tickAcc = 0;
       if (S.covDirty) computeCoverage();
@@ -1023,16 +1022,18 @@
       growth();
       checkMilestones();
     }
-    S.hourAcc += dtH;
+    S.hourAcc += dtS;
     if (S.hourAcc >= 1) {
       S.hourAcc -= 1;
+      S.simHours = (S.simHours || 0) + 1;
       hourlyBuildings();
       hourlyEconomy();
       dispatchServices();
-      if (Math.floor(S.hour) % 3 === 0) computeCoverage();
+      if (S.simHours % 3 === 0) computeCoverage();
       if (S.rng() < 0.06 && S.hour > 7 && S.hour < 22) chirp();
     }
-    if (newDay) { S.month++; monthly(); }
+    S.dayAcc = (S.dayAcc || 0) + dtS;
+    if (S.dayAcc >= 24) { S.dayAcc -= 24; S.month++; monthly(); }
   };
 
   // ------------------------------------------------------------------
@@ -1074,7 +1075,7 @@
       work: b.work, happy: Math.round(b.happy), garbage: Math.round(b.garbage), prog: b.prog, low: b.low, abandT: b.abandT, custRatio: b.custRatio, commute: Math.round(b.commute), age: b.age,
     }));
     return {
-      v: 2, seed: Wd.seed, name: S.name, money: S.money, month: S.month, hour: S.hour, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
+      v: 2, seed: Wd.seed, name: S.name, money: S.money, month: S.month, hour: S.hour, dayAcc: S.dayAcc || 0, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
       history: S.history, last: S.last, budget: S.budget,
       road: U.encodeRLE(Wd.road), pcell: U.encodeRLE(Wd.pcell), unseen: S.unseen || [], link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart),
       jcfg: Wd.clusters.map(cl => ({ t: cl.tiles[0], c: cl.cfg })), rail: U.encodeRLE(Wd.rail), zone: U.encodeRLE(Wd.zone), tree: U.encodeRLE(Wd.tree),
@@ -1084,7 +1085,7 @@
   S.load = function (d) {
     const Wd = CB.World;
     S.init({ name: d.name, seed: d.seed });
-    Object.assign(S, { money: d.money, month: d.month, hour: d.hour, milestone: d.milestone, tax: d.tax, loans: d.loans || [], nextId: d.nextId, history: d.history || [], last: d.last || blankBudget(), budget: d.budget || blankBudget() });
+    Object.assign(S, { dayAcc: d.dayAcc || 0, money: d.money, month: d.month, hour: d.hour, milestone: d.milestone, tax: d.tax, loans: d.loans || [], nextId: d.nextId, history: d.history || [], last: d.last || blankBudget(), budget: d.budget || blankBudget() });
     Wd.road.set(U.decodeRLE(d.road, Uint8Array, N));
     Wd.link.set(U.decodeRLE(d.link, Uint8Array, N));
     Wd.rdir.set(U.decodeRLE(d.rdir, Uint8Array, N));
