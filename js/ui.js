@@ -681,6 +681,7 @@
     UI.select(null);
     UI.selVehicle = v;
     const p = $('infoPanel'); p.hidden = false;
+    if (CB.Traffic.isSoft(v)) { renderPerson(p, v); return; }
     const names = { tram: 'Streetcar', car: 'Car', suv: 'SUV', van: 'Moving van', truck: 'Delivery truck', bus: 'Bus', police: 'Police car', ambulance: 'Ambulance', fire: 'Fire truck', garbage: 'Garbage truck' };
     p.innerHTML = head(names[v.kind] || 'Vehicle', v.line ? v.line.name : v.purpose) +
       `<div class="row"><span>Status</span><b data-v="status"></b></div>
@@ -694,17 +695,58 @@
     drawPathRibbon(v);
     updVehicle(p);
   };
-  function drawPathRibbon(v) {
+  // a walker or cyclist: where they came from, where they are going, what they are doing right now
+  const ACT = { sit: 'Sitting on a bench', swing: 'On the swings', slide: 'On the slide', hoop: 'Shooting hoops', ground: 'Relaxing on the grass', fish: 'Fishing', skate: 'Skateboarding', look: 'Taking in the view', tend: 'Gardening', play: 'Playing' };
+  const PERSON_NAMES = ['Alex', 'Sam', 'Jordan', 'Riley', 'Casey', 'Morgan', 'Taylor', 'Jamie', 'Avery', 'Quinn', 'Rowan', 'Skyler', 'Devon', 'Emerson', 'Parker', 'Reese', 'Hayden', 'Kai', 'Noor', 'Mika'];
+  function renderPerson(p, a) {
+    if (!a.who) a.who = U.pick(PERSON_NAMES, Math.random) + ' ' + String.fromCharCode(65 + Math.floor(Math.random() * 26)) + '.';
+    const bike = a.kind === 'bike';
+    const nm = b => b ? b.name : null;
+    const from = nm(a.fromB) || (a.visit ? null : 'Home'), to = nm(a.toB) || (a.visit ? nm(a.visit.b) : null);
+    p.innerHTML = head(a.who, (bike ? 'Cyclist' : 'Pedestrian') + (a.purpose ? ' · ' + a.purpose : a.visit ? ' · Visiting' : '')) +
+      `<div class="row"><span>Status</span><b data-v="status"></b></div>
+       ${from ? `<div class="row"><span>From</span><b>${from}</b></div>` : ''}
+       ${to ? `<div class="row"><span>To</span><b>${to}</b></div>` : ''}
+       <div class="row"><span>Speed</span><b data-v="spd"></b></div>
+       <div class="row"><span>On</span><b data-v="road"></b></div>
+       <div class="row"><span>Distance left</span><b data-v="left"></b></div>
+       <div class="row"><span>Time out</span><b data-v="trip"></b></div>
+       <div class="btns" style="margin-top:8px"><button class="btn primary" id="vfollow">Follow</button>${a.toB ? '<button class="btn" id="vdest">Show destination</button>' : ''}</div>`;
+    bindClose(p, () => { UI.selVehicle = null; UI.follow = false; clearPathRibbon(); p.hidden = true; });
+    p.querySelector('#vfollow').onclick = () => { UI.follow = !UI.follow; p.querySelector('#vfollow').textContent = UI.follow ? 'Stop following' : 'Follow'; };
+    const vd = p.querySelector('#vdest'); if (vd) vd.onclick = () => { const b = a.toB; CB.Gfx.focus((b.x + b.fw / 2) * C.TILE, (b.y + b.fh / 2) * C.TILE, Math.min(CB.Gfx.cam.dist, 160)); };
+    drawPathRibbon(a, bike ? '#9cf0a8' : '#ffd27a');
+    updPerson(p, a);
+  }
+  function updPerson(p, a) {
+    if (!CB.Traffic.alive(a)) { sv(p, 'status', 'Arrived'); sv(p, 'spd', '–'); sv(p, 'left', '–'); UI.follow = false; clearPathRibbon(); return; }
+    const bike = a.kind === 'bike';
+    let st;
+    if (a.doing) st = ACT[a.doing.type] || 'Hanging out';
+    else if (a.visit) st = 'Strolling around ' + a.visit.b.name;
+    else if (a.ph && a.ph.out) st = 'Leaving ' + (a.fromB ? a.fromB.name : 'home');
+    else if (a.ph && !a.ph.out) st = 'Arriving';
+    else st = bike ? 'Cycling' : 'Walking';
+    sv(p, 'status', st);
+    const moving = !a.doing && !(a.ph && a.ph.pause > 0);
+    sv(p, 'spd', moving ? Math.round(a.sp / C.VEH_SPEED * 3.6 / (bike ? 2.2 : 2.8) * (bike ? 3.2 : 2.6)) + ' km/h' : '–');
+    const Wd = CB.World, i = a.path[Math.min(a.seg, a.path.length - 1)];
+    sv(p, 'road', Wd.road[i] ? C.ROADS[Wd.road[i]].name + (bike && C.ROADS[Wd.road[i]].bike ? ' (bike lane)' : bike ? '' : ' (sidewalk)') : Wd.pmask[i] ? 'Path' : '–');
+    sv(p, 'left', a.visit ? '–' : Math.max(0, Math.round((a.path.length - a.seg - a.t) * C.TILE)) + ' m');
+    sv(p, 'trip', Math.round((CB.Traffic.time - a.born) * 60 / C.HOUR_SEC) + ' min');
+  }
+  function drawPathRibbon(v, col) {
     clearPathRibbon();
     if (v.loop) return;
     const Wd = CB.World, pts = [];
     for (let k = v.seg; k < v.path.length; k++) { const i = v.path[k]; const x = (U.tx(i) + 0.5) * C.TILE, z = (U.ty(i) + 0.5) * C.TILE; pts.push(x, Wd.roadH(x, z) + 1.2, z); }
-    UI.pathRibbon = CB.Meshes.ribbon(pts, 1.4, '#9fd3ff', false);
+    UI.pathRibbon = CB.Meshes.ribbon(pts, col ? 0.8 : 1.4, col || '#9fd3ff', false);
     if (UI.pathRibbon) CB.Gfx.scene.add(UI.pathRibbon);
   }
   function clearPathRibbon() { if (UI.pathRibbon) { CB.Gfx.scene.remove(UI.pathRibbon); UI.pathRibbon.geometry.dispose(); UI.pathRibbon = null; } }
   function updVehicle(p) {
     const v = UI.selVehicle; if (!v) return;
+    if (CB.Traffic.isSoft(v)) { updPerson(p, v); if (UI._ribT === undefined || ++UI._ribT % 20 === 0) drawPathRibbon(v, v.kind === 'bike' ? '#9cf0a8' : '#ffd27a'); return; }
     if (!CB.Traffic.vehicles.includes(v)) { sv(p, 'status', 'Arrived'); UI.follow = false; clearPathRibbon(); return; }
     const kmh = Math.round(v.speed / C.VEH_SPEED * 3.6);
     sv(p, 'status', v.dwell > 0 ? 'At a stop' : v.speed < 0.5 ? 'Waiting in traffic' : 'Driving');

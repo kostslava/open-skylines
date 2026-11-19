@@ -525,6 +525,7 @@
       if (mouse.moved || !h) return;
       const v = CB.Traffic.pick(h.x, h.z, 6);
       const bid = h.i >= 0 ? Wd.bld[h.i] : 0;
+      if (v && CB.Traffic.isSoft(v)) { CB.UI.selectVehicle(v); return; } // people in parks and plazas stand on building lots
       if (bid) { CB.UI.select(S.buildings.get(bid)); return; }
       if (v) { CB.UI.selectVehicle(v); return; }
       const st = h.i >= 0 && CB.Transit.stops.find(s => s.tile === h.i);

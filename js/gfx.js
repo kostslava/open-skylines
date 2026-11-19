@@ -158,13 +158,15 @@ else if (st == 8) { diffuseColor.rgb = vec3(0.9, 0.85, 0.7); gEmis = vec3(1.0, 0
 else if (st == 9) { diffuseColor.rgb = vec3(0.04, 0.055, 0.07); gWin = 0.8; }
 else if (st == 10) {
   // building glass: one random state per pane (cells ~1.4 m across, one per storey)
-  vec2 wid = vec2(floor((vWP.x + vWP.z * 1.37) / 1.4), floor(vWP.y / 2.8));
+  vec2 wid = vec2(floor((vWP.x + vWP.z * 1.37) / 1.4), floor(vWP.y / 3.0));
   float r = hh(wid + floor(vWP.xz / 23.0) * 3.7);
   float lit = step(r, min(0.95, uLit * 1.9));
   float warm = hh(wid * 1.9 + 5.3);
   vec3 litc = mix(vec3(1.0, 0.72, 0.38), vec3(0.95, 0.9, 0.8), step(0.8, warm));
-  float g = fract(vWP.y / 2.8);
+  float g = fract(vWP.y / 3.0);
   vec3 refl = vec3(0.045, 0.06, 0.08) + vec3(0.06, 0.08, 0.11) * smoothstep(0.3, 0.9, g);
+  vec3 tnt = diffuseColor.rgb / max(0.02, max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b))); // glass tint from the vertex colour (white = clear)
+  refl *= mix(vec3(1.0), tnt, 0.75) * (0.7 + 0.3 * max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)));
   diffuseColor.rgb = mix(refl, litc * 0.35, lit * uNight * 0.6);
   gWin = 0.8 * (1.0 - lit * uNight);
   gEmis = litc * lit * uNight * (0.55 + 0.6 * hh(wid * 3.1 + 1.7)) * (0.75 + 0.25 * smoothstep(0.0, 0.6, g));

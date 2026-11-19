@@ -350,7 +350,7 @@
     const a = { kind, path, seg: 0, t: 0, born: Tr.time, onArrive, sp: (kind === 'bike' ? 5.2 : 1.6) * (0.85 + Math.random() * 0.3) * (kind === 'bike' ? 2.2 : 2.8), side: Math.random() < 0.5 ? 1 : -1, x: 0, z: 0, hx: 1, hz: 0, col: null };
     if (kind === 'bike') a.col = U.pick(BIKE_COLS);
     else a.col = U.pick(PED_COLS);
-    a.toB = toB || null;
+    a.toB = toB || null; a.fromB = fromB || null;
     if (path.length < 2) { a.path = [path[0], path[0]]; }
     setupSoft(a);
     if (fromB && CB.Sim.buildings.has(fromB.id)) {
@@ -822,9 +822,14 @@
     }
   };
 
+  // nearest vehicle, cyclist or pedestrian (people are small, so they get a tighter radius)
   Tr.pick = function (x, z, r) {
     let best = null, bd = r * r;
     for (const v of Tr.vehicles) { const d = (v.x - x) ** 2 + (v.z - z) ** 2; if (d < bd) { bd = d; best = v; } }
+    const rp = Math.min(r, 3.2) ** 2;
+    for (const a of Tr.soft) { const d = (a.x - x) ** 2 + (a.z - z) ** 2; if (d < rp && d < bd) { bd = d; best = a; } }
     return best;
   };
+  Tr.isSoft = a => a && (a.kind === 'ped' || a.kind === 'bike' || Tr.soft.includes(a));
+  Tr.alive = a => Tr.vehicles.includes(a) || Tr.soft.includes(a);
 })();

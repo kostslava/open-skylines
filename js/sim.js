@@ -822,9 +822,10 @@
     if (dist <= 40) return 'walk';
     return 'car'; // taxi / ride from a friend
   };
-  function softTrip(kind, path, done, fb, tb) {
+  function softTrip(kind, path, done, fb, tb, purpose) {
     const est = path.length * T / (kind === 'bike' ? 11 : 4.5);
     const a = CB.Traffic.spawnSoft(kind, path, (t) => done && done(t, true), fb, tb);
+    if (a) a.purpose = purpose || '';
     if (!a && done) done(est, true);
   }
   function personTrip(fromTile, toTile, purpose, n, done, zone, fb, tb) {
@@ -838,8 +839,8 @@
     recordMode(mode);
     if (mode === 'walk') {
       const p = dist <= 40 ? CB.Traffic.findSoftPath(fromTile, toTile, false) : null;
-      if (p) { softTrip('ped', p, done, fb, tb); return; }
-    } else if (mode === 'bike' && bikePath) { softTrip('bike', bikePath, done, fb, tb); return; }
+      if (p) { softTrip('ped', p, done, fb, tb, purpose); return; }
+    } else if (mode === 'bike' && bikePath) { softTrip('bike', bikePath, done, fb, tb, purpose); return; }
     else if (mode === 'transit' && r) {
       S.stats.transitShare += (1 - S.stats.transitShare) * 0.01;
       r._t0 = CB.Traffic.time;

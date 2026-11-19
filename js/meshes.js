@@ -640,21 +640,7 @@
     if (lvl <= 2) for (let k = 0; k < n; k++) { const cx = (k + 0.5) * uw; if (r() < 0.5) acBox(gb, cx + uw * 0.25, fh + 0.9, z0, -1); if (r() < 0.35) dish(gb, cx - uw * 0.3, floors * fh - 0.6, z0 - 0.15, -1); }
     else if (lvl >= 4) for (let k = 0; k < n; k++) planterBox(gb, (k + 0.5) * uw - 0.5, 0.3);
   };
-  function walkup(gb, b, r, LW, LD) {
-    const lvl = b.level;
-    const [wall, wm] = U.pick(ROW_WALL.slice(0, 3).concat(ROW_WALL.slice(3, 5)), r);
-    const floors = 3 + lvl + (r() < 0.4 ? 1 : 0), fh = 3.1, H = floors * fh;
-    const z0 = 2.4, d = Math.min(LD - 4, 14), x0 = 1.0, x1 = LW - 1.0;
-    gb.box(x0, 0, z0, x1, 3.6, z0 + d, '#cfcac0', 3 + M8.stucco);
-    gb.box(x0, 3.6, z0, x1, H, z0 + d, wall, 1 + wm, { vb: 0.5 });
-    gb.box(x0 - 0.25, H, z0 - 0.25, x1 + 0.25, H + 0.7, z0 + d + 0.25, '#e8e4dc', M8.concrete);
-    gb.box(LW / 2 - 3, H + 0.7, z0 + 4, LW / 2 + 3, H + 3, z0 + 8, '#8f8b84', M8.concrete);
-    for (let f = 2; f < floors; f++) for (let k = 0; k < 3; k++) { const bx = x0 + 1.6 + k * (x1 - x0 - 3.2) / 2 - 1.6; gb.box(bx, f * fh - 0.15, z0 - 1.2, bx + 3.2, f * fh + 0.05, z0, '#d6d2c8', M8.concrete); gb.box(bx, f * fh + 0.05, z0 - 1.2, bx + 3.2, f * fh + 1.05, z0 - 1.15, '#2b2d31'); }
-    doorway(gb, LW / 2, z0, '#2b2d31', '#e8e4dc', true);
-    gb.box(LW / 2 - 1.6, 3.0, z0 - 1.6, LW / 2 + 1.6, 3.2, z0, '#2b2d31');
-    yardTree(gb, 2.5, LD - 2, r); yardTree(gb, LW - 2.5, LD - 2, r);
-    for (let k = 0; k < 4; k++) parkedCar(gb, 3 + k * 4.6, LD - 1.5 - 0, true, r);
-  }
+
 
   // ---- low density commercial ----
   const AWN = ['#c8392e', '#2f6f9a', '#2f7a4a', '#d8a02b', '#5a3a6a', '#2a2d33', '#c8642a'];
@@ -768,106 +754,294 @@
     for (let k = 0; k < 4; k++) { const x = 2 + r() * (LW - 4), z = LD - 2 - r() * 3; gb.flat(x - 0.9, z - 0.4, x + 0.9, z + 0.4, 0.105, '#4a4c50'); }
   }
 
-  // ---- medium density apartments ----
-  GEN.rapt = function (gb, b, r, LW, LD) {
-    const lvl = b.level, tr = tierOf(lvl);
-    foundation(gb, LW, LD, b, tr === 0 ? '#8e8b84' : PAL.paved, tr === 0 ? M8.concrete : M8.paving);
-    const x0 = 1.0, x1 = LW - 1.0, z0 = tr === 2 ? 3.2 : 2.6, d = Math.min(LD - z0 - (LD > 15 ? 5 : 2.5), 15);
-    const fh = 3.0, floors = 3 + lvl + (tr === 2 ? 1 : 0), H = floors * fh;
-    if (tr === 0) {
-      // tired walk-up slab: beige panels or brown brick, AC units in windows, dishes, exterior stair
-      const wall = U.pick(['#c9b99a', '#b8a888', '#a89880', '#9a7a62', '#c8bfa8'], r);
-      gb.box(x0, 0, z0, x1, H, z0 + d, wall, 1, { vb: 0.4 });
-      gb.box(x0, 0, z0 - 0.02, x1, 0.9, z0 + d + 0.02, '#7a756c', M8.concrete);           // grimy base
-      for (let f = 1; f < floors; f++) gb.box(x0 - 0.05, f * fh - 0.12, z0 - 0.06, x1 + 0.05, f * fh + 0.08, z0, '#a8a090', M8.concrete);
-      for (let f = 0; f < floors; f++) for (let x = x0 + 1.4; x < x1 - 1; x += 2.9) if (r() < 0.35) acBox(gb, x, f * fh + 0.95, z0, -1);
-      for (let f = 1; f < floors; f++) if (r() < 0.5) dish(gb, x0 + 1 + r() * (x1 - x0 - 2), f * fh + 1.6, z0 - 0.2, -1);
-      balconies(gb, (x0 + x1) / 2 - 1.6, (x0 + x1) / 2 + 1.6, fh, floors - 1, fh, z0, 1.0, 0, '#a8a090');
-      doorway(gb, (x0 + x1) / 2, z0, '#5a4a3a', '#8a857c', true);
-      gb.box(x0 - 0.15, H, z0 - 0.15, x1 + 0.15, H + 0.5, z0 + d + 0.15, '#6d6a64', M8.concrete);
-      roofJunk(gb, x0, z0, x1, z0 + d, H + 0.5, r, true);
-      chainFence(gb, 0.3, z0 + d + 0.4, LW - 0.3, LD - 0.3);
-      grungeLot(gb, LW, LD, r);
-      if (LD > 15) for (let k = 0; k < Math.floor((LW - 4) / 2.8); k++) if (r() < 0.6) parkedVeh(gb, U.pick(['car', 'car', 'van']), 2.4 + k * 2.8, LD - 3.2, true, U.pick(['#7a6a5a', '#5a6a6e', '#8a7a4a', '#6e6a62', '#4a5560'], r));
-    } else if (tr === 1) {
-      // brick mid-rise with bays, cornice, canopy and trees
-      const [wall, wm] = U.pick(ROW_WALL.slice(0, 5), r);
-      gb.box(x0, 0, z0, x1, 3.6, z0 + d, '#cfcac0', 3 + M8.stucco);
-      gb.box(x0, 3.6, z0, x1, H, z0 + d, wall, 1 + wm, { vb: 0.5 });
-      for (let k = 0; k < Math.max(1, Math.floor((x1 - x0) / 7)); k++) { const bx = x0 + 1.4 + k * 7; gb.box(bx, 3.6, z0 - 0.9, bx + 2.8, H - 0.6, z0, wall, 1 + wm, { vb: 0.5 }); }
-      gb.box(x0 - 0.3, H, z0 - 0.4, x1 + 0.3, H + 0.8, z0 + d + 0.3, '#e8e4dc', M8.concrete);
-      doorway(gb, LW / 2, z0, '#2b2d31', '#e8e4dc', true);
-      canopy(gb, LW / 2 - 1.6, LW / 2 + 1.6, z0 - 1.6, z0, 3.0, '#2b2d31');
-      roofJunk(gb, x0, z0, x1, z0 + d, H + 0.8, r, false);
-      treesAlong(gb, 2.5, LW - 2.5, 1.2, r);
-      if (LD > 15) for (let k = 0; k < Math.floor((LW - 4) / 2.8); k++) if (r() < 0.7) parkedCar(gb, 2.4 + k * 2.8, LD - 3, true, r);
-    } else {
-      // new build: white render and timber cladding, big windows, glass balconies, roof garden, solar
-      const wall = U.pick(['#eceae4', '#e2e0da', '#d8d6d0', '#3a3d42'], r), wood = '#a0703f';
-      gb.box(x0, 0, z0, x1, 4.0, z0 + d, '#2f3236', 2, { vb: 0.3 });
-      gb.box(x0, 4.0, z0, x1, H, z0 + d, wall, 2, { vb: 0.5 });
-      for (let k = 0; k < Math.max(1, Math.floor((x1 - x0) / 6)); k++) gb.box(x0 + 0.6 + k * 6, 4, z0 - 0.08, x0 + 2.2 + k * 6, H, z0, wood, M8.wood);
-      balconies(gb, x0 + 2.6, x1 - 0.6, 4 + fh, floors - 2, fh, z0, 1.4, 1, '#d8d6d0');
-      glassDoor(gb, x0 + 1.4, z0, 1.6);
-      gb.box(x0 - 0.1, H, z0 - 0.1, x1 + 0.1, H + 0.45, z0 + d + 0.1, '#2a2d31');
-      roofGarden(gb, x0 + 0.6, z0 + 0.6, (x0 + x1) / 2, z0 + d - 0.6, H + 0.45, r);
-      solar(gb, (x0 + x1) / 2 + 0.6, z0 + 1, x1 - 0.6, z0 + d - 1, H + 0.45);
-      gb.flat(0.6, 0.4, LW - 0.6, z0 - 1.5, 0.11, '#6b9444', M8.lawn);
-      shrubs(gb, 1.2, LW - 1.2, 1.0, r); bikeRack(gb, LW - 3.6, z0 - 0.8);
-      if (LD > 15) gb.flat(0.6, z0 + d + 0.6, LW - 0.6, LD - 0.6, 0.11, '#6b9444', M8.lawn), treesAlong(gb, 3, LW - 3, LD - 2.2, r);
+  // ---- facade kit --------------------------------------------------------------------------------------
+  // Real 3D facades instead of windows painted onto a box. A face is recessed glazing with the wall built in
+  // front of it as piers (between window columns) and bands (sill + lintel between floors), so every window
+  // has a reveal that catches light and casts shadow, and lights up at night pane by pane. The box count is
+  // columns + floors per face, so even a 30-storey tower stays cheap.
+  function faceBox(gb, face, plane) {
+    const out = face === 0 || face === 2 ? -1 : 1;
+    return (u0, v0, u1, v1, d0, d1, col, st) => {
+      const p0 = plane + out * d0, p1 = plane + out * d1;
+      if (face < 2) gb.box(u0, v0, Math.min(p0, p1), u1, v1, Math.max(p0, p1), col, st);
+      else gb.box(Math.min(p0, p1), v0, u0, Math.max(p0, p1), v1, u1, col, st);
+    };
+  }
+  // o: fh floor height, bay column width, pier width, sill / head (solid wall below / above each window),
+  //    depth (reveal), wall + wm, glass tint, frame colour, mull (centre mullion), sills (stone sill colour),
+  //    cell(f, k) -> null | colour of an infill panel | 'wall' for a blank cell, balc(f, k) -> balcony kind
+  function gridFace(gb, face, a0, a1, y0, y1, plane, o) {
+    const B = faceBox(gb, face, plane);
+    const fh = o.fh || 3, floors = Math.max(1, Math.round((y1 - y0) / fh)), n = Math.max(1, Math.round((a1 - a0) / (o.bay || 2.4)));
+    const bw = (a1 - a0) / n, pw = Math.min(o.pier !== undefined ? o.pier : 0.4, bw * 0.8), dep = o.depth || 0.22;
+    const sill = o.sill !== undefined ? o.sill : 0.9, head = o.head !== undefined ? o.head : 0.35;
+    const wall = o.wall, wm = o.wm || 0, fr = o.frame || '#2a2d31';
+    B(a0, y0, a1, y1, 0.01, 0.03, o.glass || '#fff', 9);
+    for (let k = 0; k <= n; k++) { const a = a0 + k * bw; B(Math.max(a0, a - pw / 2), y0, Math.min(a1, a + pw / 2), y1, 0.01, dep, wall, wm); }
+    for (let f = 0; f <= floors; f++) {
+      const y = y0 + f * fh, lo = f === 0 ? y0 : Math.max(y0, y - head), hi = f === floors ? y1 : Math.min(y1, y + sill);
+      if (hi > lo + 0.01) B(a0, lo, a1, hi, 0.01, dep * 0.94, wall, wm);
+      if (f < floors && o.frame !== null) B(a0, y + sill - 0.05, a1, y + sill + 0.02, 0.02, 0.07, fr); // bottom rail of the frames
     }
+    if (o.mull !== false) for (let k = 0; k < n; k++) { const c = a0 + (k + 0.5) * bw; B(c - 0.035, y0, c + 0.035, y1, 0.02, 0.07, fr); }
+    for (let f = 0; f < floors; f++) for (let k = 0; k < n; k++) {
+      const u0 = a0 + k * bw + pw / 2, u1 = a0 + (k + 1) * bw - pw / 2, v0 = y0 + f * fh + sill, v1 = y0 + (f + 1) * fh - head;
+      const c = o.cell ? o.cell(f, k, n, floors) : null;
+      if (c === 'wall') B(u0, v0, u1, v1, 0.01, dep * 0.9, wall, wm);
+      else if (c) B(u0, v0, u1, v1, 0.01, 0.08, c, c === o.wood ? M8.wood : M8.metal);
+      if (o.sills && c !== 'wall') B(u0 - 0.1, v0 - 0.09, u1 + 0.1, v0, 0.01, dep + 0.1, o.sills, M8.concrete);
+      if (o.balc) { const kd = o.balc(f, k, n, floors); if (kd !== null && kd !== undefined) balcony(B, u0 - pw * 0.3, u1 + pw * 0.3, v0 - sill, dep, kd, o.balcCol); }
+      if (o.ac && f > 0 && o.ac(f, k)) B((u0 + u1) / 2 - 0.35, v0 - 0.05, (u0 + u1) / 2 + 0.35, v0 + 0.42, 0.03, 0.5, '#c4c4bc', M8.metal);
+    }
+  }
+  // a single balcony slab in front of a cell: kind 0 iron railing, 1 glass, 2 solid parapet, 3 juliet rail
+  function balcony(B, u0, u1, y, dep, kind, col) {
+    const D = kind === 3 ? dep + 0.3 : dep + 1.25;
+    if (kind !== 3) B(u0, y - 0.16, u1, y + 0.02, dep * 0.5, D, col || '#c8c4ba', M8.concrete);
+    if (kind === 1) { B(u0, y + 0.02, u1, y + 1.05, D - 0.04, D, '#fff', 9); B(u0, y + 1.02, u1, y + 1.1, D - 0.07, D + 0.03, '#cfd3d6', M8.metal); }
+    else if (kind === 2) B(u0, y + 0.02, u1, y + 1.0, D - 0.14, D, col || '#c8c4ba', M8.concrete);
+    else {
+      const yy = kind === 3 ? y + 0.9 : y;
+      B(u0, yy + 0.95, u1, yy + 1.02, D - 0.05, D + 0.01, '#2b2d31');
+      for (let u = u0 + 0.05; u <= u1; u += 0.32) B(u - 0.02, yy + 0.02, u + 0.02, yy + 0.98, D - 0.03, D - 0.0, '#2b2d31');
+      if (kind === 3) B(u0, yy - 0.04, u1, yy + 0.04, dep * 0.6, D, '#2b2d31');
+    }
+  }
+  // a block with modeled facades on the given faces (default all four). Faces: 0 front z0, 1 back z1, 2 left x0, 3 right x1
+  function gridBox(gb, x0, z0, x1, z1, y0, y1, o, faces) {
+    gb.box(x0 + 0.02, y0, z0 + 0.02, x1 - 0.02, y1, z1 - 0.02, o.wall, o.wm || 0, { top: o.roof || '#55524c', topSt: M8.gravel });
+    for (const f of faces || [0, 1, 2, 3]) {
+      const oo = o.faceOpts && o.faceOpts[f] ? Object.assign({}, o, o.faceOpts[f]) : o;
+      if (f === 0) gridFace(gb, 0, x0, x1, y0, y1, z0, oo);
+      else if (f === 1) gridFace(gb, 1, x0, x1, y0, y1, z1, oo);
+      else if (f === 2) gridFace(gb, 2, z0, z1, y0, y1, x0, oo);
+      else gridFace(gb, 3, z0, z1, y0, y1, x1, oo);
+    }
+  }
+  // stepped cornice around a block, with optional dentils along the front
+  function cornice(gb, x0, z0, x1, z1, y, col, dentil) {
+    gb.box(x0 - 0.12, y, z0 - 0.12, x1 + 0.12, y + 0.22, z1 + 0.12, col, M8.concrete);
+    gb.box(x0 - 0.32, y + 0.22, z0 - 0.32, x1 + 0.32, y + 0.42, z1 + 0.32, col, M8.concrete);
+    gb.box(x0 - 0.45, y + 0.42, z0 - 0.45, x1 + 0.45, y + 0.6, z1 + 0.45, col, M8.concrete);
+    if (dentil) for (let x = x0 + 0.1; x < x1 - 0.1; x += 0.42) gb.box(x, y + 0.02, z0 - 0.3, x + 0.2, y + 0.2, z0 - 0.12, col, M8.concrete);
+  }
+  function parapet(gb, x0, z0, x1, z1, y, h, col, wm) {
+    const t = 0.25;
+    gb.box(x0, y, z0, x1, y + h, z0 + t, col, wm); gb.box(x0, y, z1 - t, x1, y + h, z1, col, wm);
+    gb.box(x0, y, z0 + t, x0 + t, y + h, z1 - t, col, wm); gb.box(x1 - t, y, z0 + t, x1, y + h, z1 - t, col, wm);
+    gb.box(x0 - 0.06, y + h, z0 - 0.06, x1 + 0.06, y + h + 0.1, z0 + t + 0.06, '#bdb8ae', M8.concrete);
+    gb.box(x0 - 0.06, y + h, z1 - t - 0.06, x1 + 0.06, y + h + 0.1, z1 + 0.06, '#bdb8ae', M8.concrete);
+    gb.box(x0 - 0.06, y + h, z0, x0 + t + 0.06, y + h + 0.1, z1, '#bdb8ae', M8.concrete);
+    gb.box(x1 - t - 0.06, y + h, z0, x1 + 0.06, y + h + 0.1, z1, '#bdb8ae', M8.concrete);
+  }
+  // a lobby entrance on the front plane z: glazed doors in a deep reveal with a canopy, number and buzzer
+  function lobby(gb, cx, z, w, h, frameCol, canopyCol, r) {
+    gb.box(cx - w / 2 - 0.25, 0, z - 0.06, cx + w / 2 + 0.25, h + 0.25, z + 0.01, frameCol);
+    gb.box(cx - w / 2, 0, z - 0.1, cx + w / 2, h, z - 0.05, '#fff', 9);
+    gb.box(cx - 0.04, 0, z - 0.13, cx + 0.04, h, z - 0.08, frameCol);
+    gb.box(cx - w / 2, 2.2, z - 0.13, cx + w / 2, 2.27, z - 0.08, frameCol);
+    for (const s of [-0.18, 0.18]) gb.box(cx + s - 0.02, 0.95, z - 0.2, cx + s + 0.02, 1.35, z - 0.13, '#c9ccd0', M8.metal); // door pulls
+    gb.box(cx - w / 2 - 0.8, h + 0.3, z - 1.8, cx + w / 2 + 0.8, h + 0.55, z, canopyCol, M8.concrete);
+    gb.box(cx - w / 2 - 0.8, h + 0.25, z - 1.82, cx + w / 2 + 0.8, h + 0.3, z - 1.75, '#fff', 8);       // downlight strip
+    gb.box(cx + w / 2 + 0.35, 1.1, z - 0.1, cx + w / 2 + 0.6, 1.5, z - 0.04, '#9aa0a6', M8.metal);     // buzzer panel
+    gb.box(cx - 0.4, h + 0.6, z - 0.1, cx + 0.4, h + 1.0, z - 0.04, '#e8e6e0', 15);                    // street number
+    for (let k = 0; k < 3; k++) gb.box(cx - w / 2 - 0.4, 0, z - 0.9 - k * 0.35 + 0.35, cx + w / 2 + 0.4, 0.18 - k * 0.06, z - 0.55 - k * 0.35 + 0.35, '#b8b2a6', M8.concrete);
+  }
+
+  // ---- medium density apartments: two designs per tier ----
+  //  tier 0 (level 1-2): a tired 70s brown-brick walk-up, or a stained precast panel block with loggias
+  //  tier 1 (level 3):   a pre-war red-brick building with stone base, bays, cornice and iron balconies, or the
+  //                       same with a slate mansard and dormers
+  //  tier 2 (level 4-5): a white-render and timber block with floor-to-ceiling glass and a setback penthouse,
+  //                       or a charcoal-brick block with deep bronze-framed openings and recessed loggias
+  GEN.rapt = function (gb, b, r, LW, LD) {
+    const lvl = b.level, tr = tierOf(lvl), alt = r() < 0.5;
+    foundation(gb, LW, LD, b, tr === 0 ? '#8e8b84' : PAL.paved, tr === 0 ? M8.concrete : M8.paving);
+    const x0 = 1.0, x1 = LW - 1.0, z0 = tr === 2 ? 3.4 : 3.0, d = Math.min(LD - z0 - (LD > 15 ? 5.5 : 2.2), 14), z1 = z0 + d;
+    const fh = 3.0, floors = 3 + Math.floor((lvl - 1) / 2) + (r() < 0.4 ? 1 : 0) + (tr === 1 && alt ? 1 : 0), H = floors * fh, cx = (x0 + x1) / 2;
+    if (tr === 0) {
+      if (!alt) {
+        const wall = U.pick(['#7a5a44', '#6e4e3a', '#86624a', '#7a6250'], r);
+        const o = { fh, bay: 2.7, pier: 1.25, sill: 1.0, head: 0.55, depth: 0.16, wall, wm: M8.brick, frame: '#a8aaa6', sills: '#9a958a', glass: '#c9d0d4',
+          ac: (f, k) => r() < 0.28, balc: (f, k, n) => f > 0 && k % 3 === 1 ? 0 : null, balcCol: '#a8a090' };
+        gridBox(gb, x0, z0, x1, z1, 0, H, o);
+        // stair core with a glass-block strip, entrance canopy
+        gb.box(cx - 1.5, 0, z0 - 1.1, cx + 1.5, H + 1.6, z0 + 0.1, wall, M8.brick);
+        gb.box(cx - 0.45, 3.2, z0 - 1.16, cx + 0.45, H - 0.4, z0 - 1.1, '#d7dcd6', M8.tile);
+        lobby(gb, cx, z0 - 1.1, 1.6, 2.4, '#5a5048', '#8a857c', r);
+        gb.box(x0, 0, z0 - 0.05, x1, 0.8, z1 + 0.05, '#6e6a62', M8.concrete);                      // grimy plinth
+        for (let k = 0; k < 4; k++) { const sx = x0 + 0.5 + r() * (x1 - x0 - 1); gb.box(sx, 0.8, z0 - 0.2, sx + 0.4 + r() * 0.6, H * (0.3 + r() * 0.5), z0 - 0.17, '#5e544a', M8.concrete); }
+        for (let f = 1; f < floors; f++) if (r() < 0.45) dish(gb, x0 + 1 + r() * (x1 - x0 - 2), f * fh + 1.8, z0 - 0.3, -1);
+      } else {
+        const wall = U.pick(['#c9b99a', '#b8a888', '#c8bfa8', '#bdb4a0'], r);
+        const o = { fh, bay: 3.0, pier: 0.5, sill: 1.05, head: 0.45, depth: 0.2, wall, wm: M8.concrete, frame: '#8a8d90', glass: '#c2cace',
+          balc: (f, k, n) => f > 0 && (k === 1 || k === n - 2) ? 2 : null, balcCol: '#b0a690', ac: (f, k) => r() < 0.22 };
+        gridBox(gb, x0, z0, x1, z1, 0, H, o);
+        for (let f = 1; f < floors; f++) gb.box(x0 - 0.04, f * fh - 0.04, z0 - 0.26, x1 + 0.04, f * fh + 0.04, z0 - 0.2, '#9e9480', M8.concrete); // panel joints
+        lobby(gb, cx, z0 - 0.2, 1.8, 2.4, '#4a4d52', '#7a756c', r);
+        for (let k = 0; k < 5; k++) { const sx = x0 + 0.4 + r() * (x1 - x0 - 1); gb.box(sx, 0.4, z0 - 0.24, sx + 0.3 + r() * 0.5, H * (0.25 + r() * 0.6), z0 - 0.21, '#8a8270', M8.concrete); }
+        // laundry lines on a few loggias
+        for (let f = 1; f < floors; f++) if (r() < 0.4) { const lx = x0 + 3 + r() * (x1 - x0 - 6); for (let q = 0; q < 4; q++) gb.box(lx + q * 0.4, f * fh + 0.9, z0 - 1.2, lx + q * 0.4 + 0.3, f * fh + 1.5, z0 - 1.17, U.pick(['#e8e4dc', '#c8392e', '#2f6f9a', '#e3c23a'], r)); }
+      }
+      parapet(gb, x0, z0, x1, z1, H, 0.7, '#6d6a64', M8.concrete);
+      gb.box(cx - 2, H, z0 + 3, cx + 2, H + 2.6, z0 + 6.5, '#8a857c', M8.concrete);                  // roof stair hut
+      roofJunk(gb, x0 + 0.5, z0 + 0.5, x1 - 0.5, z1 - 0.5, H, r, true);
+      chainFence(gb, 0.3, z1 + 0.4, LW - 0.3, LD - 0.3);
+      grungeLot(gb, LW, LD, r);
+      if (LD > 15) for (let k = 0; k < Math.floor((LW - 4) / 2.8); k++) if (r() < 0.6) parkedVeh(gb, U.pick(['car', 'car', 'van'], r), 2.4 + k * 2.8, LD - 3.2, true, U.pick(['#7a6a5a', '#5a6a6e', '#8a7a4a', '#6e6a62', '#4a5560'], r));
+      gb.box(1.0, 0, 0.5, 2.6, 1.3, 1.4, '#3f5a3a', M8.metal);                                       // dumpster by the curb
+      return;
+    }
+    if (tr === 1) {
+      const [wall, wm] = U.pick([['#9c5a3c', M8.brick], ['#8a4b34', M8.brick], ['#b06b4b', M8.brick], ['#a8735a', M8.brick], ['#d8cbb0', M8.stucco]], r);
+      const stone = '#e3dccd', base = '#cfc6b2';
+      const top = alt ? H - fh : H; // the mansard version puts the top floor in the roof
+      // rusticated stone ground floor with arched-looking openings
+      gridBox(gb, x0, z0, x1, z1, 0, 3.6, { fh: 3.6, bay: 2.6, pier: 0.9, sill: 0.7, head: 0.6, depth: 0.25, wall: base, wm: M8.stucco, frame: '#2b2d31' }, [0, 2, 3]);
+      for (let y = 0.45; y < 3.6; y += 0.45) gb.box(x0 - 0.27, y - 0.03, z0 - 0.27, x1 + 0.27, y, z0 - 0.24, '#b8ae98', M8.concrete);
+      gb.box(x0 - 0.2, 3.5, z0 - 0.35, x1 + 0.2, 3.75, z1 + 0.2, stone, M8.concrete);                // string course
+      gridBox(gb, x0, z0, x1, z1, 3.75, top, { fh, bay: 2.6, pier: 1.05, sill: 0.95, head: 0.5, depth: 0.2, wall, wm, frame: '#f2efe8', sills: stone,
+        balc: (f, k, n) => (k + f) % 3 === 0 ? 3 : (f === 2 && k % 2 === 0 ? 0 : null) });
+      // two projecting bays up the front
+      const nb = Math.max(1, Math.floor((x1 - x0) / 9));
+      for (let q = 0; q < nb; q++) {
+        const bx = x0 + (x1 - x0) * (q + 0.5) / nb;
+        gridBox(gb, bx - 1.5, z0 - 0.9, bx + 1.5, z0, 3.75, top - 0.3, { fh, bay: 1.5, pier: 0.32, sill: 0.95, head: 0.5, depth: 0.15, wall, wm, frame: '#f2efe8', sills: stone }, [0, 2, 3]);
+        gb.box(bx - 1.65, top - 0.3, z0 - 1.05, bx + 1.65, top - 0.05, z0, stone, M8.concrete);
+      }
+      cornice(gb, x0, z0, x1, z1, top, stone, true);
+      if (alt) {
+        const rc = U.pick(['#3d4650', '#4b4f57', '#2f3640'], r), my = top + 0.6;
+        gb.quad([x1, my, z0], [x0, my, z0], [x0, my + fh, z0 + 1.0], [x1, my + fh, z0 + 1.0], rc, M8.shingle);
+        gb.quad([x0, my, z1], [x1, my, z1], [x1, my + fh, z1 - 1.0], [x0, my + fh, z1 - 1.0], rc, M8.shingle);
+        for (const [ex, sg] of [[x0, -1], [x1, 1]]) { gb.quad([ex, my, z0], [ex, my, z1], [ex, my + fh, z1 - 1.0], [ex, my + fh, z0 + 1.0], rc, M8.shingle); gb.quad([ex, my, z1], [ex, my, z0], [ex, my + fh, z0 + 1.0], [ex, my + fh, z1 - 1.0], rc, M8.shingle); }
+        gb.box(x0, my + fh, z0 + 1.0, x1, my + fh + 0.12, z1 - 1.0, '#4a4844', M8.gravel);
+        for (let x = x0 + 1.6; x < x1 - 1; x += 2.6) {
+          gb.box(x - 0.6, my + 0.2, z0 + 0.25, x + 0.6, my + 2.0, z0 + 0.9, stone, M8.concrete);
+          win(gb, 0, x, my + 0.5, z0 + 0.24, 0.75, 1.25, { trim: '#f2efe8' });
+          gb.pyr(x - 0.75, z0 + 0.15, x + 0.75, z0 + 1.0, my + 2.0, 0.5, rc);
+        }
+        for (const x of [x0 + 2, x1 - 2]) chimney(gb, x, z0 + d * 0.6, my + fh - 0.5, my + fh + 1.4, wall);
+      } else {
+        parapet(gb, x0, z0, x1, z1, top + 0.6, 0.5, wall, wm);
+        roofJunk(gb, x0 + 0.5, z0 + 0.5, x1 - 0.5, z1 - 0.5, top + 0.6, r, false);
+        gb.box(cx - 1.6, top + 0.6, z0 + 3, cx + 1.6, top + 3.0, z0 + 6, wall, wm);
+      }
+      // entrance portico with columns and steps, front garden behind iron railings
+      gb.box(cx - 1.9, 0, z0 - 2.0, cx + 1.9, 0.3, z0, '#b8b2a6', M8.concrete);
+      for (const sx of [-1.5, 1.5]) gb.cyl(cx + sx, 0.3, z0 - 1.6, 0.2, 3.0, 10, stone, M8.concrete);
+      gb.box(cx - 2.0, 3.3, z0 - 2.0, cx + 2.0, 3.75, z0, stone, M8.concrete);
+      lobby(gb, cx, z0 - 0.26, 1.5, 2.6, '#2b2d31', stone, r);
+      for (const [a, c] of [[0.5, cx - 2.2], [cx + 2.2, LW - 0.5]]) { gb.box(a, 0, 0.5, c, 0.45, 0.75, stone, M8.concrete); for (let x = a + 0.15; x < c; x += 0.2) gb.box(x, 0.45, 0.58, x + 0.03, 1.15, 0.66, '#1c1d20'); gb.flat(a + 0.1, 0.8, c - 0.1, z0 - 0.35, 0.12, '#4f7d34', M8.lawn); }
+      shrubs(gb, 0.9, cx - 2.6, z0 - 0.8, r); shrubs(gb, cx + 2.8, LW - 0.9, z0 - 0.8, r);
+      treesAlong(gb, 2.5, LW - 2.5, LD - 1.6, r);
+      if (LD > 15) for (let k = 0; k < Math.floor((LW - 4) / 2.8); k++) if (r() < 0.7) parkedCar(gb, 2.4 + k * 2.8, LD - 3.6, true, r);
+      return;
+    }
+    // tier 2: new build
+    if (!alt) {
+      const wall = U.pick(['#eeece6', '#e6e3dc', '#f2f0ea'], r), wood = '#a8784a';
+      const pent = H - fh;
+      gb.box(x0, 0, z0, x1, 4.0, z1, '#2f3236', 0, { top: '#55524c' });
+      ribbon(gb, x0 + 0.3, x1 - 0.3, 0.3, 3.7, z0, 0, 1.6, '#1c1d20');
+      lobby(gb, x0 + 2.4, z0 - 0.05, 1.8, 2.6, '#1c1d20', '#2a2d31', r);
+      gridBox(gb, x0, z0, x1, z1, 4.0, pent, { fh, bay: 2.4, pier: 0.28, sill: 0.25, head: 0.3, depth: 0.35, wall, wm: M8.stucco, frame: '#1c1d20', glass: '#d8e2e8', wood,
+        cell: (f, k, n) => k % 2 === 0 && k !== 0 && k !== n - 1 ? wood : null, balc: (f, k, n) => k % 2 === 1 ? 1 : null, balcCol: '#e2e0da' });
+      // setback penthouse with a terrace, pergola and planters
+      gridBox(gb, x0 + 1.6, z0 + 2.2, x1 - 1.6, z1 - 0.6, pent, H, { fh, bay: 1.8, pier: 0.12, sill: 0.1, head: 0.3, depth: 0.12, wall: '#2a2d31', frame: '#1c1d20', glass: '#d8e2e8' });
+      gb.box(x0, pent, z0, x1, pent + 0.1, z1, '#cfc6b2', M8.paving);
+      gb.box(x0, pent + 0.1, z0 - 0.02, x1, pent + 1.15, z0 + 0.04, '#fff', 9);
+      for (let x = x0 + 0.8; x < x1 - 0.8; x += 2.2) planterBox(gb, x, z0 + 0.4);
+      for (const x of [x0 + 2, x0 + 5]) for (const z of [z0 + 0.6, z0 + 2]) gb.box(x - 0.07, pent + 0.1, z - 0.07, x + 0.07, pent + 2.6, z + 0.07, wood, M8.wood);
+      for (let k = 0; k < 7; k++) gb.box(x0 + 1.8, pent + 2.6, z0 + 0.4 + k * 0.3, x0 + 5.2, pent + 2.7, z0 + 0.5 + k * 0.3, wood, M8.wood);
+      roofGarden(gb, x0 + 2, z0 + 2.6, cx, z1 - 1, H, r);
+      solar(gb, cx + 0.4, z0 + 2.6, x1 - 2, z1 - 1, H);
+    } else {
+      const wall = U.pick(['#3a3836', '#2f2e2c', '#4a4440'], r), bronze = '#8a6a42';
+      gridBox(gb, x0, z0, x1, z1, 0, H, { fh, bay: 3.2, pier: 0.9, sill: 0.35, head: 0.45, depth: 0.5, wall, wm: M8.brick, frame: bronze, glass: '#cdd8de',
+        balc: (f, k, n) => f > 0 && (k + f) % 2 === 0 ? 3 : null });
+      for (let f = 1; f <= floors; f++) gb.box(x0 - 0.05, f * fh - 0.08, z0 - 0.55, x1 + 0.05, f * fh + 0.02, z0 - 0.5, bronze, M8.metal); // bronze floor lines
+      lobby(gb, cx, z0 - 0.5, 2.2, 2.8, bronze, '#2a2826', r);
+      gb.box(x0 - 0.15, H, z0 - 0.6, x1 + 0.15, H + 0.9, z1 + 0.15, wall, M8.brick);
+      gb.box(x0 - 0.2, H + 0.9, z0 - 0.65, x1 + 0.2, H + 1.0, z1 + 0.2, bronze, M8.metal);
+      roofGarden(gb, x0 + 1, z0 + 1, x1 - 1, z1 - 1, H, r);
+    }
+    // landscaped front: lawn strips, planters, bike racks, benches, young trees
+    gb.flat(0.6, 0.4, LW - 0.6, z0 - 2.2, 0.115, '#6b9444', M8.lawn);
+    gb.flat(cx - 1.4, 0.4, cx + 1.4, z0 - 0.3, 0.12, '#d9d4c6', M8.paving);
+    shrubs(gb, 1.2, cx - 2.2, 1.0, r); shrubs(gb, cx + 2.4, LW - 1.2, 1.0, r);
+    bikeRack(gb, LW - 4.2, z0 - 1.4); bench(gb, 3.2, z0 - 1.4, false);
+    if (LD > 15) { gb.flat(0.6, z1 + 0.6, LW - 0.6, LD - 0.6, 0.11, '#6b9444', M8.lawn); treesAlong(gb, 3, LW - 3, LD - 2.2, r); picnicTable(gb, cx, LD - 3.4); }
   };
 
   // ---- high density residential ----
+  //  tier 0: a raw-concrete slab tower on a parking podium, stained, with solid-parapet balconies and dishes
+  //  tier 1: a brick and limestone tower on a retail podium with iron balconies and a lit water-tower cap
+  //  tier 2: a glass tower with wraparound glass balconies, a planted sky garden setback and an LED crown
   GEN.rhigh = function (gb, b, r, LW, LD) {
     const lvl = b.level, tr = tierOf(lvl);
     foundation(gb, LW, LD, b, tr === 0 ? '#8e8b84' : PAL.paved, tr === 0 ? M8.concrete : M8.paving);
     const floors = 9 + lvl * 4 + Math.floor(r() * 6) + (LD > 25 ? 4 : 0), fh = 3.0;
     const cx = LW / 2, cz = LD / 2 - 0.5;
     if (tr === 0) {
-      // slab tower in raw concrete: stacked balconies with solid parapets, stains, dishes, a parking podium
-      const w = Math.min(LW - 4, 16), d = Math.min(LD - 6, 10), x0 = cx - w / 2, x1 = cx + w / 2, z0 = 3.5, z1 = z0 + d, H = floors * fh;
-      gb.box(1, 0, 1.2, LW - 1, 3.2, LD - 1.2, '#8a8780', 4 + M8.concrete);                 // parking podium
-      for (let x = 2; x < LW - 2; x += 3) gb.box(x, 0.4, 1.15, x + 2.2, 2.6, 1.2, '#1c1d20');
-      gb.box(x0, 3.2, z0, x1, H, z1, U.pick(['#b8b2a6', '#a8a298', '#c2bab0', '#9e988c'], r), 1, { vb: 0.2 });
-      for (let k = 0; k < 4; k++) { const sx = x0 + r() * w; gb.box(sx, 3.2, z0 - 0.03, sx + 0.6 + r() * 0.8, H * (0.4 + r() * 0.6), z0, '#7a7468', M8.concrete); } // water stains
-      for (const bx of [x0 + 1.2, x1 - 4.8]) balconies(gb, bx, bx + 3.6, 3.2 + fh, floors - 2, fh, z0, 1.2, 2, '#b4aea2');
-      for (let f = 2; f < floors; f += 1) if (r() < 0.45) dish(gb, x0 + 1.6 + r() * (w - 3), f * fh + 1.2, z0 - 1.25, -1);
-      for (let f = 2; f < floors; f++) for (let k = 0; k < 2; k++) if (r() < 0.3) acBox(gb, x0 + 5.5 + r() * (w - 11), f * fh + 0.95, z0, -1);
-      gb.box(x0 - 0.2, H, z0 - 0.2, x1 + 0.2, H + 0.6, z1 + 0.2, '#6d6a64', M8.concrete);
-      gb.box(cx - 2.2, H + 0.6, z0 + 2, cx + 2.2, H + 3.6, z0 + 6, '#8a8780', M8.concrete);       // lift tower
-      roofJunk(gb, x0, z0, x1, z1, H + 0.6, r, true);
+      const w = Math.min(LW - 4, 16), d = Math.min(LD - 6, 10.5), x0 = cx - w / 2, x1 = cx + w / 2, z0 = 3.6, z1 = z0 + d, H = 3.4 + floors * fh;
+      const wall = U.pick(['#b8b2a6', '#a8a298', '#c2bab0', '#9e988c'], r);
+      // parking podium: concrete frame with open bays and a ramp
+      gb.box(1, 0, 1.2, LW - 1, 3.4, LD - 1.2, '#8a8780', M8.concrete);
+      for (let x = 1.6; x < LW - 2; x += 3.1) { gb.box(x, 0.35, 1.14, x + 2.5, 2.7, 1.2, '#1c1d20'); gb.box(x + 0.4, 0.4, 1.0, x + 2.1, 0.5, 1.14, '#e3c23a'); }
+      gb.box(LW - 4.2, 0, 0.4, LW - 1.2, 0.25, 1.2, '#6d6a64', M8.concrete);
+      gridBox(gb, x0, z0, x1, z1, 3.4, H, { fh, bay: 2.9, pier: 0.7, sill: 1.0, head: 0.45, depth: 0.22, wall, wm: M8.concrete, frame: '#8a8d90', glass: '#c8d0d4',
+        balc: (f, k, n) => f > 0 && (k === 1 || k === n - 2) ? 2 : null, balcCol: '#b4aea2', ac: (f, k) => r() < 0.12 }, [0, 1, 2, 3]);
+      for (let k = 0; k < 5; k++) { const sx = x0 + r() * w; gb.box(sx, 3.4, z0 - 0.26, sx + 0.5 + r() * 0.8, H * (0.35 + r() * 0.6), z0 - 0.23, '#7a7468', M8.concrete); }
+      for (let f = 2; f < floors; f++) if (r() < 0.4) dish(gb, x0 + 1.6 + r() * (w - 3), 3.4 + f * fh + 1.2, z0 - 1.4, -1);
+      parapet(gb, x0, z0, x1, z1, H, 0.8, '#6d6a64', M8.concrete);
+      gb.box(cx - 2.2, H, z0 + 2.4, cx + 2.2, H + 3.4, z0 + 6.2, '#8a8780', M8.concrete);
+      roofJunk(gb, x0 + 0.5, z0 + 0.5, x1 - 0.5, z1 - 0.5, H, r, true);
+      gb.box(cx - 1.2, H + 3.4, z0 + 3, cx + 1.2, H + 5.2, z0 + 5.6, '#5a5852', M8.metal);           // antenna mast base
+      gb.cyl(cx, H + 5.2, z0 + 4.3, 0.12, 6, 6, '#9a9a9a');
       chainFence(gb, 0.3, 0.3, LW - 0.3, LD - 0.3, cx - 3, cx + 3);
-    } else if (tr === 1) {
-      // brick and concrete tower over a retail podium, regular balconies
-      const pod = U.pick(PAL.brick, r), tw = U.pick(['#d1cec6', '#c8c2b4', '#b8b4ab', '#a88468'], r);
-      gb.box(1, 0, 1, LW - 1, 4.2, LD - 3, pod, 3);
-      for (let k = 0; k < 3; k++) gb.box(2 + k * (LW - 4) / 3 + 0.3, 3.2, 0.7, 2 + (k + 1) * (LW - 4) / 3 - 0.3, 3.8, 1.0, U.pick(AWN, r), 5);
-      const s = 6.5 + r() * 1.5, H = 4.2 + floors * fh;
-      gb.box(cx - s, 4.2, cz - s, cx + s, H, cz + s, tw, 1, { vb: 0.3 });
-      balconies(gb, cx - s + 1, cx - s + 4.5, 4.2 + fh, floors - 1, fh, cz - s, 1.1, 0, '#c8c4ba');
-      balconies(gb, cx + s - 4.5, cx + s - 1, 4.2 + fh, floors - 1, fh, cz - s, 1.1, 0, '#c8c4ba');
-      gb.box(cx - s - 0.3, H, cz - s - 0.3, cx + s + 0.3, H + 0.9, cz + s + 0.3, '#5c5a56');
-      gb.box(cx - 2.5, H + 0.9, cz - 2.5, cx + 2.5, H + 3.6, cz + 2.5, '#8c8984');
-      roofJunk(gb, cx - s, cz - s, cx + s, cz + s, H + 0.9, r, false);
-      yardTree(gb, 2.5, LD - 1.6, r); yardTree(gb, LW - 2.5, LD - 1.6, r);
-    } else {
-      // glass tower with wraparound glass balconies, setbacks, sky garden and a lit crown
-      const s = 7 + r() * 1.2, h1 = 5 + floors * fh * (0.62 + r() * 0.1), H = 5 + floors * fh;
-      const glass = U.pick(['#8fa3b5', '#7d95a3', '#a7b6bf', '#6f8aa0'], r);
-      gb.box(1, 0, 1, LW - 1, 5, LD - 3, '#2f3236', 2, { vb: 0.2 });                          // glazed lobby podium
-      roofGarden(gb, 1.5, LD - 9, LW - 1.5, LD - 3.5, 5, r);
-      gb.box(cx - s, 5, cz - s, cx + s, h1, cz + s, glass, 2, { vb: 0.4 });
-      const nb = Math.floor((h1 - 5) / fh);
-      balconies(gb, cx - s, cx + s, 5 + fh, nb - 1, fh, cz - s, 1.3, 1, '#e2e0da');
-      gb.box(cx - s + 1.4, h1, cz - s + 1.4, cx + s - 1.4, h1 + 3, cz + s - 1.4, '#5f8a3e', M8.lawn); // sky garden floor
-      for (let k = 0; k < 4; k++) bush(gb, cx - s + 2.4 + k * (2 * s - 4.8) / 3, h1 + 0.4, cz - s + 2, 0.8);
-      gb.box(cx - s + 1.4, h1 + 3, cz - s + 1.4, cx + s - 1.4, H, cz + s - 1.4, glass, 2, { vb: 0.4 });
-      fins(gb, cx - s + 1.4, cx + s - 1.4, h1 + 3, H, cz - s + 1.4, 1.7, '#e8eaec');
-      gb.box(cx - s + 1.2, H, cz - s + 1.2, cx + s - 1.2, H + 2.4, cz + s - 1.2, '#e8eaec', M8.metal);
-      gb.box(cx - s + 1.15, H + 1.6, cz - s + 1.15, cx + s - 1.15, H + 1.9, cz + s - 1.15, '#8fd8ff', 15, { skip: 16 }); // LED crown
-      treesAlong(gb, 2.5, LW - 2.5, 0.9, r);
+      return;
     }
+    if (tr === 1) {
+      const pod = U.pick(PAL.brick, r), tw = U.pick(['#b06b4b', '#a8735a', '#c8b89a', '#9c5a3c'], r), stone = '#e3dccd';
+      // retail podium: modeled storefronts all round the front
+      gb.box(1, 0, 1, LW - 1, 4.6, LD - 3, pod, M8.brick, { top: '#55524c' });
+      const nu = Math.max(2, Math.floor((LW - 2) / 6.5));
+      for (let k = 0; k < nu; k++) { const a0 = 1 + (LW - 2) * k / nu, a1 = 1 + (LW - 2) * (k + 1) / nu; storefront(gb, a0 + 0.25, a1 - 0.25, 1, 4.2, U.pick(AWN, r), r, U.pick(['cafe', 'sign', 'plain', 'grocer'], r)); }
+      gb.box(0.8, 4.6, 0.8, LW - 0.8, 5.0, LD - 2.8, stone, M8.concrete);
+      const s = Math.min(6.8 + r() * 1.2, LW / 2 - 1.5), H = 5 + floors * fh;
+      gridBox(gb, cx - s, cz - s, cx + s, cz + s, 5.0, H, { fh, bay: 2.3, pier: 0.9, sill: 0.95, head: 0.5, depth: 0.2, wall: tw, wm: M8.brick, frame: '#f2efe8', sills: stone,
+        balc: (f, k, n) => f > 0 && f % 4 !== 3 && (k === 0 || k === n - 1) ? 0 : null });
+      for (let f = 4; f < floors; f += 4) gb.box(cx - s - 0.1, 5 + f * fh - 0.15, cz - s - 0.25, cx + s + 0.1, 5 + f * fh + 0.15, cz + s + 0.25, stone, M8.concrete); // belt courses
+      cornice(gb, cx - s, cz - s, cx + s, cz + s, H, stone, true);
+      gb.box(cx - 2.6, H + 0.6, cz - 2.6, cx + 2.6, H + 3.6, cz + 2.6, tw, M8.brick);
+      gb.cyl(cx + 3.6, H + 0.6, cz + 2.8, 1.3, 3.4, 12, '#7a5a3a', M8.wood);                          // timber water tank
+      gb.cone(cx + 3.6, H + 4.0, cz + 2.8, 1.45, 1.0, 12, '#4a4844');
+      lobby(gb, cx, 0.95, 2.0, 2.8, '#2b2d31', stone, r);
+      yardTree(gb, 2.5, LD - 1.6, r); yardTree(gb, LW - 2.5, LD - 1.6, r);
+      return;
+    }
+    const s = Math.min(7 + r() * 1.2, LW / 2 - 1.5), h1 = 5 + Math.round(floors * (0.62 + r() * 0.1)) * fh, H = 5 + floors * fh;
+    const glass = U.pick(['#8fa3b5', '#7d95a3', '#a7b6bf', '#6f8aa0'], r), white = '#e8eaec';
+    // glazed lobby podium with a canopy and a planted terrace on top
+    gb.box(1, 0, 1, LW - 1, 5, LD - 3, '#2f3236', 0, { top: '#55524c' });
+    ribbon(gb, 1.3, LW - 1.3, 0.2, 4.6, 1, 0, 1.5, '#1c1d20');
+    gb.box(cx - 4, 4.2, -0.6, cx + 4, 4.5, 1, white, M8.metal);
+    roofGarden(gb, 1.5, LD - 9, LW - 1.5, LD - 3.5, 5, r);
+    gridBox(gb, cx - s, cz - s, cx + s, cz + s, 5, h1, { fh, bay: 1.6, pier: 0.14, sill: 0.35, head: 0.25, depth: 0.12, wall: white, wm: M8.metal, frame: '#cfd3d6', glass, mull: false,
+      balc: (f, k, n) => f > 0 && (k + Math.floor(f / 3)) % 3 === 0 ? 1 : null, balcCol: '#e2e0da' });
+    // sky garden: open floor with planting and columns, then the setback upper tower
+    gb.box(cx - s, h1, cz - s, cx + s, h1 + 0.4, cz + s, '#cfc6b2', M8.paving);
+    gb.box(cx - s + 1.4, h1 + 0.4, cz - s + 1.4, cx + s - 1.4, h1 + 3, cz + s - 1.4, '#fff', 9);
+    for (const [ax, az] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) gb.box(cx + ax * (s - 0.4) - 0.25, h1 + 0.4, cz + az * (s - 0.4) - 0.25, cx + ax * (s - 0.4) + 0.25, h1 + 3, cz + az * (s - 0.4) + 0.25, white, M8.metal);
+    for (let k = 0; k < 6; k++) bush(gb, cx - s + 0.9 + (k % 3) * (2 * s - 1.8) / 2, h1 + 0.6, k < 3 ? cz - s + 0.8 : cz + s - 0.8, 0.8);
+    gb.box(cx - s, h1 + 0.4, cz - s - 0.02, cx + s, h1 + 1.45, cz - s + 0.04, '#fff', 9);
+    gridBox(gb, cx - s + 1.4, cz - s + 1.4, cx + s - 1.4, cz + s - 1.4, h1 + 3, H, { fh, bay: 1.5, pier: 0.16, sill: 0.3, head: 0.25, depth: 0.5, wall: white, wm: M8.metal, frame: '#cfd3d6', glass, mull: false });
+    gb.box(cx - s + 1.2, H, cz - s + 1.2, cx + s - 1.2, H + 2.4, cz + s - 1.2, white, M8.metal);
+    gb.box(cx - s + 1.15, H + 1.6, cz - s + 1.15, cx + s - 1.15, H + 1.9, cz + s - 1.15, '#8fd8ff', 15, { skip: 16 });
+    gb.cyl(cx, H + 2.4, cz, 0.35, 8, 6, '#d8dadc'); gb.box(cx - 0.25, H + 10.4, cz - 0.25, cx + 0.25, H + 10.9, cz + 0.25, '#f33', 7);
+    lobby(gb, cx, 0.95, 2.4, 3.2, '#1c1d20', white, r);
+    treesAlong(gb, 2.5, LW - 2.5, LD - 1.6, r);
   };
 
   // ---- high density commercial ----
@@ -878,7 +1052,10 @@
     if (tr === 0) {
       // dated plaza mall: beige panels, dark band windows, big box signs, roof clutter
       const H = 6 + lvl * 3.4 + (deep ? 6 : 0);
-      gb.box(1, 0, 4, LW - 1, H, LD - 1.5, U.pick(['#cfc4ae', '#bfb39c', '#d8cdb8'], r), 3 + M8.concrete, { vb: 0.8 });
+      const pw = U.pick(['#cfc4ae', '#bfb39c', '#d8cdb8'], r);
+      gb.box(1, 0, 4, LW - 1, H, LD - 1.5, pw, M8.concrete);
+      if (H > 7) gridFace(gb, 0, 1.2, LW - 1.2, 5.0, H - 0.8, 4, { fh: H - 5.8, bay: 3.2, pier: 0.6, sill: 0.6, head: 0.5, depth: 0.2, wall: pw, wm: M8.concrete, frame: '#3a3d42', glass: '#9aa8ae' });
+      for (let x = 1.2; x < LW - 1; x += 1.2) gb.box(x, 0.6, 3.92, x + 0.6, H - 0.4, 4.0, '#c2b7a0', M8.concrete); // ribbed panels
       for (let k = 0; k < Math.floor((LW - 2) / 6); k++) storefront(gb, 1.4 + k * 6, 6.8 + k * 6, 4, 4.2, U.pick(AWN, r), r, U.pick(['sign', 'plain'], r));
       for (let k = 0; k < 2; k++) signBoard(gb, 2 + k * (LW - 4) / 2, 2 + (k + 1) * (LW - 4) / 2 - 1, H - 2.0, H - 0.6, 4, U.pick(['#d8342a', '#1f6fd0', '#e8a21a'], r), '#ffffff', r);
       gb.box(0.8, H, 3.8, LW - 0.8, H + 0.5, LD - 1.3, '#6d6a64', M8.concrete);
@@ -887,21 +1064,25 @@
     } else if (tr === 1) {
       // retail podium with offices above
       const floors = (deep ? 8 : 3) + lvl * (deep ? 2 : 1) + Math.floor(r() * 3), H = 8.2 + floors * 3.6, inset = deep ? 3 : 1.5;
-      gb.box(1, 0, 1, LW - 1, 8.2, LD - 1.5, U.pick(PAL.conc, r), 3);
+      const pc = U.pick(PAL.conc, r);
+      gb.box(1, 0, 1, LW - 1, 8.2, LD - 1.5, pc, M8.concrete);
+      gridFace(gb, 0, 1.2, LW - 1.2, 4.8, 8.0, 1, { fh: 3.2, bay: 3.2, pier: 0.5, sill: 0.4, head: 0.4, depth: 0.2, wall: pc, wm: M8.concrete, frame: '#2a2d31' });
       for (let k = 0; k < Math.floor((LW - 2) / 6.5); k++) storefront(gb, 1.4 + k * 6.5, 7.4 + k * 6.5, 1, 4.6, U.pick(AWN, r), r, 'plain');
-      gb.box(1 + inset, 8.2, 1 + inset, LW - 1 - inset, H, LD - 1.5 - inset, U.pick(PAL.glass, r), 2, { vb: 0.4 });
+      gridBox(gb, 1 + inset, 1 + inset, LW - 1 - inset, LD - 1.5 - inset, 8.2, H, { fh: 3.6, bay: 1.8, pier: 0.18, sill: 0.8, head: 0.4, depth: 0.25, wall: '#d8dadc', wm: M8.metal, frame: '#5a6068', glass: U.pick(PAL.glass, r), mull: false });
       gb.box(1 + inset - 0.2, H, 1 + inset - 0.2, LW - 1 - inset + 0.2, H + 1.0, LD - 1.5 - inset + 0.2, '#4c4f55');
       gb.box(3, 8.6, 0.6, LW - 3, 10.2, 1.0, acc, 5);
       roofJunk(gb, 1 + inset, 1 + inset, LW - 1 - inset, LD - 1.5 - inset, H + 1, r, false);
     } else {
       // glass flagship: double-height storefronts, LED screens, terrace and a tower with a crown
       const floors = (deep ? 12 : 4) + lvl * (deep ? 3 : 1) + Math.floor(r() * 3), H = 10 + floors * 3.6, inset = deep ? 3.5 : 1.8;
-      gb.box(1, 0, 1.5, LW - 1, 10, LD - 1.5, '#2a2d31', 2, { vb: 0.2 });
+      gb.box(1, 0, 1.5, LW - 1, 10, LD - 1.5, '#2a2d31', 0, { top: '#55524c' });
+      gridFace(gb, 2, 1.5, LD - 1.5, 0.2, 9.6, 1, { fh: 9.4, bay: 2.2, pier: 0.12, sill: 0, head: 0.3, depth: 0.12, wall: '#2a2d31', frame: '#1c1d20' });
+      gridFace(gb, 3, 1.5, LD - 1.5, 0.2, 9.6, LW - 1, { fh: 9.4, bay: 2.2, pier: 0.12, sill: 0, head: 0.3, depth: 0.12, wall: '#2a2d31', frame: '#1c1d20' });
       ribbon(gb, 1.5, LW - 1.5, 0.4, 8.6, 1.5, 0, 2.4, '#1c1d20');
       gb.box(2, 6.5, 1.3, 2 + Math.min(8, LW * 0.4), 9.5, 1.45, '#3ad0ff', 15);                // LED screen
       gb.box(LW - 2 - Math.min(5, LW * 0.25), 6.8, 1.3, LW - 2, 9.2, 1.45, acc, 15);
       roofGarden(gb, 1.4, LD - 7, LW - 1.4, LD - 1.9, 10, r);
-      gb.box(1 + inset, 10, 1.5 + inset, LW - 1 - inset, H, LD - 7.5, U.pick(['#7d95a3', '#8fa3b5', '#5f7385'], r), 2, { vb: 0.4 });
+      gridBox(gb, 1 + inset, 1.5 + inset, LW - 1 - inset, LD - 7.5, 10, H, { fh: 3.6, bay: 1.5, pier: 0.12, sill: 0.5, head: 0.3, depth: 0.15, wall: '#e8eaec', wm: M8.metal, frame: '#cfd3d6', glass: U.pick(['#7d95a3', '#8fa3b5', '#5f7385'], r), mull: false });
       fins(gb, 1 + inset, LW - 1 - inset, 10, H, 1.5 + inset, 1.8, '#d8dadc');
       gb.box(1 + inset - 0.2, H, 1.5 + inset - 0.2, LW - 1 - inset + 0.2, H + 2.6, LD - 7.3, '#e8eaec', M8.metal);
       gb.box(1 + inset - 0.25, H + 1.8, 1.5 + inset - 0.25, LW - 1 - inset + 0.25, H + 2.1, LD - 7.25, acc, 15, { skip: 16 });
@@ -918,8 +1099,11 @@
     if (tr === 0) {
       // 1970s concrete grid block with dark windows and a surface car park
       const H = 4 + floors * 3.4 * 0.7;
-      gb.box(cx - sx, 0, cz - sz, cx + sx, H, cz + sz, U.pick(['#b8b2a6', '#c2bab0', '#a8a298'], r), 3 + M8.concrete, { vb: 0.6 });
-      for (let x = cx - sx; x <= cx + sx + 0.01; x += 2.1) gb.box(x - 0.15, 4, cz - sz - 0.25, x + 0.15, H, cz - sz, '#c9c2b4', M8.concrete);
+      const bc = U.pick(['#b8b2a6', '#c2bab0', '#a8a298'], r);
+      gb.box(cx - sx, 0, cz - sz, cx + sx, 4, cz + sz, '#7a756c', M8.concrete);
+      ribbon(gb, cx - sx + 0.4, cx + sx - 0.4, 0.4, 3.4, cz - sz, 0, 2.1, '#3a3d42');
+      // brutalist grid: deep precast fins and spandrels, dark recessed glass
+      gridBox(gb, cx - sx, cz - sz, cx + sx, cz + sz, 4, H, { fh: 3.4, bay: 2.1, pier: 0.45, sill: 1.1, head: 0.4, depth: 0.6, wall: bc, wm: M8.concrete, frame: '#4a4d52', glass: '#8a949a', mull: false });
       gb.box(cx - sx - 0.3, H, cz - sz - 0.3, cx + sx + 0.3, H + 0.8, cz + sz + 0.3, '#7a756c', M8.concrete);
       roofJunk(gb, cx - sx, cz - sz, cx + sx, cz + sz, H + 0.8, r, true);
       glassDoor(gb, cx, cz - sz - 0.25, 2.2);
@@ -927,20 +1111,23 @@
     } else if (tr === 1) {
       // blue glass box on a stone podium
       const H = 5 + floors * 3.6, glass = U.pick(PAL.glass, r);
-      gb.box(1.5, 0, 1.5, LW - 1.5, 5, LD - 1.5, '#c9c5bd', 3);
-      gb.box(cx - sx, 5, cz - sz, cx + sx, H, cz + sz, glass, 2, { vb: 1 });
+      gb.box(1.5, 0, 1.5, LW - 1.5, 5, LD - 1.5, '#c9c5bd', M8.concrete, { top: '#55524c' });
+      gridFace(gb, 0, 1.8, LW - 1.8, 0.3, 4.6, 1.5, { fh: 4.3, bay: 3.0, pier: 0.9, sill: 0, head: 0.5, depth: 0.3, wall: '#c9c5bd', wm: M8.concrete, frame: '#2a2d31' });
+      gridBox(gb, cx - sx, cz - sz, cx + sx, cz + sz, 5, H, { fh: 3.6, bay: 1.5, pier: 0.1, sill: 0.9, head: 0.25, depth: 0.1, wall: '#cfd3d6', wm: M8.metal, frame: '#9aa0a6', glass, mull: false });
       gb.box(cx - 3, H, cz - 3, cx + 3, H + 2.4, cz + 3, '#555a60');
       gb.box(cx - sx + 2.2, H - 1.2, cz - sz - 0.06, cx + sx - 2.2, H - 0.4, cz - sz, '#9fd3ff', 5);
       treesAlong(gb, 2.5, LW - 2.5, 0.9, r);
     } else {
       // modern tower: vertical fins, setbacks, glass lobby, plaza and a lit spire
       const H = 6 + floors * 3.7, h1 = 6 + (H - 6) * 0.55, h2 = 6 + (H - 6) * 0.82, glass = U.pick(['#6f8aa0', '#5f7385', '#8fa3b5', '#7d95a3'], r);
-      gb.box(cx - sx, 0, cz - sz, cx + sx, 6, cz + sz, '#2a2d31', 2, { vb: 0.2 });
-      gb.box(cx - sx, 6, cz - sz, cx + sx, h1, cz + sz, glass, 2, { vb: 0.4 });
+      gb.box(cx - sx, 0, cz - sz, cx + sx, 6, cz + sz, '#2a2d31', 0, { top: '#55524c' });
+      for (const [f, a0, a1, pl] of [[0, cx - sx, cx + sx, cz - sz], [1, cx - sx, cx + sx, cz + sz], [2, cz - sz, cz + sz, cx - sx], [3, cz - sz, cz + sz, cx + sx]]) gridFace(gb, f, a0, a1, 0.2, 5.8, pl, { fh: 5.6, bay: 2.4, pier: 0.12, sill: 0, head: 0.3, depth: 0.12, wall: '#2a2d31', frame: '#1c1d20' });
+      const gw = { fh: 3.7, bay: 1.6, pier: 0.1, sill: 0.85, head: 0.25, depth: 0.08, wall: '#1f2226', wm: M8.metal, frame: '#9aa0a6', glass, mull: false };
+      gridBox(gb, cx - sx, cz - sz, cx + sx, cz + sz, 6, h1, gw);
       fins(gb, cx - sx, cx + sx, 6, h1, cz - sz, 1.6);
-      gb.box(cx - sx + 1.6, h1, cz - sz + 1.6, cx + sx - 1.6, h2, cz + sz - 1.6, glass, 2, { vb: 0.4 });
+      gridBox(gb, cx - sx + 1.6, cz - sz + 1.6, cx + sx - 1.6, cz + sz - 1.6, h1, h2, gw);
       fins(gb, cx - sx + 1.6, cx + sx - 1.6, h1, h2, cz - sz + 1.6, 1.6);
-      gb.box(cx - sx + 3.2, h2, cz - sz + 3.2, cx + sx - 3.2, H, cz + sz - 3.2, glass, 2, { vb: 0.4 });
+      gridBox(gb, cx - sx + 3.2, cz - sz + 3.2, cx + sx - 3.2, cz + sz - 3.2, h2, H, gw);
       gb.box(cx - sx + 3, H, cz - sz + 3, cx + sx - 3, H + 1.6, cz + sz - 3, '#e8eaec', M8.metal);
       gb.cyl(cx, H + 1.6, cz, 0.5, 14 + lvl * 2, 6, '#d8dadc', 0, null, 0.08);
       gb.box(cx - 0.3, H + 15.6 + lvl * 2, cz - 0.3, cx + 0.3, H + 16.2 + lvl * 2, cz + 0.3, '#f33', 7);
@@ -973,7 +1160,8 @@
       foundation(gb, LW, LD, b, '#55575b');
       const floors = lvl === 1 ? 1 : 2, H = floors * 3.6 + 0.6, z0 = Math.min(7, LD * 0.42), z1 = LD - 1;
       const br = U.pick(['#7a5a44', '#8a6a4a', '#6e5a48', '#9a8a70'], r);
-      gb.box(1, 0, z0, LW - 1, H, z1, br, 3 + M8.brick, { vb: 0.6 });
+      gb.box(1, 0, z0, LW - 1, H, z1, br, M8.brick, { top: '#55524c' });
+      for (let f = 0; f < floors; f++) ribbon(gb, 1.6, LW - 1.6, f * 3.6 + 1.0, f * 3.6 + 2.6, z0, 0, 1.4, '#6a5a48');
       gb.box(0.8, H, z0 - 0.2, LW - 0.8, H + 0.5, z1 + 0.2, '#6d6a64', M8.concrete);
       gb.box(1, H - 0.9, z0 - 1.2, LW - 1, H - 0.6, z0, '#5a4a3a');
       for (let x = 2.5; x < LW - 2; x += Math.max(4, (LW - 4) / 3)) glassDoor(gb, x, z0, 1.2);
@@ -990,7 +1178,7 @@
       const bw = wide ? LW - 2.4 : LW - 2, x0 = (LW - bw) / 2, z0 = 3.2, z1 = deep ? Math.min(LD - 7, 16) : LD - 1.2;
       const br = U.pick(PAL.brick, r), stone = '#e3dccd';
       gb.box(x0, 0, z0, x0 + bw, 0.9, z1, '#bdb6a8', M8.concrete);
-      gb.box(x0, 0.9, z0, x0 + bw, H, z1, br, 1 + M8.brick, { vb: 0.4 });
+      gridBox(gb, x0, z0, x0 + bw, z1, 0.9, H, { fh: 3.4, bay: 2.2, pier: 0.9, sill: 0.9, head: 0.6, depth: 0.2, wall: br, wm: M8.brick, frame: '#f2efe8', sills: stone });
       for (let f = 1; f < floors; f++) gb.box(x0 - 0.05, 0.9 + f * 3.4 - 0.1, z0 - 0.08, x0 + bw + 0.05, 0.9 + f * 3.4 + 0.1, z1 + 0.08, stone, M8.concrete);
       gb.box(x0 - 0.3, H, z0 - 0.3, x0 + bw + 0.3, H + 0.55, z1 + 0.3, stone, M8.concrete);
       gb.box(x0 + 0.2, H + 0.55, z0 + 0.2, x0 + bw - 0.2, H + 0.75, z1 - 0.2, '#56514c');
@@ -1010,7 +1198,8 @@
     foundation(gb, LW, LD, b, '#6b9444', M8.lawn);
     const top = lvl >= 5 && (wide || deep) ? 3 : 2, z0 = 3.0, z1 = deep ? Math.min(LD - 6.5, 15) : LD - 1.4, x0 = 1.2, x1 = LW - 1.2;
     gb.flat(0.4, 0.3, LW - 0.4, z0 - 0.2, 0.12, '#d9d4c6', M8.paving);
-    gb.box(x0 + 1.2, 0, z0 + 0.8, x1 - 1.2, 3.6, z1 - 0.4, '#fff', 2, { vb: 0.3 });                        // glass ground floor
+    gb.box(x0 + 1.2, 0, z0 + 0.8, x1 - 1.2, 3.6, z1 - 0.4, '#2a2d31', 0);                                      // glass ground floor
+    for (const [f, a0, a1, pl] of [[0, x0 + 1.2, x1 - 1.2, z0 + 0.8], [1, x0 + 1.2, x1 - 1.2, z1 - 0.4], [2, z0 + 0.8, z1 - 0.4, x0 + 1.2], [3, z0 + 0.8, z1 - 0.4, x1 - 1.2]]) gridFace(gb, f, a0, a1, 0, 3.6, pl, { fh: 3.6, bay: 2.4, pier: 0.1, sill: 0, head: 0.3, depth: 0.1, wall: '#2a2d31', frame: '#1c1d20', glass: '#dfe6ea' });
     for (let x = x0 + 1.2; x <= x1 - 1.2 + 0.01; x += 2.4) gb.box(x - 0.05, 0, z0 + 0.74, x + 0.05, 3.6, z0 + 0.8, '#2a2d31');
     const timber = U.pick(['#6a4a32', '#5a3d2b', '#7a5a3a'], r), yTop = 3.6 + (top - 1) * 3.5;
     gb.box(x0, 3.6, z0, x1, yTop, z1, timber, M8.wood);
@@ -1063,7 +1252,9 @@
     // main block: white panels, ribbon windows upstairs
     gb.box(1.5, 0, z0, 13, 0.45, z1, '#9a968e', M8.concrete);
     gb.box(1.5, 0.45, z0, 13, 3.7, z1, '#f0eee8', M8.concrete);
-    gb.box(1.5, 3.7, z0, 13, 7.6, z1, '#f0eee8', 2 + M8.concrete);
+    gb.box(1.5, 3.7, z0, 13, 7.6, z1, '#f0eee8', M8.concrete);
+    ribbon(gb, 1.9, 12.6, 4.5, 6.9, z0, 0, 1.3, '#5a7a8a'); ribbon(gb, 1.9, 12.6, 4.5, 6.9, z1, 1, 1.3, '#5a7a8a');
+    ribbon(gb, z0 + 0.5, z1 - 0.5, 4.5, 6.9, 1.5, 2, 1.3, '#5a7a8a');
     gb.box(1.3, 3.55, z0 - 0.15, 13.2, 3.75, z1 + 0.1, '#5a7a8a');
     gb.box(1.3, 7.6, z0 - 0.15, 13.2, 8.1, z1 + 0.15, '#dcdad4', M8.concrete);
     for (let k = 0; k < 4; k++) win(gb, 0, 3 + k * 2.6, 1.0, z0, 1.6, 1.9, { trim: '#5a7a8a' });
@@ -1142,7 +1333,7 @@
     gb.cyl(10, 0.7, 10, 0.6, 2.6, 8, '#d8d2c4');
     gb.cyl(10, 3.3, 10, 1.4, 0.3, 8, '#d8d2c4');
     for (const [x, z] of [[3, 3], [17, 3], [3, 17], [17, 17]]) { gb.box(x - 1.4, 0, z - 1.4, x + 1.4, 0.7, z + 1.4, '#8f877a', 0, { top: '#4f7d34' }); yardTree(gb, x, z, r); }
-    for (const z of [7, 13]) { gb.box(1.5, 0, z, 3.5, 0.5, z + 0.5, '#7a5a3c'); gb.box(16.5, 0, z, 18.5, 0.5, z + 0.5, '#7a5a3c'); }
+    for (const z of [7.6, 13.6]) for (const x of [1.9, 18.1]) { gb.box(x - 0.35, 0, z - 1.0, x + 0.35, 0.42, z + 1.0, '#bdb6a8', M8.concrete); gb.box(x - 0.42, 0.42, z - 1.1, x + 0.42, 0.5, z + 1.1, '#8a6440', M8.wood); }
   };
   SGEN.bigpark = function (gb, b, r, LW, LD) {
     foundation(gb, LW, LD, b, '#5c9840');
@@ -1179,10 +1370,13 @@
   SGEN.tower = function (gb, b, r, LW, LD) {
     foundation(gb, LW, LD, b, '#c9c0ae');
     const cx = LW / 2, cz = LD / 2;
-    gb.cyl(cx, 0, cz, 5, 4, 12, '#bdb7aa', 3);
+    gb.cyl(cx, 0, cz, 5, 4, 12, '#bdb7aa', M8.concrete);
+    for (let k = 0; k < 12; k++) { const a = (k + 0.5) / 12 * Math.PI * 2; if (k % 3) gb.box(cx + Math.cos(a) * 5 - 0.5, 0.6, cz + Math.sin(a) * 5 - 0.5, cx + Math.cos(a) * 5 + 0.5, 3.2, cz + Math.sin(a) * 5 + 0.5, '#dfe6ea', 9); }
     gb.cyl(cx, 4, cz, 2.4, 92, 12, '#d8d4cb');
     gb.cyl(cx, 92, cz, 3.2, 3, 16, '#d8d4cb', 0, null, 7);
-    gb.cyl(cx, 95, cz, 7, 6, 16, '#7d95a3', 2);
+    gb.cyl(cx, 95, cz, 7, 6, 16, '#7d95a3', 9);
+    for (let k = 0; k < 16; k++) { const a = k / 16 * Math.PI * 2; gb.box(cx + Math.cos(a) * 7.02 - 0.08, 95, cz + Math.sin(a) * 7.02 - 0.08, cx + Math.cos(a) * 7.02 + 0.08, 101, cz + Math.sin(a) * 7.02 + 0.08, '#e0dcd2', M8.metal); }
+    gb.cyl(cx, 97.8, cz, 7.15, 0.2, 16, '#e0dcd2', M8.metal);
     gb.cyl(cx, 101, cz, 7, 1.2, 16, '#e0dcd2', 0, '#e0dcd2', 5);
     gb.cyl(cx, 102.2, cz, 0.5, 26, 6, '#cfcfcf', 0, null, 0.15);
     gb.box(cx - 0.4, 128, cz - 0.4, cx + 0.4, 129, cz + 0.4, '#f22', 7);
@@ -1379,9 +1573,21 @@
   // Industry
   // ======================================================================
   const IND_WALL = ['#9aa3a8', '#b4b8bc', '#8a9aa6', '#c8c2b4', '#7f8a8f', '#a8b0a0', '#c9ccd0'];
-  function warehouse(gb, x0, z0, x1, z1, H, wall, roofc, r, docks) {
+  const IND_ACC = ['#c8392e', '#1f5fa8', '#e3a02b', '#2f8a4a', '#3a3d42', '#d8642a', '#5a3a8a'];
+  function warehouse(gb, x0, z0, x1, z1, H, wall, roofc, r, docks, tier) {
+    const acc = U.pick(IND_ACC, r), t = tier === undefined ? 1 : tier;
     gb.box(x0, 0, z0, x1, 1.2, z1, '#8a8780', M8.concrete);
     gb.box(x0, 1.2, z0, x1, H, z1, wall, M8.metal);
+    // steel portal columns showing through the cladding, a company-colour band and a clerestory strip
+    for (const [zz, sg] of [[z0, -1], [z1, 1]]) for (let x = x0; x <= x1 + 0.01; x += (x1 - x0) / Math.max(1, Math.round((x1 - x0) / 6))) gb.box(x - 0.18, 1.2, Math.min(zz, zz + sg * 0.18), x + 0.18, H, Math.max(zz, zz + sg * 0.18), t === 2 ? '#3a3d42' : '#6d7277', M8.metal);
+    for (const [xx, sg] of [[x0, -1], [x1, 1]]) for (let z = z0; z <= z1 + 0.01; z += (z1 - z0) / Math.max(1, Math.round((z1 - z0) / 6))) gb.box(Math.min(xx, xx + sg * 0.18), 1.2, z - 0.18, Math.max(xx, xx + sg * 0.18), H, z + 0.18, t === 2 ? '#3a3d42' : '#6d7277', M8.metal);
+    gb.box(x0 - 0.06, H - 1.0, z0 - 0.06, x1 + 0.06, H - 0.4, z1 + 0.06, t === 0 ? '#8a7a6a' : acc, t === 0 ? M8.metal : 0);
+    ribbon(gb, x0 + 0.6, x1 - 0.6, H - 2.4, H - 1.25, z0 - 0.19, 0, 3.0, '#4a4d52');
+    if (t === 2) gb.box(x0 - 0.04, 1.2, z0 - 0.04, x0 + (x1 - x0) * 0.35, H - 1.0, z0 + 0.0, '#e8eaec', M8.metal); // two-tone cladding
+    if (t === 0) for (let k = 0; k < 6; k++) { const sx = x0 + r() * (x1 - x0 - 1); gb.box(sx, 1.2, z0 - 0.22, sx + 0.25 + r() * 0.5, 1.2 + r() * (H - 2), z0 - 0.19, '#7a5a3e', M8.metal); } // rust streaks
+    // gutters and downpipes
+    gb.box(x0 - 0.3, H - 0.1, z0 - 0.45, x1 + 0.3, H + 0.15, z0 - 0.2, '#8a8f94', M8.metal);
+    for (let x = x0 + 0.5; x < x1; x += 12) gb.box(x, 0.2, z0 - 0.38, x + 0.14, H, z0 - 0.24, '#8a8f94', M8.metal);
     gb.box(x0 - 0.2, H, z0 - 0.2, x1 + 0.2, H + 0.5, z1 + 0.2, '#5d6266');
     gb.box(x0 + 0.3, H + 0.5, z0 + 0.3, x1 - 0.3, H + 0.55, z1 - 0.3, roofc || '#7a7d80', M8.seam);
     // skylights and roof units
@@ -1390,7 +1596,14 @@
     const n = docks === undefined ? Math.max(1, Math.floor((x1 - x0 - 4) / 4.4)) : docks;
     for (let k = 0; k < n; k++) dockBay(gb, x0 + 1.6 + k * 4.4, x0 + 4.4 + k * 4.4, z0, 3.4);
     // corner signs and wall lights
-    for (let x = x0 + 2; x < x1 - 1; x += 7) gb.box(x, H - 1.2, z0 - 0.1, x + 0.4, H - 1.0, z0, '#fff', 8);
+    for (let x = x0 + 2; x < x1 - 1; x += 7) gb.box(x, H - 2.9, z0 - 0.5, x + 0.4, H - 2.6, z0 - 0.19, '#fff', 8);
+    // company sign on the band, bollards at the dock apron, roof vents (or solar on new buildings)
+    const sx = x0 + (x1 - x0) * 0.62;
+    gb.box(sx - 3, H - 1.1, z0 - 0.14, sx + 3, H - 0.3, z0 - 0.07, '#ffffff', t === 0 ? 0 : 15);
+    for (let k = 0; k < 6; k++) gb.box(sx - 2.6 + k * 0.9, H - 0.95, z0 - 0.19, sx - 2.0 + k * 0.9, H - 0.45, z0 - 0.14, acc, 0);
+    for (let x = x0 + 1.4; x < x1 - 1; x += 4.4) gb.cyl(x, 0, z0 - 1.2, 0.14, 1.0, 6, '#e3c23a', 0, '#e3c23a');
+    if (t === 2) solar(gb, x0 + 1, z0 + 1, x1 - 1, (z0 + z1) / 2, H + 0.5);
+    else for (let k = 0; k < Math.floor((x1 - x0) / 7); k++) { const vx = x0 + 3 + k * 7, vz = z1 - 3; gb.cyl(vx, H + 0.5, vz, 0.45, 0.9, 8, '#a8adb2', M8.metal); gb.cone(vx, H + 1.4, vz, 0.6, 0.35, 8, '#8a8f94'); }
   }
   function officeFront(gb, x0, x1, z0, z1, floors, r) {
     const col = U.pick(['#d8d4ca', '#c9c5bb', '#e2ded6', '#b8b4aa'], r), H = floors * 3.3;
@@ -1450,16 +1663,18 @@
       // narrow lot: small warehouse with a dock
       const deep = LD > LW;
       const x1 = LW - 0.6, z0 = deep ? 6 : 3.5, z1 = LD - 0.6;
-      warehouse(gb, 0.6, z0, x1, z1, 6.5, wall, null, r, 1);
+      warehouse(gb, 0.6, z0, x1, z1, 6.5, wall, null, r, 1, tierOf(lvl));
       officeFront(gb, x1 - 4.2, x1, z0 - 0.01 - 3, z0 + 0.5, 1, r);
       if (deep) semi(gb, 3.0, 2.0, r); else pallets(gb, 1, 0.6, 2, r);
       return;
     }
-    const kind = (b.seed + lvl) % 3;
+    const kind = (b.seed + lvl) % 3, tr = tierOf(lvl);
+    if (tr === 2) { for (let x = 2; x < LW - 1; x += 5) yardTree(gb, x, 0.9, r); gb.flat(0.5, 0.4, LW - 0.5, 1.6, 0.115, '#6b9444', M8.lawn); }
+    if (tr === 0) { for (let k = 0; k < 5; k++) { const x = 1 + r() * (LW - 2), z = 0.6 + r() * 2; gb.flat(x - 0.7, z - 0.4, x + 0.7, z + 0.4, 0.105, '#6a7a3a', M8.lawn); } gb.box(LW - 2.4, 0, 1.0, LW - 0.8, 1.3, 2.2, '#5a4a3a', M8.metal); for (let k = 0; k < 3; k++) gb.cyl(1.4 + k * 0.8, 0, LD - 1.2, 0.35, 0.95, 10, U.pick(['#2f5f9e', '#c8392e', '#5a5a52'], r), M8.metal); }
     if (kind === 0) {
       // distribution warehouse with loading docks and trucks
       const z0 = Math.min(12, LD * 0.4), H = 8 + lvl * 0.5;
-      warehouse(gb, 1, z0, LW - 1, LD - 1, H, wall, null, r);
+      warehouse(gb, 1, z0, LW - 1, LD - 1, H, wall, null, r, undefined, tr);
       officeFront(gb, LW - 9, LW - 1, z0 - 4, z0 + 0.5, 2, r);
       gb.flat(0.5, 0.5, LW - 0.5, z0 - 1.7, 0.1, '#5a5c60');
       const n = Math.max(1, Math.floor((LW - 12) / 4.4));
@@ -1487,7 +1702,7 @@
     } else {
       // processing plant: tanks, pipe rack, silos and a shed
       const z0 = 9, H = 7;
-      warehouse(gb, 1, z0, Math.min(LW - 1, 1 + LW * 0.55), LD - 1, H, wall, null, r, 1);
+      warehouse(gb, 1, z0, Math.min(LW - 1, 1 + LW * 0.55), LD - 1, H, wall, null, r, 1, tr);
       const tx = 1 + LW * 0.55 + 4;
       for (let k = 0; k < 3; k++) { const z = z0 + 3 + k * 5.2; if (z < LD - 3 && tx < LW - 2) tank(gb, tx, z, 2.1, 6 + lvl, U.pick(['#e2e0da', '#d4dce2', '#e8e2d0'], r)); }
       // pipe rack between shed and tanks
@@ -1836,6 +2051,85 @@
     for (let k = 0; k < 45; k++) { const x = 1 + r() * 38, z = 1 + r() * 38; if (Math.abs(z - 20 - Math.sin(x * 0.2) * 2.5) < 2.5 || Math.hypot(x - 31, z - 33) < 5) continue; gb.tree(x, 0, z, 0.75 + r() * 0.55, U.pick(['#2c5a2f', '#36663a', '#3f6b30', '#4f7d34'], r), r() < 0.55); }
     gb.box(8, 0, 17.6, 9.6, 0.5, 18.1, '#6a5a4a'); gb.box(34, 0, 28, 37, 2.6, 30.5, '#7a5a3c', 0, { top: '#5a3d28' });
   };
+  // ---- park detail kit: edging, an entrance with a sign, lamps, bins and planting, then per-park extras ----
+  function parkSign(gb, x, z, col) {
+    for (const dx of [-0.7, 0.7]) gb.box(x + dx - 0.07, 0, z - 0.07, x + dx + 0.07, 1.5, z + 0.07, '#5a3d28', M8.wood);
+    gb.box(x - 0.85, 0.8, z - 0.05, x + 0.85, 1.45, z + 0.05, col || '#2f5a3a', M8.wood);
+    for (let k = 0; k < 6; k++) gb.box(x - 0.6 + k * 0.22, 1.02, z - 0.08, x - 0.46 + k * 0.22, 1.24, z - 0.05, '#f2efe6');
+  }
+  function parkTrim(gb, LW, LD, r, o) {
+    o = o || {};
+    const kc = '#b8b2a6', km = M8.concrete, gap = o.gap !== undefined ? o.gap : 1.4;
+    if (!o.noEdge) { // low stone kerb round the park, open at the entrance
+      const k = (x0, z0, x1, z1) => gb.box(x0, 0, z0, x1, 0.22, z1, kc, km);
+      k(0.12, 0.12, LW / 2 - gap, 0.32); k(LW / 2 + gap, 0.12, LW - 0.12, 0.32);
+      k(0.12, LD - 0.32, LW - 0.12, LD - 0.12); k(0.12, 0.32, 0.32, LD - 0.32); k(LW - 0.32, 0.32, LW - 0.12, LD - 0.32);
+    }
+    if (!o.noSign) parkSign(gb, LW / 2 - gap - 1.2, 0.8, o.signCol);
+    if (!o.noLamp) { lampPost(gb, LW / 2 - gap - 0.2, 0.55); lampPost(gb, LW / 2 + gap + 0.2, 0.55); }
+    bin(gb, LW / 2 + gap + 0.8, 0.9);
+    if (!o.noPlant) for (const [x, z] of [[0.9, LD - 0.9], [LW - 0.9, LD - 0.9]]) { bush(gb, x, z, 0.75, '#3f6b30'); bush(gb, x + (x < LW / 2 ? 0.9 : -0.9), z, 0.55, '#5a8a3c'); gb.box(x - 0.3, 0, z - 1.3, x + 0.3, 0.28, z - 0.7, '#4a3626', 0, { top: U.pick(['#d65aa0', '#f2c230', '#e0503a', '#8a5ad8'], r) }); }
+  }
+  function springRider(gb, x, z, col) { gb.cyl(x, 0, z, 0.12, 0.45, 6, '#3a3d42'); gb.box(x - 0.45, 0.45, z - 0.2, x + 0.45, 0.85, z + 0.2, col); gb.box(x + 0.25, 0.85, z - 0.15, x + 0.45, 1.15, z + 0.15, col); gb.box(x + 0.3, 1.0, z - 0.3, x + 0.36, 1.06, z + 0.3, '#2a2d31'); }
+  function seesaw(gb, x, z, col) { gb.box(x - 0.15, 0, z - 0.2, x + 0.15, 0.45, z + 0.2, '#3a3d42'); gb.box(x - 1.6, 0.4, z - 0.12, x + 1.6, 0.5, z + 0.12, col); for (const s of [-1.4, 1.4]) gb.box(x + s - 0.03, 0.5, z - 0.25, x + s + 0.03, 0.8, z + 0.25, '#2a2d31'); }
+  function bleachers(gb, x0, z0, x1, rows, col) { for (let k = 0; k < rows; k++) gb.box(x0, k * 0.45, z0 + k * 0.7, x1, k * 0.45 + 0.45, z0 + k * 0.7 + 0.7, k % 2 ? '#c8ccd0' : (col || '#2f6fa8'), M8.metal); for (let x = x0; x <= x1; x += (x1 - x0) / 3) gb.box(x - 0.05, 0, z0 + rows * 0.7 - 0.1, x + 0.05, rows * 0.45 + 1.0, z0 + rows * 0.7, '#7a8086'); }
+  function floodlight(gb, x, z, h) { gb.box(x - 0.12, 0, z - 0.12, x + 0.12, h, z + 0.12, '#8a8f94', M8.metal); gb.box(x - 0.8, h, z - 0.25, x + 0.8, h + 0.7, z + 0.25, '#3a3d42'); gb.box(x - 0.7, h + 0.08, z - 0.28, x + 0.7, h + 0.62, z - 0.24, '#fff', 8); }
+  const PARK_EXTRA = {
+    playground(gb, r, LW, LD) {
+      for (const [a, b2, c, d] of [[1, 1, 9, 1.15], [1, 8.85, 9, 9], [1, 1, 1.15, 9], [8.85, 1, 9, 9]]) gb.box(a, 0, b2, c, 0.28, d, '#8a6440', M8.wood); // timber border round the sand
+      springRider(gb, 8.6, 2.0, '#e3a02b'); springRider(gb, 8.4, 6.0, '#2f86c9');
+      seesaw(gb, 2.3, 4.7, '#d9473c');
+      for (const [x, z] of [[0.6, 9.5], [9.4, 9.5], [5, 9.5]]) gb.box(x - 0.05, 0, z - 0.05, x + 0.05, 2.9, z + 0.05, '#cfd3d6', M8.metal);
+      gb.tri([0.6, 2.9, 9.5], [9.4, 2.7, 9.5], [5, 3.1, 8.0], '#f2efe6'); gb.tri([9.4, 2.7, 9.5], [0.6, 2.9, 9.5], [5, 3.1, 8.0], '#f2efe6'); // shade sail
+    },
+    grove(gb, r, LW, LD) { gb.box(7.6, 0, 5.0, 9.4, 0.45, 5.4, '#5a3d28', M8.wood); for (let k = 0; k < 4; k++) gb.box(0.6 + r() * 8.5, 0, 3.4 + r() * 2, 0.9 + r() * 8.5, 0.2, 3.6 + r() * 2, '#8a8478', M8.gravel); },
+    miniplaza(gb, r, LW, LD) {
+      gb.flat(4.6, 0.6, 5.4, 9.4, 0.115, '#a8986e', M8.paving); gb.flat(0.6, 4.6, 9.4, 5.4, 0.115, '#a8986e', M8.paving);
+      for (const [x, z] of [[8.0, 3.2], [2.0, 6.8]]) { gb.cyl(x, 0, z, 0.4, 0.74, 8, '#3a3d42', 0, '#f2f2f2'); gb.cyl(x, 0.74, z, 0.04, 1.5, 4, '#888'); gb.cone(x, 2.2, z, 1.1, 0.4, 8, U.pick(['#c8392e', '#2f6f9a', '#2f7a4a'], r)); for (const d of [-0.7, 0.7]) gb.box(x + d - 0.2, 0, z - 0.2, x + d + 0.2, 0.45, z + 0.2, '#3a3d42'); }
+      for (let x = 1.2; x < 9; x += 1.6) gb.cyl(x, 0, 0.35, 0.1, 0.8, 6, '#3a3d42', 0, '#cfd3d6');
+    },
+    garden(gb, r, LW, LD) {
+      gb.flat(4.4, 1, 5.4, LD - 3.4, 0.115, '#9a8a70', M8.gravel);
+      for (let k = 0; k < 5; k++) for (let j = 0; j < 2; j++) for (let q = 0; q < 3; q++) for (let e = 0; e < 5; e++) { const x = 1.5 + j * 4.4 + e * 0.6, z = 1.9 + k * 3.4 + q * 0.6; gb.box(x - 0.14, 0.35, z - 0.14, x + 0.14, 0.5 + ((k + q + e) % 3) * 0.08, z + 0.14, U.pick(['#3f7a2a', '#5c9a3a', '#7aa83a', '#a83a2a', '#e3a02b'], r)); }
+      for (let x = 6; x < 8.6; x += 0.8) gb.box(x, 0, LD - 3.4, x + 0.06, 2.0, LD - 3.34, '#6a4a30', M8.wood);
+      gb.box(5.8, 1.9, LD - 3.45, 8.6, 1.96, LD - 3.3, '#6a4a30', M8.wood);
+      for (let k = 0; k < 2; k++) gb.box(LW - 2.4, 0, LD - 3.2 + k * 1.2, LW - 1.4, 0.9, LD - 2.2 + k * 1.2, '#2f3a30');
+    },
+    court(gb, r, LW, LD) { chainFence(gb, 0.5, 1.5, LW - 0.5, LD - 1.5, LW / 2 - 1, LW / 2 + 1); floodlight(gb, 0.4, 1.0, 7); floodlight(gb, LW - 0.4, LD - 1.0, 7); },
+    dogpark(gb, r, LW, LD) {
+      for (const x of [11.5, 13.5]) { for (const dz of [-0.6, 0.6]) gb.box(x - 0.05, 0, 7.4 + dz - 0.05, x + 0.05, 1.0, 7.4 + dz + 0.05, '#e8e4dc'); gb.box(x - 0.04, 0.55, 6.8, x + 0.04, 0.62, 8.0, '#d9473c'); }
+      for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI; gb.box(5 + Math.cos(a) * 0.6 - 0.1, Math.sin(a) * 0.6, 2.2, 5 + Math.cos(a) * 0.6 + 0.1, Math.sin(a) * 0.6 + 0.2, 4.2, '#2f86c9'); } // tunnel
+      gb.cyl(LW - 3, 0, 1.4, 0.2, 0.9, 8, '#5a5e64'); gb.box(LW - 3.3, 0.9, 1.1, LW - 2.7, 1.0, 1.7, '#5a5e64');
+      gb.box(2.8, 0, 0.9, 2.9, 1.4, 1.0, '#2f6a4a'); gb.box(2.6, 1.0, 0.85, 3.1, 1.4, 1.05, '#2f6a4a');
+    },
+    benches(gb, r, LW, LD) { for (let k = 0; k < 4; k++) bin(gb, 4.0 + k * 5, 3.6); },
+    park(gb, r, LW, LD) { picnicTable(gb, 2.4, 5.4); },
+    soccer(gb, r, LW, LD) {
+      for (const z of [10, 16]) { gb.box(0.2, 0, z, 1.3, 2.3, z + 3.2, '#cfd3d6', M8.metal); gb.box(0.25, 0.1, z + 0.1, 1.2, 2.2, z + 3.1, '#2a2d31'); gb.box(0.4, 0, z + 0.4, 1.1, 0.45, z + 2.8, '#2f6fa8'); }
+      gb.box(4, 0, LD - 0.7, 4.15, 3, LD - 0.55, '#3a3d42'); gb.box(6, 0, LD - 0.7, 6.15, 3, LD - 0.55, '#3a3d42'); gb.box(3.6, 3, LD - 0.75, 6.6, 4.6, LD - 0.5, '#1c1d20'); gb.box(3.9, 3.3, LD - 0.78, 6.3, 4.3, LD - 0.74, '#e3a02b', 15);
+    },
+    skate(gb, r, LW, LD) {
+      for (const z of [2, 18 - 0.02]) for (let k = 0; k < 6; k++) { const x = 4.4 + k * 1.9; gb.box(x, 0.4 + r() * 0.6, z - 0.03, x + 1.2 + r() * 0.4, 1.5 + r() * 0.8, z, U.pick(['#d9473c', '#2f86c9', '#e3a02b', '#3aa36a', '#8c4fc0', '#f2f2f2'], r)); }
+      bench(gb, 1.8, 16, true); bench(gb, 18.2, 4, true);
+    },
+    plaza(gb, r, LW, LD) {
+      gb.cyl(10, 0.0, 10, 6.4, 0.12, 24, '#b8ad98', M8.paving, '#b8ad98'); gb.cyl(10, 0.0, 10, 5.6, 0.125, 24, '#d8cfbd', M8.paving, '#d8cfbd');
+      for (let k = 0; k < 8; k++) { const a = k / 8 * Math.PI * 2; gb.cyl(10 + Math.cos(a) * 4.6, 0.7, 10 + Math.sin(a) * 4.6, 0.12, 0.01, 6, '#e8f6ff', 15); }
+      for (const [x, z] of [[10, 1.2], [10, 18.8]]) lampPost(gb, x, z);
+      gb.box(15.4, 0, 0.8, 18.4, 2.6, 2.6, '#2f5a3a', M8.wood); gb.box(15.2, 2.6, 0.5, 18.6, 2.85, 2.9, '#e8e4dc'); gb.box(15.6, 1.0, 0.76, 18.2, 2.2, 0.8, '#fff', 9); // kiosk
+    },
+    trail(gb, r, LW, LD) { parkSign(gb, 2.4, 4.6, '#5a3d28'); },
+    meadow(gb, r, LW, LD) { for (let k = 0; k < 10; k++) { const x = 1 + r() * (LW - 2), z = 1 + r() * (LD - 2); gb.box(x - 0.25, 0, z - 0.2, x + 0.25, 0.25 + r() * 0.15, z + 0.2, '#8a8478', M8.gravel); } },
+  };
+  const RUSTIC = new Set(['grove', 'trail', 'meadow', 'woods']);
+  for (const k of Object.keys(PARK_EXTRA).concat(['woods', 'flowers'])) {
+    const f = SGEN[k]; if (!f) continue;
+    SGEN[k] = function (gb, b, r, LW, LD) {
+      f(gb, b, r, LW, LD);
+      if (PARK_EXTRA[k]) PARK_EXTRA[k](gb, r, LW, LD);
+      parkTrim(gb, LW, LD, r, { noEdge: RUSTIC.has(k) || k === 'dogpark' || k === 'skate', signCol: RUSTIC.has(k) ? '#5a3d28' : undefined, noSign: k === 'trail', noLamp: k === 'skate' || k === 'miniplaza' || k === 'plaza', gap: k === 'court' ? 1.0 : 1.4, noPlant: k === 'miniplaza' });
+    };
+  }
   SGEN.grandplaza = function (gb, b, r, LW, LD) {
     foundation(gb, LW, LD, b, '#cfc6b2');
     for (let k = 0; k < 6; k++) gb.flat(1 + k * 4.7, 1, 1.3 + k * 4.7, 29, 0.115, '#b8ad98');
@@ -1869,7 +2163,7 @@
     court(gb, 27, 2, 38, 13, '#3a7aa0'); court(gb, 27, 15, 38, 26, '#3a8a5a');
     hoop(gb, 27.4, 7.5, 1, true); hoop(gb, 37.6, 7.5, -1, true); hoop(gb, 27.4, 20.5, 1, true); hoop(gb, 37.6, 20.5, -1, true);
     gb.cyl(32.5, 0.1, 33, 5, 0.2, 16, '#c0603a', 0, '#c0603a'); gb.cyl(32.5, 0.15, 33, 3.6, 0.2, 16, '#5f9a40', 0, '#5f9a40');
-    gb.box(0.5, 0, 12, 1.8, 2.5, 28, '#c9c5bb'); gb.box(24.5, 0, 14, 26, 3.4, 26, '#e0ddd5', 1);
+    gb.box(0.5, 0, 12, 1.8, 2.5, 28, '#c9c5bb'); gb.box(24.5, 0, 14, 26, 3.4, 26, '#e0ddd5', M8.concrete); for (let z = 15; z < 25.5; z += 2.2) win(gb, 3, z, 1.0, 26, 1.2, 1.5, { trim: '#9aa0a6' });
     for (const [x, z] of [[1, 1], [25, 1], [1, 39], [25, 39]]) { gb.box(x - 0.2, 0, z - 0.2, x + 0.2, 12, z + 0.2, '#9a9a9a'); gb.box(x - 1, 12, z - 1, x + 1, 12.8, z + 1, '#fff', 8); }
   };
   SGEN.amphi = function (gb, b, r, LW, LD) {
@@ -1960,11 +2254,11 @@
     foundation(gb, LW, LD, b, PAL.paved);
     const blue = '#1f8ad2', dark = '#0e5c99', H = 70;
     // the logo seen from above: a folded ribbon. Built as three extruded slabs.
-    gb.box(19, 0, 4, 25, H, 26, blue, 2, { vb: 0 });                    // right bar (tall)
+    gridBox(gb, 19, 4, 25, 26, 0, H, { fh: 3.5, bay: 1.5, pier: 0.12, sill: 0.4, head: 0.2, depth: 0.12, wall: '#16486e', wm: M8.metal, frame: '#0e3a5c', glass: blue, mull: false }); // right bar (tall)
     const slant = (x0, z0, x1, z1, w, h, col) => { const dx = x1 - x0, dz = z1 - z0, l = Math.hypot(dx, dz), nx = -dz / l * w / 2, nz = dx / l * w / 2; const A = [x0 + nx, 0, z0 + nz], B = [x1 + nx, 0, z1 + nz], Cc = [x1 - nx, 0, z1 - nz], D = [x0 - nx, 0, z0 - nz]; const up = p => [p[0], h, p[2]]; gb.quad(A, B, up(B), up(A), col, 2); gb.quad(Cc, D, up(D), up(Cc), col, 2); gb.quad(B, Cc, up(Cc), up(B), col, 2); gb.quad(D, A, up(A), up(D), col, 2); gb.quad(up(A), up(B), up(Cc), up(D), col); };
     slant(20, 6, 6, 18, 4.5, H * 0.72, dark);
     slant(20, 24, 6, 12, 4.5, H * 0.72, blue);
-    gb.box(4, 0, 12, 8, H * 0.5, 18, dark, 2);
+    gridBox(gb, 4, 12, 8, 18, 0, H * 0.5, { fh: 3.5, bay: 1.5, pier: 0.12, sill: 0.4, head: 0.2, depth: 0.12, wall: '#0b3a5e', wm: M8.metal, frame: '#0e3a5c', glass: dark, mull: false });
     gb.box(18.8, H, 3.8, 25.2, H + 1, 26.2, '#16486e');
     gb.box(21.5, H + 1, 14, 22.5, H + 9, 15, '#ccc'); gb.box(21.6, H + 9, 14.1, 22.4, H + 9.6, 14.9, '#f22', 7);
   };
@@ -2003,7 +2297,7 @@
     foundation(gb, LW, LD, b, PAL.paved);
     const cols = ['#f48024', '#bcbbbb', '#f48024', '#e0e0e0', '#f48024'];
     let y = 0;
-    for (let k = 0; k < 14; k++) { const ox = Math.sin(k * 0.9) * 2.2, oz = Math.cos(k * 1.3) * 1.6, h = 5 + (k % 3); gb.box(4 + ox, y, 4 + oz, 16 + ox, y + h - 0.6, 16 + oz, k % 2 ? '#e8e6e0' : '#f48024', 2); gb.box(4.2 + ox, y + h - 0.6, 4.2 + oz, 15.8 + ox, y + h, 15.8 + oz, '#3a3d42'); y += h; }
+    for (let k = 0; k < 14; k++) { const ox = Math.sin(k * 0.9) * 2.2, oz = Math.cos(k * 1.3) * 1.6, h = 5 + (k % 3); { const hh = h - 0.6, c = k % 2 ? '#e8e6e0' : '#f48024'; gridBox(gb, 4 + ox, 4 + oz, 16 + ox, 16 + oz, y, y + hh, { fh: hh / Math.max(1, Math.round(hh / 3.2)), bay: 1.6, pier: 0.14, sill: 0.5, head: 0.3, depth: 0.12, wall: c, wm: M8.metal, frame: '#3a3d42', glass: k % 2 ? '#c8d4dc' : '#f4b070', mull: false }); } gb.box(4.2 + ox, y + h - 0.6, 4.2 + oz, 15.8 + ox, y + h, 15.8 + oz, '#3a3d42'); y += h; }
     gb.box(9.5, y, 9.5, 10.5, y + 10, 10.5, '#ccc'); gb.box(9.6, y + 10, 9.6, 10.4, y + 10.6, 10.4, '#f22', 7);
   };
   SGEN.neural = function (gb, b, r, LW, LD) {
@@ -2055,6 +2349,16 @@
     for (let lx = 0; lx < 4; lx++) for (let lz = 0; lz < 2; lz++) for (let ly = 0; ly < 1 + ((lx + lz) % 3); ly++) gb.box(cx - 7.6 + lx * 3.9, 7 + ly * 2.6, cz - 4.6 + lz * 4.6, cx - 4.0 + lx * 3.9, 9.5 + ly * 2.6, cz - 0.4 + lz * 4.6, U.pick(cc, r));
     gb.box(cx - 14.6, 5, cz - 3.2, cx - 14, 6, cz - 2.4, '#111'); gb.box(cx - 14.6, 5, cz + 2.4, cx - 14, 6, cz + 3.2, '#111');
   };
+  // sculpture landmarks sit in a small plaza: kerb, entrance sign, lamps, corner planters with trees, benches
+  for (const k of ['octocat', 'duck', 'tux', 'neural', 'python', 'terminal', 'claude']) {
+    const f = SGEN[k]; if (!f) continue;
+    SGEN[k] = function (gb, b, r, LW, LD) {
+      f(gb, b, r, LW, LD);
+      for (const [x, z] of [[1.6, 1.6], [LW - 1.6, 1.6], [1.6, LD - 1.6], [LW - 1.6, LD - 1.6]]) { gb.box(x - 1.0, 0, z - 1.0, x + 1.0, 0.55, z + 1.0, '#8f877a', M8.concrete, { top: '#4a3626' }); yardTree(gb, x, z, r); }
+      gb.box(3.2, 0, 0.8, 5.0, 0.42, 1.2, '#bdb6a8', M8.concrete); gb.box(LW - 5.0, 0, 0.8, LW - 3.2, 0.42, 1.2, '#bdb6a8', M8.concrete);
+      parkTrim(gb, LW, LD, r, { noPlant: true, signCol: '#2a2d31' });
+    };
+  }
   M.genBuilding = function (gb, b) {
     const r = U.rng(b.seed + b.level * 977);
     lotFrame(gb, b);
@@ -2598,14 +2902,16 @@
         gb.box(-1.25, 1.0, 4.2, -1.15, 1.9, 5.8, stop.color || '#e85d2a', 5);
         // stair tower to the ground
         const g = Wd.groundH(X0 + 5, Z0 + 5);
-        gb.box(-4.5, g - D - 0.5, 3, -1.2, 1.0, 7, '#bdb8ae', 3, { vb: g - D });
+        gb.box(-4.5, g - D - 0.5, 3, -1.2, 1.0, 7, '#bdb8ae', M8.concrete);
+        for (let y = g - D + 0.5; y < 0.6; y += 2.6) gb.box(-4.56, y, 3.6, -4.5, y + 1.6, 6.4, '#dfe6ea', 9);
         gb.frame(0, 0, 0, 0);
       } else {
         const yb = Wd.road[i] ? Wd.roadH(X0 + 1, Z0 + 1) + 0.2 : Wd.groundH(X0 + 5, Z0 + 5);
         const ox = Wd.road[i] ? 0.2 : 3.5, oz = Wd.road[i] ? 0.2 : 3.5;
         gb.frame(X0 + ox, yb, Z0 + oz, 0);
         const s = Wd.road[i] ? 1.6 : 3;
-        gb.box(0, 0, 0, s, 2.6, s, '#c9d1d6', 3);
+        gb.box(0, 0, 0, s, 2.6, s, '#c9d1d6', M8.metal);
+        gb.box(0.15, 0.3, -0.04, s - 0.15, 2.3, 0.0, '#dfe6ea', 9); gb.box(s * 0.5 - 0.3, 0, -0.07, s * 0.5 + 0.3, 2.1, -0.02, '#3a4a52', 9);
         gb.box(-0.15, 2.6, -0.15, s + 0.15, 2.9, s + 0.15, '#2b3036');
         gb.box(s * 0.5 - 0.4, 2.9, s * 0.5 - 0.4, s * 0.5 + 0.4, 3.8, s * 0.5 + 0.4, stop.color || '#e85d2a', 5);
         gb.frame(0, 0, 0, 0);
