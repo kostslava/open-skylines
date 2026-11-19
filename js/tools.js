@@ -18,6 +18,7 @@
     const transitTool = Tl.tool.type === 'line' || Tl.tool.type === 'stop' || Tl.tool.type === 'rail' || Tl.tool.type === 'lineEdit';
     CB.Transit.showRibbons(transitTool || CB.UI.overlay === 'transit', Tl.tool.type === 'lineEdit' ? CB.Transit.lineById(Tl.tool.line) : null);
     if (Tl.tool.type === 'svc') Tl.rot = 0;
+    if (Tl.tool.type === 'move') { const mb = CB.Sim.buildings.get(Tl.tool.id); Tl.rot = mb && mb.dir !== undefined ? mb.dir : 0; }
     CB.UI.onToolChange();
   };
   Tl.setRoadMode = function (m) { Tl.roadMode = m; Tl.curve = null; Tl.drag = null; Tl.needHover = true; if (CB.UI.onRoadMode) CB.UI.onRoadMode(); };
@@ -392,16 +393,44 @@
   // the bend point for the piece ending at p, or undefined for a straight piece / null while choosing it
   function bendFor(p) {
     const cu = Tl.curve; if (!cu) return undefined;
-    if (Tl.roadMode === 'straight') return undefined;
+    if (Tl.roadMode === 'straight' || Tl.roadMode === 'grid') return undefined;
     if (cu.c) return cu.c;
     if (Tl.roadMode === 'sbend' && cu.tan) return autoBend(cu.a, cu.tan, p);
     return null;
+  }
+  // Grid mode: two clicks span a rectangle that is filled with a street grid. Blocks are six tiles deep
+  // between roads, so every tile can be zoned from one side or the other.
+  function gridPlans(rt, a, b) {
+    const dual = isDual(rt), A = snapPt(a, dual), B = snapPt(b, dual), S = dual ? 8 : 7;
+    const x0 = Math.min(A.x, B.x), x1 = Math.max(A.x, B.x), y0 = Math.min(A.y, B.y), y1 = Math.max(A.y, B.y);
+    const steps = (lo, hi) => { const out = []; for (let v = lo; v <= hi - 3; v += S) out.push(v); if (!out.length || hi - out[out.length - 1] >= 3) out.push(hi); else out[out.length - 1] = hi; return out; };
+    const W2 = (x, y) => ({ x: x * T, z: y * T });
+    if (x1 - x0 < 2 || y1 - y0 < 2) return [planRoad(rt, a, b)];
+    const plans = [];
+    for (const y of steps(y0, y1)) plans.push(planRoad(rt, W2(x0, y), W2(x1, y)));
+    for (const x of steps(x0, x1)) plans.push(planRoad(rt, W2(x, y0), W2(x, y1)));
+    return plans;
+  }
+  const mergePlans = plans => ({ strips: plans.flatMap(q => q.strips), bad: (plans.find(q => q.bad) || {}).bad });
+  function buildGrid(plans, rt) {
+    const S = CB.Sim;
+    clearPreview();
+    const all = mergePlans(plans);
+    if (all.bad) { CB.UI.toast(all.bad, 'bad'); return false; }
+    const ev = roadEval(all.strips, rt);
+    if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return false; }
+    if (!spend(ev.cost)) return false;
+    let ch = false;
+    for (const p of plans) if (placeRoad(p.strips, rt, false)) ch = true;
+    if (ch) { S.networkChanged(); markAround(all.strips.flatMap(q => q.tiles)); CB.UI.sfx('build'); }
+    return true;
   }
   function roadClick(h) {
     const t = Tl.tool;
     if (!h || h.i < 0 || mouse.moved) return;
     const p = { x: h.x, z: h.z };
     if (!Tl.curve) { Tl.curve = { a: p }; CB.UI.sfx('click'); return; }
+    if (Tl.roadMode === 'grid') { if (buildGrid(gridPlans(t.rt, Tl.curve.a, p), t.rt)) Tl.curve = null; return; }
     const c = bendFor(p);
     if (c === null) { Tl.curve.c = p; CB.UI.sfx('click'); return; }
     const plan = planRoad(t.rt, Tl.curve.a, p, c || undefined);
@@ -457,8 +486,8 @@
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return;
     const k = keyName(e);
     const S = CB.Sim;
-    if (k === 'r' && Tl.tool.type === 'svc') { Tl.rot = (Tl.rot + 1) % 4; Tl.needHover = true; return; }
-    if (k === 'c' && Tl.tool.type === 'road') { Tl.setRoadMode(({ straight: 'curve', curve: 'sbend', sbend: 'straight' })[Tl.roadMode]); return; }
+    if (k === 'r' && (Tl.tool.type === 'svc' || Tl.tool.type === 'move')) { Tl.rot = (Tl.rot + 1) % 4; Tl.needHover = true; return; }
+    if (k === 'c' && Tl.tool.type === 'road') { Tl.setRoadMode(({ straight: 'curve', curve: 'sbend', sbend: 'grid', grid: 'straight' })[Tl.roadMode]); return; }
     CB.Gfx.cam.keys[k] = true;
     if (e.key === 'Shift') CB.Gfx.cam.keys.Shift = true;
     if (k === ' ') { e.preventDefault(); CB.UI.setSpeed(S.speed === 0 ? (CB.UI.lastSpeed || 1) : 0); }
@@ -576,6 +605,17 @@
       CB.UI.sfx('build');
       return;
     }
+    if (t.type === 'move') {
+      const b = S.buildings.get(t.id); if (!b) { Tl.setTool(null); return; }
+      const lot = S.serviceLot(b.svc, h.tx, h.ty, Tl.rot, b.id);
+      if (!lot.ok) { CB.UI.toast(lot.reason, 'bad'); return; }
+      if (!spend(S.moveCost(b))) return;
+      S.relocateService(b, lot);
+      CB.Meshes.updateZoneTex(false);
+      CB.UI.sfx('build'); CB.UI.toast(b.name + ' moved.', 'good');
+      Tl.setTool(null);
+      return;
+    }
     if (t.type === 'line') { lineClick(h); return; }
     if (t.type === 'lineEdit') { lineEditClick(h); return; }
   }
@@ -617,7 +657,7 @@
       else if (Wd.pmask[i]) killPath(i);
       else if (X.stops.some(s => s.tile === i)) killStops(i);
       else if (Wd.rail[i]) killRail(i);
-      else if (Wd.road[i]) { const seg = roadSegment(i); for (const t of seg) killRoad(t); markAround(seg); } // the whole segment, both carriageways
+      else if (Wd.road[i]) { const seg = roadCut(i); for (const t of seg) killRoad(t); markAround(seg); } // just this tile (and the other carriageway beside it)
     } else {
       for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
         if (!U.inPlay(x, y)) continue;
@@ -635,6 +675,17 @@
   }
 
   // the stretch of road between two intersections (both strips of a dual carriageway)
+  // the tiles a single bulldoze click removes: the tile itself, plus the opposite carriageway of a dual road
+  function roadCut(i) {
+    const Wd = CB.World, R = C.ROADS[Wd.road[i]];
+    if (!R) return [];
+    const out = [i];
+    if (R.w === 2 && Wd.rpart[i] && Wd.jcl[i] < 0) {
+      const j = Wd.neighbor(i, Wd.rpart[i] - 1);
+      if (j >= 0 && Wd.road[j] === Wd.road[i] && Wd.jcl[j] < 0 && j !== Wd.outIn && j !== Wd.outOut) out.push(j);
+    }
+    return out;
+  }
   function roadSegment(i) {
     const Wd = CB.World;
     if (!Wd.road[i]) return [];
@@ -772,7 +823,7 @@
       const hp = { x: h.x, z: h.z }, cu = Tl.curve, mode = Tl.roadMode;
       const c = bendFor(hp);
       const choosing = c === null; // picking the bend direction: only a guide line, no road yet
-      const plan = !cu ? planRoad(t.rt, hp, hp) : choosing ? { strips: [] } : planRoad(t.rt, cu.a, hp, c || undefined);
+      const plan = !cu ? planRoad(t.rt, hp, hp) : choosing ? { strips: [] } : mode === 'grid' ? mergePlans(gridPlans(t.rt, cu.a, hp)) : planRoad(t.rt, cu.a, hp, c || undefined);
       const strips = plan.strips;
       const ev = roadEval(strips, t.rt);
       previewRoad(plan, t.rt, ev);
@@ -785,8 +836,8 @@
       if (cu && cu.c) Mx.setRing(cu.c.x, cu.c.z, 2.2); else Mx.setRing(null);
       const R = C.ROADS[t.rt], bad = plan.bad || ev.bad;
       const upg = ev.list.filter(g => g.col && g.col[0] === 1).length;
-      const hint = !cu ? 'click to start the road' : choosing ? 'click where the road should bend' : (R.oneway ? 'click the end (traffic flows this way)' : 'click the end') + ' · Esc to stop';
-      const nm = { straight: 'Straight', curve: 'Curve', sbend: 'S-bend' };
+      const hint = mode === 'grid' ? (!cu ? 'click one corner of the grid' : 'click the opposite corner') : !cu ? 'click to start the road' : choosing ? 'click where the road should bend' : (R.oneway ? 'click the end (traffic flows this way)' : 'click the end') + ' · Esc to stop';
+      const nm = { straight: 'Straight', curve: 'Curve', sbend: 'S-bend', grid: 'Grid' };
       Tl.tip = R.name + ' · ' + (strips.length && strips[0].tiles.length > 1 ? strips[0].tiles.length + ' tiles · ' : '') + (upg ? 'upgrades ' + upg + ' tiles · ' : '') + U.money(ev.cost) + ' · ' + (bad || hint) + ' · C: mode (' + nm[mode] + ')';
     } else if (t.type === 'path') {
       const cells = Tl.drag ? lPathF(Tl.drag.f, fcellAt(h)) : [fcellAt(h)];
@@ -818,10 +869,10 @@
           Tl.tip = 'Demolish ' + b.name;
         } else if (!Tl.drag && Wd.road[h.i] && !Wd.pmask[h.i] && !CB.Transit.stops.some(s => s.tile === h.i) && !Wd.rail[h.i]) {
           Mx.setGhostBox(null);
-          const seg = roadSegment(h.i);
+          const seg = roadCut(h.i);
           Mx.setGhostTiles(seg.map(i => ({ i, ok: false, h: 0.5 })));
           G.uni.uBrushOn.value = 0;
-          Tl.tip = 'Click to remove this ' + (Wd.jcl[h.i] >= 0 ? 'intersection tile' : 'road segment (' + seg.length + ' tiles)') + ' · drag to clear an area';
+          Tl.tip = 'Click to remove this ' + (Wd.jcl[h.i] >= 0 ? 'intersection tile' : seg.length > 1 ? 'piece of avenue' : 'road tile') + ' · drag to clear an area';
         } else { Mx.setGhostBox(null); Tl.tip = Tl.drag ? 'Release to demolish everything in the area' : 'Click or drag to demolish'; }
       } else {
         const z = Wd.zonable[h.i];
@@ -835,6 +886,14 @@
       Mx.setGhostBox(lot.x * T, lot.y * T, (lot.x + lot.fw) * T, (lot.y + lot.fh) * T, Math.max(y, 0.1) - 0.3, 0.45, lot.ok);
       Mx.setRing(null);
       Tl.tip = sv.name + ' · ' + U.money(sv.cost) + (lot.ok ? ' · R to rotate' : ' · ' + lot.reason);
+    } else if (t.type === 'move') {
+      const b = S.buildings.get(t.id); if (!b) { Tl.setTool(null); return; }
+      const sv = C.SERVICES[b.svc];
+      const lot = S.serviceLot(b.svc, h.tx, h.ty, Tl.rot, b.id);
+      let y = 0; for (let yy = lot.y; yy < lot.y + lot.fh; yy++) for (let xx = lot.x; xx < lot.x + lot.fw; xx++) if (U.inWorld(xx, yy)) y = Math.max(y, Wd.tileAvg(U.idx(xx, yy)));
+      Mx.setGhostBuilding(b.svc, sv.size[0], sv.size[1], lot.dir !== undefined ? lot.dir : Tl.rot, lot.x * T, lot.y * T, Math.max(y, 0.1), lot.ok);
+      Mx.setGhostBox(lot.x * T, lot.y * T, (lot.x + lot.fw) * T, (lot.y + lot.fh) * T, Math.max(y, 0.1) - 0.3, 0.45, lot.ok);
+      Tl.tip = 'Move ' + b.name + ' · ' + U.money(S.moveCost(b)) + (lot.ok ? ' · R to rotate · Esc to cancel' : ' · ' + lot.reason);
     } else if (t.type === 'stop') {
       const side = stopSide(t.st, h);
       const why = CB.Transit.canPlaceStop(t.st, h.i, side);

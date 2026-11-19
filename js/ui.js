@@ -17,6 +17,7 @@
     chigh: '<path d="M2 20V9l10-5 10 5v11M6 20v-7h12v7M2 20h20"/>',
     ind: '<path d="M3 20V10l5 3V10l5 3V10l5 3V4h3v16zM3 20h18"/>',
     office: '<path d="M5 21V5l7-2 7 2v16M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1"/>',
+    olow: '<path d="M3 21V11h18v10M3 21h18M6 14h3M11 14h2M15 14h3M6 17h3M15 17h3M11 21v-4h2v4M7 11V8h10v3"/>',
     dezone: '<path d="M4 4h16v16H4zM4 4l16 16"/>',
     police: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
     fire: '<path d="M12 3c1 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-4 2-7 2 1 3 3 3 5 1-2 1-6 1-9z"/>',
@@ -113,12 +114,12 @@
   const roadItem = (r) => { const R = C.ROADS[r]; return { name: R.name, cost: U.money(R.cost) + '/tile', unlock: R.unlock, tool: { type: 'road', rt: r }, thumb: roadSvg(R), desc: R.desc + (R.w === 2 ? ' Two tiles wide.' : '') }; };
   const img = u => u ? `<img src="${u}" alt="">` : '';
   const svcThumb = k => { const sv = C.SERVICES[k]; return img(CB.Meshes.thumb('svc:' + k, { kind: 'svc', svc: k, w: sv.size[0], d: sv.size[1] })); };
-  const ZONE_SAMPLE = { 1: [1, 2, 3], 2: [2, 2, 3], 3: [2, 2, 4], 4: [1, 2, 3], 5: [2, 2, 3], 6: [2, 3, 3], 7: [2, 2, 3], 8: [2, 2, 4] };
+  const ZONE_SAMPLE = { 1: [1, 2, 3], 2: [2, 2, 3], 3: [2, 2, 4], 4: [1, 2, 3], 5: [2, 2, 3], 6: [2, 3, 3], 7: [2, 2, 3], 8: [2, 2, 4], 9: [2, 2, 5] };
   const zoneThumb = z => { const [w, d, level] = ZONE_SAMPLE[z]; return img(CB.Meshes.thumb('zone:' + z, { kind: 'zone', zone: z, w, d, level, seed: 4242 + z })); };
   const svcItem = (k) => { const sv = C.SERVICES[k]; return { thumb: svcThumb(k), name: sv.name, cost: U.money(sv.cost), unlock: sv.unlock, tool: { type: 'svc', key: k }, icon: SVC_ICON[k] || (sv.cat === 'parks' ? 'park' : sv.cat === 'landmarks' ? 'landmark' : 'police'), col: SVC_COL[sv.cov] || '#555', desc: (sv.desc || '') + ` ${sv.size[0]}×${sv.size[1]} tiles.` }; };
   const CATS = [
     { key: 'roads', name: 'Roads', icon: 'avenue', tabs: C.ROAD_GROUPS.concat([['junction', 'Intersections']]) },
-    { key: 'zones', name: 'Zoning', icon: 'zones' },
+    { key: 'zones', name: 'Zoning', icon: 'zones', tabs: [['res', 'Residential'], ['com', 'Commercial'], ['work', 'Industry & Office']] },
     { key: 'services', name: 'Services', icon: 'police', tabs: C.SVC_TABS },
     { key: 'parks', name: 'Parks', icon: 'park', tabs: C.PARK_TABS },
     { key: 'transit', name: 'Transit', icon: 'busline', tabs: [['bus', 'Bus'], ['tram', 'Streetcar'], ['train', 'Train'], ['metro', 'Metro']] },
@@ -140,7 +141,8 @@
         for (let k = 1; k < C.PATHS.length; k++) { const P = C.PATHS[k]; items.push({ name: P.name, cost: U.money(P.cost) + '/cell', unlock: P.unlock, tool: { type: 'path', pk: k }, thumb: pathSvg(P), desc: P.desc }); }
       } else for (let r = 1; r < C.ROADS.length; r++) if (C.ROADS[r].grp === tab) items.push(roadItem(r));
     } else if (key === 'zones') {
-      for (const z of [1, 2, 8, 3, 4, 5, 6, 7]) { const Z = C.ZONES[z]; if (!Z) continue; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color, thumb: zoneThumb(z), tint: Z.color }); }
+      const ZT = { res: [1, 2, 8, 3], com: [4, 5], work: [6, 9, 7] };
+      for (const z of ZT[tab] || ZT.res) { const Z = C.ZONES[z]; if (!Z) continue; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color, thumb: zoneThumb(z), tint: Z.color }); }
       items.push({ name: 'Remove Zoning', cost: 'Free', unlock: 0, tool: { type: 'dezone' }, icon: 'dezone', col: '#555c66' });
     } else if (key === 'transit') {
       const TR = C.TRANSIT;
@@ -220,7 +222,13 @@
     const items = catItems(key, tab);
     const p = $('palette');
     const roadMode = key === 'roads' && tab !== 'junction' && tab !== 'path' || key === 'transit' && tab === 'tram';
-    const modeSw = roadMode ? `<div class="pmode" title="C cycles modes"><button data-mode="straight" class="${CB.Tools.roadMode === 'straight' ? 'on' : ''}">Straight</button><button data-mode="curve" class="${CB.Tools.roadMode === 'curve' ? 'on' : ''}">Curved</button><button data-mode="sbend" title="Each piece carries on from the direction the last one ended" class="${CB.Tools.roadMode === 'sbend' ? 'on' : ''}">S-bend</button></div>` : '';
+    const MODES = [
+      ['straight', 'Straight (C cycles modes)', '<path d="M4 20L20 4"/><circle cx="4" cy="20" r="1.6"/><circle cx="20" cy="4" r="1.6"/>'],
+      ['curve', 'Curve: start, bend point, end', '<path d="M4 20Q4 4 20 4"/><path d="M4 20L4 4L20 4" stroke-dasharray="2 2.5" opacity=".55"/>'],
+      ['sbend', 'S-bend: each piece carries on from the last one', '<path d="M4 20C4 12 20 12 20 4"/>'],
+      ['grid', 'Grid: two corners fill an area with streets', '<path d="M3 3h18v18H3zM3 10h18M3 17h18M10 3v18M17 3v18"/>'],
+    ];
+    const modeSw = roadMode ? `<div class="pmode">${MODES.filter(m => key === 'roads' || m[0] !== 'grid').map(m => `<button data-mode="${m[0]}" title="${m[1]}" aria-label="${m[1]}" class="${CB.Tools.roadMode === m[0] ? 'on' : ''}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${m[2]}</svg></button>`).join('')}</div>` : '';
     const tabs = cat.tabs ? `<div class="ptabs" role="tablist">${cat.tabs.map(t => `<button role="tab" class="ptab ${t[0] === tab ? 'on' : ''} ${tabLocked(cat, t[0]) ? 'dim' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('')}${modeSw}</div>` : '';
     p.innerHTML = tabs + `<div class="cards">` + items.map((it, k) => {
       const locked = !S.unlocked(it.unlock);
@@ -632,7 +640,7 @@
       <div class="sec"><div class="lbl">Controls</div><div class="keys">
         <kbd>W A S D</kbd><span>Move the camera (Shift for faster)</span><kbd>Q / E</kbd><span>Rotate</span><kbd>R / F</kbd><span>Zoom in and out</span><kbd>T / G</kbd><span>Tilt</span>
         <kbd>Right-drag</kbd><span>Rotate and tilt</span><kbd>Middle-drag</kbd><span>Pan</span><kbd>Wheel</kbd><span>Zoom</span>
-        <kbd>Space</kbd><span>Pause</span><kbd>1 2 3</kbd><span>Game speed</span><kbd>B</kbd><span>Bulldoze</span><kbd>C</kbd><span>Road mode: straight, curved, S-bend</span><kbd>R</kbd><span>Rotate a building before placing it</span><kbd>Esc</kbd><span>Cancel tool</span></div></div>`;
+        <kbd>Space</kbd><span>Pause</span><kbd>1 2 3</kbd><span>Game speed</span><kbd>B</kbd><span>Bulldoze</span><kbd>C</kbd><span>Road mode: straight, curve, S-bend, grid</span><kbd>R</kbd><span>Rotate a building before placing it</span><kbd>Esc</kbd><span>Cancel tool</span></div></div>`;
     bindClose(p, () => UI.openPanel(null));
     p.querySelectorAll('select').forEach(sel => sel.onchange = () => {
       const k = sel.id.slice(3);
@@ -739,7 +747,7 @@
          ${s.cov !== 'landmark' && s.cov !== 'park' ? `<div class="row"><span>Works best within</span><b>~${Math.round(s.radius * 0.55 * C.TILE / 10) * 10} m</b></div>` : ''}
          ${s.veh ? `<div class="row"><span>Vehicles out</span><b data-v="veh"></b></div>` : ''}
          <div data-v="sprob" class="sub"></div>
-         <div class="btns" style="margin-top:10px"><button class="btn danger" id="bdel">Demolish</button></div>`;
+         <div class="btns" style="margin-top:10px"><button class="btn" id="bmove" title="Pick it up and place it somewhere else">Relocate · ${U.money(S.moveCost(b))}</button><button class="btn danger" id="bdel">Demolish</button></div>`;
     } else {
       const z = C.ZONES[b.zone], res = z.cat === 'res';
       p.innerHTML = head(b.name, z.name) +
@@ -758,6 +766,8 @@
     }
     bindClose(p, () => UI.select(null));
     p.querySelector('#bdel').onclick = () => { S.removeBuilding(b); UI.sfx('demolish'); UI.select(null); };
+    const mv = p.querySelector('#bmove');
+    if (mv) mv.onclick = () => { UI.select(null); CB.Tools.setTool({ type: 'move', id: b.id }); };
     updBuilding(p, b);
   }
   function updBuilding(p, b) {
@@ -863,7 +873,7 @@
     for (const k in S.demand) {
       const el = $('dm_' + k); if (!el) continue;
       el.querySelector('i').style.height = Math.round(S.demand[k]) + '%';
-      const off = (k === 'rmed' && !S.unlocked(C.ZONES[2].unlock)) || (k === 'rhigh' && !S.unlocked(C.ZONES[3].unlock)) || (k === 'off' && !S.unlocked(C.ZONES[7].unlock));
+      const off = (k === 'rmed' && !S.unlocked(C.ZONES[2].unlock)) || (k === 'rhigh' && !S.unlocked(C.ZONES[3].unlock)) || (k === 'off' && !S.unlocked(C.ZONES[9].unlock));
       el.classList.toggle('off', off);
     }
     const m = S.milestone, nx = C.MILESTONES[m + 1];

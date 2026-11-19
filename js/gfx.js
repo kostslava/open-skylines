@@ -476,6 +476,15 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     G.scene.add(G.terrain);
   }
 
+  // heights changed (building lots levelled): move the terrain vertices and recompute normals
+  G.refreshTerrain = function () {
+    const Wd = CB.World, n = W + 1, g = G.terrain.geometry, pos = g.attributes.position.array;
+    for (let k = 0; k < n * n; k++) pos[k * 3 + 1] = Wd.hc[k];
+    g.attributes.position.needsUpdate = true;
+    g.computeVertexNormals();
+    g.computeBoundingSphere();
+  };
+
   // ---------------- time of day ----------------
   const KEYS = [
     { h: 0, top: '#060c1e', hor: '#1a2846', sun: '#8aa4ff', si: 0.45, hemi: 0.42, sky: '#41588a', gnd: '#1a2230', night: 1 },

@@ -159,7 +159,8 @@ button { font: inherit; color: inherit; }
 .tax input { width: 100%; accent-color: var(--accent); }
 .pmode { margin-left: auto; display: flex; gap: 0; padding: 3px 4px; align-self: center; }
 .pmode button { border: 1px solid var(--line); background: rgba(255,255,255,0.04); color: var(--mute); font: 600 11px var(--cond); letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 9px; cursor: pointer; }
-.pmode button:first-child { border-radius: 6px 0 0 6px; } .pmode button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+.pmode button:first-child { border-radius: 6px 0 0 6px; } .pmode button:last-child { border-radius: 0 6px 6px 0; } .pmode button + button { border-left: 0; }
+.pmode button { padding: 4px 7px; display: grid; place-items: center; } .pmode svg { display: block; }
 .pmode button.on { background: var(--accent, #3d8bfd); color: #fff; border-color: transparent; }
 .tlines { max-height: calc(100vh - 330px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
 .tline { border: 1px solid var(--line); border-radius: 10px; padding: 9px; background: rgba(255,255,255,0.025); }
@@ -226,6 +227,7 @@ canvas.spark { width: 100%; height: 56px; display: block; }
 .brand em { font-style: normal; color: var(--accent); }
 .tag { color: var(--mute); margin: 8px 0 20px; font-size: 15px; line-height: 1.4; }
 .field { display: grid; gap: 6px; margin-bottom: 14px; }
+.mapdesc { font-size: 12.5px; color: var(--mute, #9aa3ad); line-height: 1.35; }
 .field input, .field select { height: 40px; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); padding: 0 12px; font: inherit; font-size: 15px; }
 .sbtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .sbtns .btn { height: 42px; padding: 0 18px; font-size: 15px; }
@@ -292,6 +294,7 @@ canvas.spark { width: 100%; height: 56px; display: block; }
       <h1 class="brand">Open <em>Skylines</em></h1>
       <p class="tag">Start with a dirt crossroads off the highway. Grow it into a city of avenues, bike lanes, streetcars and towers, one milestone at a time.</p>
       <div class="field"><label class="lbl" for="cityInput">City name</label><input id="cityInput" maxlength="28" value="Port Alder"></div>
+      <div class="field"><label class="lbl" for="mapStart">Map</label><select id="mapStart"></select><div class="mapdesc" id="mapDesc"></div></div>
       <div class="field"><label class="lbl" for="presetStart">Graphics quality</label>
         <select id="presetStart"><option value="low">Low: integrated graphics, older laptops</option><option value="medium">Medium: most laptops</option><option value="high">High: gaming laptops and desktops</option><option value="ultra">Ultra: powerful desktop GPUs</option></select>
       </div>

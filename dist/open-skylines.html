@@ -159,7 +159,8 @@ button { font: inherit; color: inherit; }
 .tax input { width: 100%; accent-color: var(--accent); }
 .pmode { margin-left: auto; display: flex; gap: 0; padding: 3px 4px; align-self: center; }
 .pmode button { border: 1px solid var(--line); background: rgba(255,255,255,0.04); color: var(--mute); font: 600 11px var(--cond); letter-spacing: 0.06em; text-transform: uppercase; padding: 4px 9px; cursor: pointer; }
-.pmode button:first-child { border-radius: 6px 0 0 6px; } .pmode button:last-child { border-radius: 0 6px 6px 0; border-left: 0; }
+.pmode button:first-child { border-radius: 6px 0 0 6px; } .pmode button:last-child { border-radius: 0 6px 6px 0; } .pmode button + button { border-left: 0; }
+.pmode button { padding: 4px 7px; display: grid; place-items: center; } .pmode svg { display: block; }
 .pmode button.on { background: var(--accent, #3d8bfd); color: #fff; border-color: transparent; }
 .tlines { max-height: calc(100vh - 330px); overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
 .tline { border: 1px solid var(--line); border-radius: 10px; padding: 9px; background: rgba(255,255,255,0.025); }
@@ -226,6 +227,7 @@ canvas.spark { width: 100%; height: 56px; display: block; }
 .brand em { font-style: normal; color: var(--accent); }
 .tag { color: var(--mute); margin: 8px 0 20px; font-size: 15px; line-height: 1.4; }
 .field { display: grid; gap: 6px; margin-bottom: 14px; }
+.mapdesc { font-size: 12.5px; color: var(--mute, #9aa3ad); line-height: 1.35; }
 .field input, .field select { height: 40px; background: var(--panel-solid); border: 1px solid var(--line); border-radius: 8px; color: var(--fg); padding: 0 12px; font: inherit; font-size: 15px; }
 .sbtns { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 6px; }
 .sbtns .btn { height: 42px; padding: 0 18px; font-size: 15px; }
@@ -292,6 +294,7 @@ canvas.spark { width: 100%; height: 56px; display: block; }
       <h1 class="brand">Open <em>Skylines</em></h1>
       <p class="tag">Start with a dirt crossroads off the highway. Grow it into a city of avenues, bike lanes, streetcars and towers, one milestone at a time.</p>
       <div class="field"><label class="lbl" for="cityInput">City name</label><input id="cityInput" maxlength="28" value="Port Alder"></div>
+      <div class="field"><label class="lbl" for="mapStart">Map</label><select id="mapStart"></select><div class="mapdesc" id="mapDesc"></div></div>
       <div class="field"><label class="lbl" for="presetStart">Graphics quality</label>
         <select id="presetStart"><option value="low">Low: integrated graphics, older laptops</option><option value="medium">Medium: most laptops</option><option value="high">High: gaming laptops and desktops</option><option value="ultra">Ultra: powerful desktop GPUs</option></select>
       </div>
@@ -423,8 +426,9 @@ window.CB = {};
     { key: 'clow', name: 'Low Density Commercial', short: 'Com · Low', cat: 'com', color: '#59a6f5', unlock: 0, lots: [[1, 1, 30], [1, 2, 60], [2, 2, 40]], cap: [2, 3, 3, 4, 5] },
     { key: 'chigh', name: 'High Density Commercial', short: 'Com · High', cat: 'com', color: '#2b62d9', unlock: 4, lots: [[2, 2, 50], [2, 3, 50]], cap: [5, 6, 8, 9, 11] },
     { key: 'ind', name: 'Industrial', short: 'Industry', cat: 'ind', color: '#f0c43a', unlock: 0, lots: [[1, 1, 25], [1, 2, 25], [2, 1, 15], [2, 2, 40], [2, 3, 35], [3, 3, 25]], cap: [3, 3, 4, 4, 5] },
-    { key: 'office', name: 'Office', short: 'Office', cat: 'off', color: '#b276f2', unlock: 5, lots: [[2, 2, 50], [2, 3, 50]], cap: [8, 10, 12, 14, 17] },
+    { key: 'office', name: 'High Density Office', short: 'Office · High', cat: 'off', color: '#b276f2', unlock: 5, lots: [[2, 2, 50], [2, 3, 50]], cap: [8, 10, 12, 14, 17] },
     { key: 'rapt', name: 'Medium Density Apartments', short: 'Res · Apartments', cat: 'res', color: '#3fb59a', unlock: 3, lots: [[1, 2, 25], [2, 2, 45], [2, 3, 30]], cap: [6, 7, 8, 9, 10] },
+    { key: 'olow', name: 'Low Density Office', short: 'Office · Low', cat: 'off', color: '#c9a2f5', unlock: 3, lots: [[1, 1, 25], [1, 2, 45], [2, 2, 30]], cap: [3, 4, 5, 6, 7] },
   ];
   C.LV_REQ = [0, 18, 32, 46, 60]; // land value needed to reach level n+1
 
@@ -654,8 +658,9 @@ window.CB = {};
     roadVer: 0, railVer: 0,
   };
 
-  Wd.init = function (seed) {
+  Wd.init = function (seed, map) {
     Wd.seed = seed;
+    Wd.map = C.MAPS.some(m => m.key === map) ? map : 'valley';
     Wd.hc = new Float32Array((W + 1) * (W + 1));
     Wd.road = new Uint8Array(W * W);
     Wd.link = new Uint8Array(W * W);
@@ -672,42 +677,96 @@ window.CB = {};
     Wd.tree = new Uint8Array(W * W);
     Wd.zonable = new Uint8Array(W * W);
     Wd.conn = new Uint8Array(W * W);
-    generate(seed);
+    Wd.hcEdits = new Map(); // corner index -> height set by levelling building lots (saved with the city)
+    generate(seed, Wd.map);
   };
 
-  function generate(seed) {
+  // Map presets. Every map keeps the highway from the west edge on flat ground so the start is the same.
+  C.MAPS = [
+    { key: 'valley', name: 'Alder Valley', desc: 'A river valley under northern mountains, opening onto the sea in the south.' },
+    { key: 'coast', name: 'Gull Bay', desc: 'A wide bay with sandy beaches to the east and a rocky headland. Lots of waterfront.' },
+    { key: 'lakes', name: 'Pine Lakes', desc: 'Rolling forest dotted with lakes. Build around the shores.' },
+    { key: 'highlands', name: 'Granite Highlands', desc: 'Hilly ground cut by a winding river gorge. Plan roads with the slopes.' },
+    { key: 'islands', name: 'Twin Isles', desc: 'The mainland and a big island across a strait. You will need bridges.' },
+  ];
+  function generate(seed, map) {
     const n1 = U.makeNoise(seed), n2 = U.makeNoise(seed + 17), n3 = U.makeNoise(seed + 91);
     const rnd = U.rng(seed * 7 + 3);
     const riverX0 = W * (0.6 + rnd() * 0.08), rp1 = rnd() * 6, rp2 = rnd() * 6;
     const hwRow = Wd.hwRow = Math.round(W * 0.5 + (rnd() - 0.5) * 20);
     const riverAt = y => riverX0 + Math.sin(y * 0.034 + rp1) * 13 + Math.sin(y * 0.012 + rp2) * 9;
     Wd.riverAt = riverAt;
+    const P0 = C.P0, P1 = C.P1, mid = (P0 + P1) / 2;
+    // lakes for Pine Lakes: a handful of blobs away from the highway
+    const lakes = [];
+    if (map === 'lakes') for (let k = 0; k < 80 && lakes.length < 9; k++) {
+      const lx = P0 + 30 + rnd() * (P1 - P0 - 40), ly = P0 + 12 + rnd() * (P1 - P0 - 24), lr = 7 + rnd() * 9;
+      if (Math.abs(ly - hwRow) < lr + 8 && lx < P0 + 40) continue;
+      if (lakes.some(l => Math.hypot(l[0] - lx, l[1] - ly) < l[2] + lr + 10)) continue;
+      lakes.push([lx, ly, lr, rnd() * 6]);
+    }
+    const gorgeAt = y => mid + 18 + Math.sin(y * 0.05 + rp1) * 16 + Math.sin(y * 0.021 + rp2) * 10;
+    const straitAt = y => W * 0.6 + Math.sin(y * 0.03 + rp1) * 8 + Math.sin(y * 0.011 + rp2) * 5;
     for (let y = 0; y <= W; y++) {
       for (let x = 0; x <= W; x++) {
         let h = 2.6 + U.fbm(n1, x * 0.018, y * 0.018, 4) * 4.2;
-        // gentle hills
         h += Math.max(0, U.fbm(n2, x * 0.03 + 50, y * 0.03, 3)) * 6;
-        // mountains along the north and east borders
-        const north = U.smooth(C.P0 + 18, C.P0 - 22, y);
-        const east = U.smooth(C.P1 - 16, C.P1 + 24, x);
-        const m = Math.max(north, east * 0.9);
-        if (m > 0) {
-          const ridge = 1 - Math.abs(U.fbm(n3, x * 0.035, y * 0.035, 4));
-          h += m * (ridge * ridge * 95 + 10);
-        }
-        // southern sea
-        const sea = U.smooth(C.P1 - 6, C.P1 + 14, y + U.fbm(n2, x * 0.05, 9, 2) * 10);
-        h = U.lerp(h, -9, sea);
-        // river
-        const d = Math.abs(x - riverAt(y));
-        if (y > C.P0 - 30) {
-          const rv = U.smooth(6.5, 2.2, d) * U.smooth(C.P0 - 30, C.P0 - 10, y);
-          h = U.lerp(h, -4.5, rv);
-          // flatten banks a bit
-          h = U.lerp(h, Math.min(h, 1.6), U.smooth(9, 6, d) * 0.6);
+        const ridge = () => { const r = 1 - Math.abs(U.fbm(n3, x * 0.035, y * 0.035, 4)); return r * r; };
+        if (map === 'coast') {
+          // headland hills to the north, the bay to the east and south-east, beaches along it
+          const north = U.smooth(P0 + 14, P0 - 24, y);
+          if (north > 0) h += north * (ridge() * 70 + 8);
+          const shore = P1 - 52 + Math.sin(y * 0.045 + rp1) * 10 + U.fbm(n2, 7, y * 0.06, 2) * 8;
+          const bayD = Math.hypot(x - (P1 - 10), (y - (mid + 26)) * 0.8) - 46;
+          const sea = Math.max(U.smooth(shore - 4, shore + 10, x), U.smooth(6, -10, bayD), U.smooth(P1 - 2, P1 + 14, y));
+          h = U.lerp(h, Math.min(h, 1.2), U.smooth(16, 4, Math.min(x - shore + 4, bayD + 6)) * 0.7); // flat beach strip
+          h = U.lerp(h, -9, sea);
+        } else if (map === 'lakes') {
+          h += Math.max(0, U.fbm(n3, x * 0.04, y * 0.04, 3)) * 5;
+          const east = U.smooth(P1 - 10, P1 + 24, x);
+          if (east > 0) h += east * (ridge() * 50 + 8);
+          for (const [lx, ly, lr, ph] of lakes) {
+            const ang = Math.atan2(y - ly, x - lx), rr = lr * (1 + 0.22 * Math.sin(ang * 3 + ph) + 0.12 * Math.sin(ang * 5 + ph * 2));
+            const d = Math.hypot(x - lx, y - ly) - rr;
+            h = U.lerp(h, Math.min(h, 1.3), U.smooth(5, 1, d) * 0.7);
+            h = U.lerp(h, -3.5, U.smooth(1, -2.5, d));
+          }
+        } else if (map === 'highlands') {
+          h += Math.max(0, U.fbm(n3, x * 0.02 + 9, y * 0.02, 4)) * 26 + Math.abs(U.fbm(n2, x * 0.05, y * 0.05, 2)) * 4;
+          const m = Math.max(U.smooth(P0 + 10, P0 - 22, y), U.smooth(P1 - 10, P1 + 22, x), U.smooth(P1 - 4, P1 + 20, y));
+          if (m > 0) h += m * (ridge() * 110 + 14);
+          if (y > P0 - 20) {
+            const d = Math.abs(x - gorgeAt(y));
+            h = U.lerp(h, Math.min(h, 3 + d * 1.1), U.smooth(14, 4, d));
+            h = U.lerp(h, -4.5, U.smooth(4.5, 1.8, d));
+          }
+        } else if (map === 'islands') {
+          const north = U.smooth(P0 + 14, P0 - 22, y);
+          if (north > 0 && x > W * 0.62) h += north * (ridge() * 80 + 8);
+          const ds = Math.abs(x - straitAt(y));
+          h = U.lerp(h, Math.min(h, 1.4), U.smooth(9, 5, ds) * 0.6);
+          h = U.lerp(h, -6.5, U.smooth(6, 3, ds));
+          const sea = U.smooth(P1 - 6, P1 + 14, y + U.fbm(n2, x * 0.05, 9, 2) * 10);
+          h = U.lerp(h, -9, sea);
+          const islet = U.fbm(n3, x * 0.06 + 3, y * 0.06, 2); // small islets in the southern sea
+          if (sea > 0.5 && islet > 0.32) h = U.lerp(h, 2.2 + (islet - 0.32) * 18, U.smooth(0.32, 0.42, islet));
+        } else {
+          // Alder Valley: mountains along the north and east borders, sea to the south, a river
+          const north = U.smooth(P0 + 18, P0 - 22, y);
+          const east = U.smooth(P1 - 16, P1 + 24, x);
+          const m = Math.max(north, east * 0.9);
+          if (m > 0) h += m * (ridge() * 95 + 10);
+          const sea = U.smooth(P1 - 6, P1 + 14, y + U.fbm(n2, x * 0.05, 9, 2) * 10);
+          h = U.lerp(h, -9, sea);
+          const d = Math.abs(x - riverAt(y));
+          if (y > P0 - 30) {
+            const rv = U.smooth(6.5, 2.2, d) * U.smooth(P0 - 30, P0 - 10, y);
+            h = U.lerp(h, -4.5, rv);
+            h = U.lerp(h, Math.min(h, 1.6), U.smooth(9, 6, d) * 0.6);
+          }
         }
         // highway corridor flatten
-        if (x <= C.P0 + 26 && Math.abs(y - hwRow - 0.5) < 5) {
+        if (x <= P0 + 26 && Math.abs(y - hwRow - 0.5) < 5) {
           const f = U.smooth(5, 2, Math.abs(y - hwRow - 0.5));
           h = U.lerp(h, Math.max(2.4, Math.min(h, 4)), f);
         }
@@ -724,7 +783,7 @@ window.CB = {};
         if (Wd.isWater(i) || Wd.slope(i) > 9) continue;
         const f = U.fbm(n2, x * 0.045 + 200, y * 0.045 + 200, 3);
         const play = U.inPlay(x, y);
-        const thr = play ? 0.18 : 0.02;
+        const thr = (play ? 0.18 : 0.02) - (map === 'lakes' ? 0.1 : map === 'highlands' ? 0.04 : 0);
         if (f > thr) {
           const r = U.hash(x, y, seed);
           Wd.tree[i] = f > thr + 0.15 ? 3 : (r < 0.6 ? 2 : 1);
@@ -755,6 +814,74 @@ window.CB = {};
     Wd.updateConn();
     Wd.updateJunctions();
   }
+
+  // ---------- lot levelling ----------
+  // A new building levels its lot instead of perching on the highest corner: the lot is graded to the height
+  // of the road it faces (the average of the corners it shares with road tiles), and the strip of land around
+  // it is eased halfway so there is no cliff. Corners under roads, paths and rail never move, so the network
+  // is untouched; corners shared with a neighbouring building only ever move down to below its floor.
+  Wd.setCorner = function (x, y, h) { const k = y * (W + 1) + x; Wd.hc[k] = h; Wd.hcEdits.set(k, h); };
+  Wd.levelLot = function (b) {
+    const S = CB.Sim;
+    const tilesAt = (x, y) => { const out = []; for (const [tx, ty] of [[x - 1, y - 1], [x, y - 1], [x - 1, y], [x, y]]) if (U.inWorld(tx, ty)) out.push(U.idx(tx, ty)); return out; };
+    const fixed = (x, y) => tilesAt(x, y).some(i => Wd.road[i] || Wd.pmask[i] || Wd.rail[i]);
+    const x0 = b.x, y0 = b.y, x1 = b.x + b.fw, y1 = b.y + b.fh;
+    let sum = 0, n = 0, all = 0, na = 0;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const h = hcAt(x, y); all += h; na++;
+      if (tilesAt(x, y).some(i => Wd.road[i] && C.ROADS[Wd.road[i]].car)) { sum += h; n++; }
+    }
+    const target = Math.max(n ? sum / n : all / na, C.WATER + 0.35);
+    const touched = new Set();
+    let changed = false;
+    const setTo = (x, y, h) => {
+      if (Math.abs(hcAt(x, y) - h) < 0.01) return;
+      for (const i of tilesAt(x, y)) { const o = Wd.bld[i] && Wd.bld[i] !== b.id && S.buildings.get(Wd.bld[i]); if (o) { h = Math.min(h, o.baseY - 0.05); touched.add(o); } }
+      if (Math.abs(hcAt(x, y) - h) < 0.01) return;
+      Wd.setCorner(x, y, h); changed = true;
+    };
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (!fixed(x, y)) setTo(x, y, target);
+    for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) continue;
+      if (x < 0 || y < 0 || x > W || y > W || fixed(x, y)) continue;
+      if (tilesAt(x, y).some(i => Wd.bld[i] && Wd.bld[i] !== b.id)) continue;
+      setTo(x, y, (hcAt(x, y) + target) / 2);
+    }
+    for (const o of touched) {
+      let mn = o.minY; for (let y = o.y; y <= o.y + o.fh; y++) for (let x = o.x; x <= o.x + o.fw; x++) mn = Math.min(mn, hcAt(x, y));
+      if (mn < o.minY - 0.01) { o.minY = mn; CB.Meshes.refreshBuilding(o); }
+    }
+    if (changed) { CB.Gfx.terrainDirty = true; CB.Meshes.treesDirty = true; }
+    return changed;
+  };
+  // How far a lot facing a curved road should turn to line up with it (radians, in the lot's own frame:
+  // + turns the frontage from local +x towards +z). 0 for straight roads and square corners.
+  Wd.frontAngle = function (b) {
+    if (b.kind !== 'zone') return 0;
+    const f = b.dir, FRm = [[1, 0, 0, 1], [0, -1, 1, 0], [-1, 0, 0, -1], [0, 1, -1, 0]][f];
+    let sx = 0, sz = 0, n = 0;
+    for (let y = b.y; y < b.y + b.fh; y++) for (let x = b.x; x < b.x + b.fw; x++) {
+      const i = U.idx(x, y), j = Wd.neighbor(i, f);
+      if (j < 0 || !Wd.road[j] || (b.x <= U.tx(j) && U.tx(j) < b.x + b.fw && b.y <= U.ty(j) && U.ty(j) < b.y + b.fh)) continue;
+      if (!Wd.isBent(j)) { n++; sx += C.DX[(f + 1) % 4]; sz += C.DY[(f + 1) % 4]; continue; }
+      const l2 = Wd.links2(j); if (!l2) continue;
+      const dout = l2.includes(Wd.rdir[j]) ? Wd.rdir[j] : l2[1], din = ((l2[0] === dout ? l2[1] : l2[0]) + 2) % 4;
+      const q = Wd.bendSeg(j, din, dout, 0, 0);
+      let tx = q[4] - q[0], tz = q[5] - q[1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
+      if (n && tx * sx + tz * sz < 0) { tx = -tx; tz = -tz; }
+      sx += tx; sz += tz; n++;
+    }
+    if (!n) return 0;
+    const lx = FRm[0] * sx + FRm[2] * sz, lz = FRm[1] * sx + FRm[3] * sz;
+    let a = Math.atan2(lz, lx);
+    if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI;
+    if (Math.abs(a) < 0.07) return 0;
+    return U.clamp(a, -0.7, 0.7);
+  };
+  Wd.applyEdits = function (list) {
+    Wd.hcEdits = new Map();
+    for (let k = 0; k + 1 < list.length; k += 2) { Wd.hc[list[k]] = list[k + 1]; Wd.hcEdits.set(list[k], list[k + 1]); }
+  };
 
   // ---------- height queries ----------
   const hcAt = (x, y) => Wd.hc[y * (W + 1) + x];
@@ -1587,6 +1714,15 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     G.scene.add(G.terrain);
   }
 
+  // heights changed (building lots levelled): move the terrain vertices and recompute normals
+  G.refreshTerrain = function () {
+    const Wd = CB.World, n = W + 1, g = G.terrain.geometry, pos = g.attributes.position.array;
+    for (let k = 0; k < n * n; k++) pos[k * 3 + 1] = Wd.hc[k];
+    g.attributes.position.needsUpdate = true;
+    g.computeVertexNormals();
+    g.computeBoundingSphere();
+  };
+
   // ---------------- time of day ----------------
   const KEYS = [
     { h: 0, top: '#060c1e', hor: '#1a2846', sun: '#8aa4ff', si: 0.45, hemi: 0.42, sky: '#41588a', gnd: '#1a2230', night: 1 },
@@ -1796,6 +1932,10 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
       const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
       let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      if (Math.hypot(nx, ny, nz) < 1e-6) { // a collapsed edge (e.g. the inside of a tight curve): use the diagonals
+        const px = c[0] - a[0], py = c[1] - a[1], pz = c[2] - a[2], qx = d[0] - b[0], qy = d[1] - b[1], qz = d[2] - b[2];
+        nx = py * qz - pz * qy; ny = pz * qx - px * qz; nz = px * qy - py * qx;
+      }
       const l = Math.hypot(nx, ny, nz) || 1; const N = [nx / l, ny / l, nz / l];
       const col2 = lc(col);
       this._push([a, b, c], N, col2, st, [u0, v0, u1, v0, u1, v1]);
@@ -1951,6 +2091,18 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     const X0 = b.x * T, Z0 = b.y * T, X1 = (b.x + b.fw) * T, Z1 = (b.y + b.fh) * T;
     const o = [[X0, Z0], [X1, Z0], [X1, Z1], [X0, Z1]][b.dir];
     gb.frame(o[0], b.baseY, o[1], b.dir);
+    if (b.ang) {
+      // lots on curved roads: turn the whole building to face the road, shrunk a little to stay on its lot,
+      // and pushed back far enough that the front corner never reaches the sidewalk
+      const LW = b.w * T, LD = b.d * T, c = Math.cos(b.ang), s = Math.sin(b.ang), as = Math.abs(s);
+      const k = 1 / (c + as * 0.6);
+      const pz = U.clamp((0.3 + k * as * LW / 2) / Math.max(0.05, 1 - k * c), LD / 2, LD / 2 + 3), px = LW / 2;
+      const [ma, mb, mc, md] = FR[b.dir];
+      const na = (ma * c + mb * s) * k, nb = (-ma * s + mb * c) * k, nc = (mc * c + md * s) * k, nd = (-mc * s + md * c) * k;
+      gb.ox += ma * px + mb * pz - (na * px + nb * pz);
+      gb.oz += mc * px + md * pz - (nc * px + nd * pz);
+      gb.ma = na; gb.mb = nb; gb.mc = nc; gb.md = nd;
+    }
   }
   const M8 = { brick: 32, siding: 64, stucco: 96, shingle: 128, tile: 160, concrete: 192, metal: 224, lawn: 256, paving: 288, wood: 320, gravel: 352, seam: 384, asph: 416, walk: 448, dirt: 480 };
   M.MAT = M8;
@@ -2668,6 +2820,82 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       gb.flat(0.6, 0.4, LW - 0.6, cz - sz - 0.4, 0.115, '#cfc6b2', M8.paving);
       treesAlong(gb, 2.5, LW - 2.5, 1.2, r); bench(gb, cx, 1.6, false);
     }
+  };
+  // ---- low density offices: small professional buildings on 1x1 to 2x2 lots ----
+  // tier 0: tired 70s strip office or a house converted into an office; tier 1: brick two/three storey with
+  // a canopy and side parking; tier 2: timber and glass pavilion with a green roof, solar and landscaping.
+  GEN.olow = function (gb, b, r, LW, LD) {
+    const lvl = b.level, tr = tierOf(lvl), wide = LW >= 19, deep = LD >= 19;
+    if (tr === 0) {
+      if (!wide && r() < 0.55) {
+        // converted house: siding, porch, small sign on a post, paved front for parking
+        foundation(gb, LW, LD, b, '#7f9a4a', M8.lawn);
+        const w = LW - 3.2, d = Math.min(LD - 6, 8.5), x0 = 1.6, z0 = 4.4;
+        const wall = U.pick(WORN_WALL, r), trim = '#d8d2c2';
+        house(gb, r, x0, z0, w, d, 2, 'gable', { wall, wm: M8.siding, rc: U.pick(WORN_ROOF, r), trim, doorCol: '#3d4650', spacing: 2.4, band: false });
+        porch(gb, x0 + w / 2 - 1.6, x0 + w / 2 + 1.6, z0, 1.4, 2.6, '#55504a', trim);
+        gb.flat(0.5, 0.3, LW - 0.5, 2.8, 0.11, '#5a5c60');
+        for (let k = 0; k < 2; k++) parkedCarOld(gb, 2.4 + k * (LW - 4.8), 1.5, r);
+        gb.box(LW / 2 - 0.05, 0, 3.2, LW / 2 + 0.05, 1.6, 3.3, '#3a3d42');
+        gb.box(LW / 2 - 1.1, 1.0, 3.15, LW / 2 + 1.1, 1.9, 3.35, U.pick(['#2f5a9a', '#7a3a2a', '#2f6a4a'], r), 5);
+        acBox(gb, x0 + w - 0.8, 3.2, z0 - 0.02, -1);
+        return;
+      }
+      // one/two storey strip office: brown brick, band windows, flat roof with units, cracked lot in front
+      foundation(gb, LW, LD, b, '#55575b');
+      const floors = lvl === 1 ? 1 : 2, H = floors * 3.6 + 0.6, z0 = Math.min(7, LD * 0.42), z1 = LD - 1;
+      const br = U.pick(['#7a5a44', '#8a6a4a', '#6e5a48', '#9a8a70'], r);
+      gb.box(1, 0, z0, LW - 1, H, z1, br, 3 + M8.brick, { vb: 0.6 });
+      gb.box(0.8, H, z0 - 0.2, LW - 0.8, H + 0.5, z1 + 0.2, '#6d6a64', M8.concrete);
+      gb.box(1, H - 0.9, z0 - 1.2, LW - 1, H - 0.6, z0, '#5a4a3a');
+      for (let x = 2.5; x < LW - 2; x += Math.max(4, (LW - 4) / 3)) glassDoor(gb, x, z0, 1.2);
+      roofJunk(gb, 1, z0, LW - 1, z1, H + 0.5, r, true);
+      parkingLot(gb, 0.6, 0.6, LW - 0.6, z0 - 1.4, Math.max(2, Math.floor((LW - 1.2) / 2.6)), r, 0.45);
+      gb.box(LW - 1.5, 0, 0.5, LW - 1.4, 3.0, 0.6, '#3a3d42');
+      gb.box(LW - 2.8, 2.2, 0.45, LW - 0.1, 3.1, 0.65, U.pick(['#d8a23a', '#c8392e', '#e8e2d4'], r), 15);
+      return;
+    }
+    if (tr === 1) {
+      // brick office: punched windows with stone trim, cornice, entrance canopy, landscaped strip and parking
+      foundation(gb, LW, LD, b, '#a9a69e', M8.paving);
+      const floors = (wide ? 3 : 2) + (lvl >= 3 && r() < 0.4 ? 1 : 0), H = floors * 3.4 + 0.5;
+      const bw = wide ? LW - 2.4 : LW - 2, x0 = (LW - bw) / 2, z0 = 3.2, z1 = deep ? Math.min(LD - 7, 16) : LD - 1.2;
+      const br = U.pick(PAL.brick, r), stone = '#e3dccd';
+      gb.box(x0, 0, z0, x0 + bw, 0.9, z1, '#bdb6a8', M8.concrete);
+      gb.box(x0, 0.9, z0, x0 + bw, H, z1, br, 1 + M8.brick, { vb: 0.4 });
+      for (let f = 1; f < floors; f++) gb.box(x0 - 0.05, 0.9 + f * 3.4 - 0.1, z0 - 0.08, x0 + bw + 0.05, 0.9 + f * 3.4 + 0.1, z1 + 0.08, stone, M8.concrete);
+      gb.box(x0 - 0.3, H, z0 - 0.3, x0 + bw + 0.3, H + 0.55, z1 + 0.3, stone, M8.concrete);
+      gb.box(x0 + 0.2, H + 0.55, z0 + 0.2, x0 + bw - 0.2, H + 0.75, z1 - 0.2, '#56514c');
+      const dx = x0 + bw / 2;
+      glassDoor(gb, dx, z0, 1.8);
+      canopy(gb, dx - 2.0, dx + 2.0, z0 - 1.6, z0, 3.0, '#2f3640');
+      gb.box(dx - 1.6, 3.4, z0 - 0.1, dx + 1.6, 3.9, z0 - 0.02, '#f2efe8', 15);
+      shrubs(gb, x0 + 0.6, dx - 2.4, z0 - 0.9, r); shrubs(gb, dx + 2.6, x0 + bw - 0.4, z0 - 0.9, r);
+      pathStrip(gb, dx - 1.0, 0.2, dx + 1.0, z0 - 1.6, '#cfc6b2');
+      for (let k = 0; k < Math.floor(bw / 4); k++) acBox(gb, x0 + 1.5 + k * 4, H + 0.75, z0 + 2, 1);
+      if (deep) { parkingLot(gb, 0.8, z1 + 0.8, LW - 0.8, LD - 0.6, Math.max(3, Math.floor((LW - 1.6) / 2.6)), r, 0.7); }
+      else if (wide) flagpole(gb, x0 + 0.4, 1.0, 7);
+      if (!wide) yardTree(gb, LW - 1.0, 1.0, r);
+      return;
+    }
+    // modern pavilion: dark timber box cantilevered over a glass ground floor, green roof, solar, planting
+    foundation(gb, LW, LD, b, '#6b9444', M8.lawn);
+    const top = lvl >= 5 && (wide || deep) ? 3 : 2, z0 = 3.0, z1 = deep ? Math.min(LD - 6.5, 15) : LD - 1.4, x0 = 1.2, x1 = LW - 1.2;
+    gb.flat(0.4, 0.3, LW - 0.4, z0 - 0.2, 0.12, '#d9d4c6', M8.paving);
+    gb.box(x0 + 1.2, 0, z0 + 0.8, x1 - 1.2, 3.6, z1 - 0.4, '#fff', 2, { vb: 0.3 });                        // glass ground floor
+    for (let x = x0 + 1.2; x <= x1 - 1.2 + 0.01; x += 2.4) gb.box(x - 0.05, 0, z0 + 0.74, x + 0.05, 3.6, z0 + 0.8, '#2a2d31');
+    const timber = U.pick(['#6a4a32', '#5a3d2b', '#7a5a3a'], r), yTop = 3.6 + (top - 1) * 3.5;
+    gb.box(x0, 3.6, z0, x1, yTop, z1, timber, M8.wood);
+    ribbon(gb, x0 + 0.6, x1 - 0.6, 4.3, 3.6 + 2.6, z0, 0, 1.8, '#1c1d20');
+    if (top === 3) ribbon(gb, x0 + 0.6, x1 - 0.6, 7.8, 7.8 + 2.3, z0, 0, 1.8, '#1c1d20');
+    gb.box(x0 - 0.15, yTop, z0 - 0.15, x1 + 0.15, yTop + 0.35, z1 + 0.15, '#e8eaec', M8.metal);
+    roofGarden(gb, x0 + 0.3, z0 + 0.3, (x0 + x1) / 2, z1 - 0.3, yTop + 0.35, r);
+    solar(gb, (x0 + x1) / 2 + 0.4, z0 + 0.6, x1 - 0.4, z1 - 0.4, yTop + 0.35);
+    glassDoor(gb, LW / 2, z0 + 0.8, 2.2);
+    for (const x of [1.0, LW - 2.0]) planterBox(gb, x, 0.8);
+    bikeRack(gb, LW / 2 + 2.2, 1.4); bench(gb, LW / 2 - 3.0, 1.4, false);
+    if (deep) { parkingLot(gb, 0.8, z1 + 0.9, LW - 0.8, LD - 0.6, Math.max(3, Math.floor((LW - 1.6) / 2.6)), r, 0.55); }
+    else { yardTree(gb, 0.9, LD - 1.0, r); yardTree(gb, LW - 0.9, LD - 1.0, r); }
   };
   // ---- services ----
   function cross(gb, x, y, z, s) {
@@ -6691,9 +6919,12 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       res: 0, jobs: 0, filled: 0, outside: 0, work: [], happy: 60, garbage: 0, prog: 0, low: 0, abandT: 0,
       cust: 0, custRatio: 0.7, commute: 0, gTarget: false, vehOut: 0, fire: 0, prob: null, age: 0,
     }, spec);
+    if (!spec.noLevel) Wd.levelLot(b);
+    delete b.noLevel;
     let mx = -1e9, mn = 1e9;
     for (let y = b.y; y <= b.y + b.fh; y++) for (let x = b.x; x <= b.x + b.fw; x++) { const h = Wd.cornerH(x, y); mx = Math.max(mx, h); mn = Math.min(mn, h); }
     b.baseY = Math.max(mx, C.WATER + 0.3) + 0.05; b.minY = mn;
+    b.ang = Wd.frontAngle(b);
     for (const t of lotTiles(b)) { Wd.bld[t] = b.id; Wd.tree[t] = 0; }
     S.buildings.set(b.id, b);
     b.name = nameFor(b);
@@ -6835,7 +7066,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   // ------------------------------------------------------------------
   // Services
   // ------------------------------------------------------------------
-  S.serviceLot = function (key, cx, cy, dir) {
+  S.serviceLot = function (key, cx, cy, dir, ignore) {
     const sv = C.SERVICES[key], Wd = CB.World;
     const [w, d] = sv.size;
     const tryDir = f => {
@@ -6849,7 +7080,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
         else if (Wd.road[t]) { ok = false; reason = 'Blocked by a road'; }
         else if (Wd.pmask[t]) { ok = false; reason = 'Blocked by a path'; }
         else if (Wd.rail[t] === 1) { ok = false; reason = 'Blocked by elevated track'; }
-        else if (Wd.bld[t]) { const b = S.buildings.get(Wd.bld[t]); if (!b || b.kind === 'svc') { ok = false; reason = 'Blocked by a building'; } }
+        else if (Wd.bld[t] && Wd.bld[t] !== ignore) { const b = S.buildings.get(Wd.bld[t]); if (!b || b.kind === 'svc') { ok = false; reason = 'Blocked by a building'; } }
       }
       // front edge must touch a road
       const g = (f + 2) % 4;
@@ -6889,6 +7120,28 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     const b = makeBuilding({ kind: 'svc', svc: key, x: lot.x, y: lot.y, fw: lot.fw, fh: lot.fh, w: lot.w, d: lot.d, dir: lot.dir, road: lot.road, state: 'live' });
     S.covDirty = true;
     return b;
+  };
+
+  // move a service building to a new lot (cheaper than demolishing and building again)
+  S.moveCost = b => Math.max(200, Math.round(C.SERVICES[b.svc].cost * 0.1 / 50) * 50);
+  S.relocateService = function (b, lot) {
+    const Wd = CB.World;
+    for (const t of lotTiles(b)) if (Wd.bld[t] === b.id) Wd.bld[t] = 0;
+    for (let yy = lot.y; yy < lot.y + lot.fh; yy++) for (let xx = lot.x; xx < lot.x + lot.fw; xx++) {
+      const t = U.idx(xx, yy);
+      if (Wd.bld[t]) { const o = S.buildings.get(Wd.bld[t]); if (o && o !== b) S.removeBuilding(o); }
+      Wd.zone[t] = 0;
+    }
+    CB.Meshes.removeBuilding(b);
+    Object.assign(b, { x: lot.x, y: lot.y, fw: lot.fw, fh: lot.fh, dir: lot.dir, road: lot.road });
+    Wd.levelLot(b);
+    let mx = -1e9, mn = 1e9;
+    for (let y = b.y; y <= b.y + b.fh; y++) for (let x = b.x; x <= b.x + b.fw; x++) { const h = Wd.cornerH(x, y); mx = Math.max(mx, h); mn = Math.min(mn, h); }
+    b.baseY = Math.max(mx, C.WATER + 0.3) + 0.05; b.minY = mn;
+    for (const t of lotTiles(b)) { Wd.bld[t] = b.id; Wd.tree[t] = 0; }
+    CB.Meshes.addBuilding(b);
+    CB.Meshes.treesDirty = true;
+    S.covDirty = true; S.zoneTexDirty = true; S.lotsDirty = true;
   };
 
   // ------------------------------------------------------------------
@@ -7179,7 +7432,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       for (let t = 0; t < 6; t++) {
         const o = open[Math.floor(S.rng() * open.length)];
         if (!Wd.conn[o.road]) continue;
-        if (o.zone === 7 && S.rng() > S.cov.edu[S.centerTile(b)] * 0.85 + 0.15) continue;
+        if ((o.zone === 7 || o.zone === 9) && S.rng() > S.cov.edu[S.centerTile(b)] * 0.85 + 0.15) continue;
         const d = U.dist(o.road, b.road) + S.rng() * 6;
         if (d < bd) { bd = d; best = o; }
       }
@@ -7718,16 +7971,18 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       work: b.work, happy: Math.round(b.happy), garbage: Math.round(b.garbage), prog: b.prog, low: b.low, abandT: b.abandT, custRatio: b.custRatio, commute: Math.round(b.commute), age: b.age,
     }));
     return {
-      v: 2, seed: Wd.seed, name: S.name, money: S.money, month: S.month, hour: S.hour, dayAcc: S.dayAcc || 0, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
+      v: 2, seed: Wd.seed, map: Wd.map, name: S.name, money: S.money, month: S.month, hour: S.hour, dayAcc: S.dayAcc || 0, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
       history: S.history, last: S.last, budget: S.budget,
       road: U.encodeRLE(Wd.road), pcell: U.encodeRLE(Wd.pcell), unseen: S.unseen || [], link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart), curv: U.encodeRLE(Wd.curv),
+      hce: [...Wd.hcEdits].flatMap(([k, h]) => [k, Math.round(h * 100) / 100]),
       jcfg: Wd.clusters.map(cl => ({ t: cl.tiles[0], c: cl.cfg })), rail: U.encodeRLE(Wd.rail), zone: U.encodeRLE(Wd.zone), tree: U.encodeRLE(Wd.tree),
       buildings: bl, transit: CB.Transit.serialize(),
     };
   };
   S.load = function (d) {
     const Wd = CB.World;
-    S.init({ name: d.name, seed: d.seed });
+    S.init({ name: d.name, seed: d.seed, map: d.map });
+    if (d.hce && d.hce.length) { Wd.applyEdits(d.hce); CB.Gfx.terrainDirty = true; }
     Object.assign(S, { dayAcc: d.dayAcc || 0, money: d.money, month: d.month, hour: d.hour, milestone: d.milestone, tax: d.tax, loans: d.loans || [], nextId: d.nextId, history: d.history || [], last: d.last || blankBudget(), budget: d.budget || blankBudget() });
     Wd.road.set(U.decodeRLE(d.road, Uint8Array, N));
     Wd.link.set(U.decodeRLE(d.link, Uint8Array, N));
@@ -7756,6 +8011,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       let mx = -1e9, mn = 1e9;
       for (let y = b.y; y <= b.y + b.fh; y++) for (let x = b.x; x <= b.x + b.fw; x++) { const h = Wd.cornerH(x, y); mx = Math.max(mx, h); mn = Math.min(mn, h); }
       b.baseY = Math.max(mx, C.WATER + 0.3) + 0.05; b.minY = mn;
+      b.ang = Wd.frontAngle(b);
       for (const t of lotTiles(b)) Wd.bld[t] = b.id;
       b.name = nameFor(b);
       S.buildings.set(b.id, b);
@@ -7791,6 +8047,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     const transitTool = Tl.tool.type === 'line' || Tl.tool.type === 'stop' || Tl.tool.type === 'rail' || Tl.tool.type === 'lineEdit';
     CB.Transit.showRibbons(transitTool || CB.UI.overlay === 'transit', Tl.tool.type === 'lineEdit' ? CB.Transit.lineById(Tl.tool.line) : null);
     if (Tl.tool.type === 'svc') Tl.rot = 0;
+    if (Tl.tool.type === 'move') { const mb = CB.Sim.buildings.get(Tl.tool.id); Tl.rot = mb && mb.dir !== undefined ? mb.dir : 0; }
     CB.UI.onToolChange();
   };
   Tl.setRoadMode = function (m) { Tl.roadMode = m; Tl.curve = null; Tl.drag = null; Tl.needHover = true; if (CB.UI.onRoadMode) CB.UI.onRoadMode(); };
@@ -8165,16 +8422,44 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   // the bend point for the piece ending at p, or undefined for a straight piece / null while choosing it
   function bendFor(p) {
     const cu = Tl.curve; if (!cu) return undefined;
-    if (Tl.roadMode === 'straight') return undefined;
+    if (Tl.roadMode === 'straight' || Tl.roadMode === 'grid') return undefined;
     if (cu.c) return cu.c;
     if (Tl.roadMode === 'sbend' && cu.tan) return autoBend(cu.a, cu.tan, p);
     return null;
+  }
+  // Grid mode: two clicks span a rectangle that is filled with a street grid. Blocks are six tiles deep
+  // between roads, so every tile can be zoned from one side or the other.
+  function gridPlans(rt, a, b) {
+    const dual = isDual(rt), A = snapPt(a, dual), B = snapPt(b, dual), S = dual ? 8 : 7;
+    const x0 = Math.min(A.x, B.x), x1 = Math.max(A.x, B.x), y0 = Math.min(A.y, B.y), y1 = Math.max(A.y, B.y);
+    const steps = (lo, hi) => { const out = []; for (let v = lo; v <= hi - 3; v += S) out.push(v); if (!out.length || hi - out[out.length - 1] >= 3) out.push(hi); else out[out.length - 1] = hi; return out; };
+    const W2 = (x, y) => ({ x: x * T, z: y * T });
+    if (x1 - x0 < 2 || y1 - y0 < 2) return [planRoad(rt, a, b)];
+    const plans = [];
+    for (const y of steps(y0, y1)) plans.push(planRoad(rt, W2(x0, y), W2(x1, y)));
+    for (const x of steps(x0, x1)) plans.push(planRoad(rt, W2(x, y0), W2(x, y1)));
+    return plans;
+  }
+  const mergePlans = plans => ({ strips: plans.flatMap(q => q.strips), bad: (plans.find(q => q.bad) || {}).bad });
+  function buildGrid(plans, rt) {
+    const S = CB.Sim;
+    clearPreview();
+    const all = mergePlans(plans);
+    if (all.bad) { CB.UI.toast(all.bad, 'bad'); return false; }
+    const ev = roadEval(all.strips, rt);
+    if (ev.bad) { CB.UI.toast(ev.bad, 'bad'); return false; }
+    if (!spend(ev.cost)) return false;
+    let ch = false;
+    for (const p of plans) if (placeRoad(p.strips, rt, false)) ch = true;
+    if (ch) { S.networkChanged(); markAround(all.strips.flatMap(q => q.tiles)); CB.UI.sfx('build'); }
+    return true;
   }
   function roadClick(h) {
     const t = Tl.tool;
     if (!h || h.i < 0 || mouse.moved) return;
     const p = { x: h.x, z: h.z };
     if (!Tl.curve) { Tl.curve = { a: p }; CB.UI.sfx('click'); return; }
+    if (Tl.roadMode === 'grid') { if (buildGrid(gridPlans(t.rt, Tl.curve.a, p), t.rt)) Tl.curve = null; return; }
     const c = bendFor(p);
     if (c === null) { Tl.curve.c = p; CB.UI.sfx('click'); return; }
     const plan = planRoad(t.rt, Tl.curve.a, p, c || undefined);
@@ -8230,8 +8515,8 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return;
     const k = keyName(e);
     const S = CB.Sim;
-    if (k === 'r' && Tl.tool.type === 'svc') { Tl.rot = (Tl.rot + 1) % 4; Tl.needHover = true; return; }
-    if (k === 'c' && Tl.tool.type === 'road') { Tl.setRoadMode(({ straight: 'curve', curve: 'sbend', sbend: 'straight' })[Tl.roadMode]); return; }
+    if (k === 'r' && (Tl.tool.type === 'svc' || Tl.tool.type === 'move')) { Tl.rot = (Tl.rot + 1) % 4; Tl.needHover = true; return; }
+    if (k === 'c' && Tl.tool.type === 'road') { Tl.setRoadMode(({ straight: 'curve', curve: 'sbend', sbend: 'grid', grid: 'straight' })[Tl.roadMode]); return; }
     CB.Gfx.cam.keys[k] = true;
     if (e.key === 'Shift') CB.Gfx.cam.keys.Shift = true;
     if (k === ' ') { e.preventDefault(); CB.UI.setSpeed(S.speed === 0 ? (CB.UI.lastSpeed || 1) : 0); }
@@ -8349,6 +8634,17 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       CB.UI.sfx('build');
       return;
     }
+    if (t.type === 'move') {
+      const b = S.buildings.get(t.id); if (!b) { Tl.setTool(null); return; }
+      const lot = S.serviceLot(b.svc, h.tx, h.ty, Tl.rot, b.id);
+      if (!lot.ok) { CB.UI.toast(lot.reason, 'bad'); return; }
+      if (!spend(S.moveCost(b))) return;
+      S.relocateService(b, lot);
+      CB.Meshes.updateZoneTex(false);
+      CB.UI.sfx('build'); CB.UI.toast(b.name + ' moved.', 'good');
+      Tl.setTool(null);
+      return;
+    }
     if (t.type === 'line') { lineClick(h); return; }
     if (t.type === 'lineEdit') { lineEditClick(h); return; }
   }
@@ -8390,7 +8686,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       else if (Wd.pmask[i]) killPath(i);
       else if (X.stops.some(s => s.tile === i)) killStops(i);
       else if (Wd.rail[i]) killRail(i);
-      else if (Wd.road[i]) { const seg = roadSegment(i); for (const t of seg) killRoad(t); markAround(seg); } // the whole segment, both carriageways
+      else if (Wd.road[i]) { const seg = roadCut(i); for (const t of seg) killRoad(t); markAround(seg); } // just this tile (and the other carriageway beside it)
     } else {
       for (let y = r.y0; y <= r.y1; y++) for (let x = r.x0; x <= r.x1; x++) {
         if (!U.inPlay(x, y)) continue;
@@ -8408,6 +8704,17 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   }
 
   // the stretch of road between two intersections (both strips of a dual carriageway)
+  // the tiles a single bulldoze click removes: the tile itself, plus the opposite carriageway of a dual road
+  function roadCut(i) {
+    const Wd = CB.World, R = C.ROADS[Wd.road[i]];
+    if (!R) return [];
+    const out = [i];
+    if (R.w === 2 && Wd.rpart[i] && Wd.jcl[i] < 0) {
+      const j = Wd.neighbor(i, Wd.rpart[i] - 1);
+      if (j >= 0 && Wd.road[j] === Wd.road[i] && Wd.jcl[j] < 0 && j !== Wd.outIn && j !== Wd.outOut) out.push(j);
+    }
+    return out;
+  }
   function roadSegment(i) {
     const Wd = CB.World;
     if (!Wd.road[i]) return [];
@@ -8545,7 +8852,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       const hp = { x: h.x, z: h.z }, cu = Tl.curve, mode = Tl.roadMode;
       const c = bendFor(hp);
       const choosing = c === null; // picking the bend direction: only a guide line, no road yet
-      const plan = !cu ? planRoad(t.rt, hp, hp) : choosing ? { strips: [] } : planRoad(t.rt, cu.a, hp, c || undefined);
+      const plan = !cu ? planRoad(t.rt, hp, hp) : choosing ? { strips: [] } : mode === 'grid' ? mergePlans(gridPlans(t.rt, cu.a, hp)) : planRoad(t.rt, cu.a, hp, c || undefined);
       const strips = plan.strips;
       const ev = roadEval(strips, t.rt);
       previewRoad(plan, t.rt, ev);
@@ -8558,8 +8865,8 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       if (cu && cu.c) Mx.setRing(cu.c.x, cu.c.z, 2.2); else Mx.setRing(null);
       const R = C.ROADS[t.rt], bad = plan.bad || ev.bad;
       const upg = ev.list.filter(g => g.col && g.col[0] === 1).length;
-      const hint = !cu ? 'click to start the road' : choosing ? 'click where the road should bend' : (R.oneway ? 'click the end (traffic flows this way)' : 'click the end') + ' · Esc to stop';
-      const nm = { straight: 'Straight', curve: 'Curve', sbend: 'S-bend' };
+      const hint = mode === 'grid' ? (!cu ? 'click one corner of the grid' : 'click the opposite corner') : !cu ? 'click to start the road' : choosing ? 'click where the road should bend' : (R.oneway ? 'click the end (traffic flows this way)' : 'click the end') + ' · Esc to stop';
+      const nm = { straight: 'Straight', curve: 'Curve', sbend: 'S-bend', grid: 'Grid' };
       Tl.tip = R.name + ' · ' + (strips.length && strips[0].tiles.length > 1 ? strips[0].tiles.length + ' tiles · ' : '') + (upg ? 'upgrades ' + upg + ' tiles · ' : '') + U.money(ev.cost) + ' · ' + (bad || hint) + ' · C: mode (' + nm[mode] + ')';
     } else if (t.type === 'path') {
       const cells = Tl.drag ? lPathF(Tl.drag.f, fcellAt(h)) : [fcellAt(h)];
@@ -8591,10 +8898,10 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
           Tl.tip = 'Demolish ' + b.name;
         } else if (!Tl.drag && Wd.road[h.i] && !Wd.pmask[h.i] && !CB.Transit.stops.some(s => s.tile === h.i) && !Wd.rail[h.i]) {
           Mx.setGhostBox(null);
-          const seg = roadSegment(h.i);
+          const seg = roadCut(h.i);
           Mx.setGhostTiles(seg.map(i => ({ i, ok: false, h: 0.5 })));
           G.uni.uBrushOn.value = 0;
-          Tl.tip = 'Click to remove this ' + (Wd.jcl[h.i] >= 0 ? 'intersection tile' : 'road segment (' + seg.length + ' tiles)') + ' · drag to clear an area';
+          Tl.tip = 'Click to remove this ' + (Wd.jcl[h.i] >= 0 ? 'intersection tile' : seg.length > 1 ? 'piece of avenue' : 'road tile') + ' · drag to clear an area';
         } else { Mx.setGhostBox(null); Tl.tip = Tl.drag ? 'Release to demolish everything in the area' : 'Click or drag to demolish'; }
       } else {
         const z = Wd.zonable[h.i];
@@ -8608,6 +8915,14 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       Mx.setGhostBox(lot.x * T, lot.y * T, (lot.x + lot.fw) * T, (lot.y + lot.fh) * T, Math.max(y, 0.1) - 0.3, 0.45, lot.ok);
       Mx.setRing(null);
       Tl.tip = sv.name + ' · ' + U.money(sv.cost) + (lot.ok ? ' · R to rotate' : ' · ' + lot.reason);
+    } else if (t.type === 'move') {
+      const b = S.buildings.get(t.id); if (!b) { Tl.setTool(null); return; }
+      const sv = C.SERVICES[b.svc];
+      const lot = S.serviceLot(b.svc, h.tx, h.ty, Tl.rot, b.id);
+      let y = 0; for (let yy = lot.y; yy < lot.y + lot.fh; yy++) for (let xx = lot.x; xx < lot.x + lot.fw; xx++) if (U.inWorld(xx, yy)) y = Math.max(y, Wd.tileAvg(U.idx(xx, yy)));
+      Mx.setGhostBuilding(b.svc, sv.size[0], sv.size[1], lot.dir !== undefined ? lot.dir : Tl.rot, lot.x * T, lot.y * T, Math.max(y, 0.1), lot.ok);
+      Mx.setGhostBox(lot.x * T, lot.y * T, (lot.x + lot.fw) * T, (lot.y + lot.fh) * T, Math.max(y, 0.1) - 0.3, 0.45, lot.ok);
+      Tl.tip = 'Move ' + b.name + ' · ' + U.money(S.moveCost(b)) + (lot.ok ? ' · R to rotate · Esc to cancel' : ' · ' + lot.reason);
     } else if (t.type === 'stop') {
       const side = stopSide(t.st, h);
       const why = CB.Transit.canPlaceStop(t.st, h.i, side);
@@ -8666,6 +8981,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     chigh: '<path d="M2 20V9l10-5 10 5v11M6 20v-7h12v7M2 20h20"/>',
     ind: '<path d="M3 20V10l5 3V10l5 3V10l5 3V4h3v16zM3 20h18"/>',
     office: '<path d="M5 21V5l7-2 7 2v16M9 8h1M14 8h1M9 12h1M14 12h1M9 16h1M14 16h1"/>',
+    olow: '<path d="M3 21V11h18v10M3 21h18M6 14h3M11 14h2M15 14h3M6 17h3M15 17h3M11 21v-4h2v4M7 11V8h10v3"/>',
     dezone: '<path d="M4 4h16v16H4zM4 4l16 16"/>',
     police: '<path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/>',
     fire: '<path d="M12 3c1 4 6 6 6 11a6 6 0 0 1-12 0c0-3 2-4 2-7 2 1 3 3 3 5 1-2 1-6 1-9z"/>',
@@ -8762,12 +9078,12 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
   const roadItem = (r) => { const R = C.ROADS[r]; return { name: R.name, cost: U.money(R.cost) + '/tile', unlock: R.unlock, tool: { type: 'road', rt: r }, thumb: roadSvg(R), desc: R.desc + (R.w === 2 ? ' Two tiles wide.' : '') }; };
   const img = u => u ? `<img src="${u}" alt="">` : '';
   const svcThumb = k => { const sv = C.SERVICES[k]; return img(CB.Meshes.thumb('svc:' + k, { kind: 'svc', svc: k, w: sv.size[0], d: sv.size[1] })); };
-  const ZONE_SAMPLE = { 1: [1, 2, 3], 2: [2, 2, 3], 3: [2, 2, 4], 4: [1, 2, 3], 5: [2, 2, 3], 6: [2, 3, 3], 7: [2, 2, 3], 8: [2, 2, 4] };
+  const ZONE_SAMPLE = { 1: [1, 2, 3], 2: [2, 2, 3], 3: [2, 2, 4], 4: [1, 2, 3], 5: [2, 2, 3], 6: [2, 3, 3], 7: [2, 2, 3], 8: [2, 2, 4], 9: [2, 2, 5] };
   const zoneThumb = z => { const [w, d, level] = ZONE_SAMPLE[z]; return img(CB.Meshes.thumb('zone:' + z, { kind: 'zone', zone: z, w, d, level, seed: 4242 + z })); };
   const svcItem = (k) => { const sv = C.SERVICES[k]; return { thumb: svcThumb(k), name: sv.name, cost: U.money(sv.cost), unlock: sv.unlock, tool: { type: 'svc', key: k }, icon: SVC_ICON[k] || (sv.cat === 'parks' ? 'park' : sv.cat === 'landmarks' ? 'landmark' : 'police'), col: SVC_COL[sv.cov] || '#555', desc: (sv.desc || '') + ` ${sv.size[0]}×${sv.size[1]} tiles.` }; };
   const CATS = [
     { key: 'roads', name: 'Roads', icon: 'avenue', tabs: C.ROAD_GROUPS.concat([['junction', 'Intersections']]) },
-    { key: 'zones', name: 'Zoning', icon: 'zones' },
+    { key: 'zones', name: 'Zoning', icon: 'zones', tabs: [['res', 'Residential'], ['com', 'Commercial'], ['work', 'Industry & Office']] },
     { key: 'services', name: 'Services', icon: 'police', tabs: C.SVC_TABS },
     { key: 'parks', name: 'Parks', icon: 'park', tabs: C.PARK_TABS },
     { key: 'transit', name: 'Transit', icon: 'busline', tabs: [['bus', 'Bus'], ['tram', 'Streetcar'], ['train', 'Train'], ['metro', 'Metro']] },
@@ -8789,7 +9105,8 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
         for (let k = 1; k < C.PATHS.length; k++) { const P = C.PATHS[k]; items.push({ name: P.name, cost: U.money(P.cost) + '/cell', unlock: P.unlock, tool: { type: 'path', pk: k }, thumb: pathSvg(P), desc: P.desc }); }
       } else for (let r = 1; r < C.ROADS.length; r++) if (C.ROADS[r].grp === tab) items.push(roadItem(r));
     } else if (key === 'zones') {
-      for (const z of [1, 2, 8, 3, 4, 5, 6, 7]) { const Z = C.ZONES[z]; if (!Z) continue; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color, thumb: zoneThumb(z), tint: Z.color }); }
+      const ZT = { res: [1, 2, 8, 3], com: [4, 5], work: [6, 9, 7] };
+      for (const z of ZT[tab] || ZT.res) { const Z = C.ZONES[z]; if (!Z) continue; items.push({ name: Z.name, cost: 'Free', unlock: Z.unlock, tool: { type: 'zone', z }, icon: Z.key, col: Z.color, thumb: zoneThumb(z), tint: Z.color }); }
       items.push({ name: 'Remove Zoning', cost: 'Free', unlock: 0, tool: { type: 'dezone' }, icon: 'dezone', col: '#555c66' });
     } else if (key === 'transit') {
       const TR = C.TRANSIT;
@@ -8869,7 +9186,13 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     const items = catItems(key, tab);
     const p = $('palette');
     const roadMode = key === 'roads' && tab !== 'junction' && tab !== 'path' || key === 'transit' && tab === 'tram';
-    const modeSw = roadMode ? `<div class="pmode" title="C cycles modes"><button data-mode="straight" class="${CB.Tools.roadMode === 'straight' ? 'on' : ''}">Straight</button><button data-mode="curve" class="${CB.Tools.roadMode === 'curve' ? 'on' : ''}">Curved</button><button data-mode="sbend" title="Each piece carries on from the direction the last one ended" class="${CB.Tools.roadMode === 'sbend' ? 'on' : ''}">S-bend</button></div>` : '';
+    const MODES = [
+      ['straight', 'Straight (C cycles modes)', '<path d="M4 20L20 4"/><circle cx="4" cy="20" r="1.6"/><circle cx="20" cy="4" r="1.6"/>'],
+      ['curve', 'Curve: start, bend point, end', '<path d="M4 20Q4 4 20 4"/><path d="M4 20L4 4L20 4" stroke-dasharray="2 2.5" opacity=".55"/>'],
+      ['sbend', 'S-bend: each piece carries on from the last one', '<path d="M4 20C4 12 20 12 20 4"/>'],
+      ['grid', 'Grid: two corners fill an area with streets', '<path d="M3 3h18v18H3zM3 10h18M3 17h18M10 3v18M17 3v18"/>'],
+    ];
+    const modeSw = roadMode ? `<div class="pmode">${MODES.filter(m => key === 'roads' || m[0] !== 'grid').map(m => `<button data-mode="${m[0]}" title="${m[1]}" aria-label="${m[1]}" class="${CB.Tools.roadMode === m[0] ? 'on' : ''}"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${m[2]}</svg></button>`).join('')}</div>` : '';
     const tabs = cat.tabs ? `<div class="ptabs" role="tablist">${cat.tabs.map(t => `<button role="tab" class="ptab ${t[0] === tab ? 'on' : ''} ${tabLocked(cat, t[0]) ? 'dim' : ''}" data-tab="${t[0]}">${t[1]}</button>`).join('')}${modeSw}</div>` : '';
     p.innerHTML = tabs + `<div class="cards">` + items.map((it, k) => {
       const locked = !S.unlocked(it.unlock);
@@ -9281,7 +9604,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       <div class="sec"><div class="lbl">Controls</div><div class="keys">
         <kbd>W A S D</kbd><span>Move the camera (Shift for faster)</span><kbd>Q / E</kbd><span>Rotate</span><kbd>R / F</kbd><span>Zoom in and out</span><kbd>T / G</kbd><span>Tilt</span>
         <kbd>Right-drag</kbd><span>Rotate and tilt</span><kbd>Middle-drag</kbd><span>Pan</span><kbd>Wheel</kbd><span>Zoom</span>
-        <kbd>Space</kbd><span>Pause</span><kbd>1 2 3</kbd><span>Game speed</span><kbd>B</kbd><span>Bulldoze</span><kbd>C</kbd><span>Road mode: straight, curved, S-bend</span><kbd>R</kbd><span>Rotate a building before placing it</span><kbd>Esc</kbd><span>Cancel tool</span></div></div>`;
+        <kbd>Space</kbd><span>Pause</span><kbd>1 2 3</kbd><span>Game speed</span><kbd>B</kbd><span>Bulldoze</span><kbd>C</kbd><span>Road mode: straight, curve, S-bend, grid</span><kbd>R</kbd><span>Rotate a building before placing it</span><kbd>Esc</kbd><span>Cancel tool</span></div></div>`;
     bindClose(p, () => UI.openPanel(null));
     p.querySelectorAll('select').forEach(sel => sel.onchange = () => {
       const k = sel.id.slice(3);
@@ -9388,7 +9711,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
          ${s.cov !== 'landmark' && s.cov !== 'park' ? `<div class="row"><span>Works best within</span><b>~${Math.round(s.radius * 0.55 * C.TILE / 10) * 10} m</b></div>` : ''}
          ${s.veh ? `<div class="row"><span>Vehicles out</span><b data-v="veh"></b></div>` : ''}
          <div data-v="sprob" class="sub"></div>
-         <div class="btns" style="margin-top:10px"><button class="btn danger" id="bdel">Demolish</button></div>`;
+         <div class="btns" style="margin-top:10px"><button class="btn" id="bmove" title="Pick it up and place it somewhere else">Relocate · ${U.money(S.moveCost(b))}</button><button class="btn danger" id="bdel">Demolish</button></div>`;
     } else {
       const z = C.ZONES[b.zone], res = z.cat === 'res';
       p.innerHTML = head(b.name, z.name) +
@@ -9407,6 +9730,8 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     }
     bindClose(p, () => UI.select(null));
     p.querySelector('#bdel').onclick = () => { S.removeBuilding(b); UI.sfx('demolish'); UI.select(null); };
+    const mv = p.querySelector('#bmove');
+    if (mv) mv.onclick = () => { UI.select(null); CB.Tools.setTool({ type: 'move', id: b.id }); };
     updBuilding(p, b);
   }
   function updBuilding(p, b) {
@@ -9512,7 +9837,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     for (const k in S.demand) {
       const el = $('dm_' + k); if (!el) continue;
       el.querySelector('i').style.height = Math.round(S.demand[k]) + '%';
-      const off = (k === 'rmed' && !S.unlocked(C.ZONES[2].unlock)) || (k === 'rhigh' && !S.unlocked(C.ZONES[3].unlock)) || (k === 'off' && !S.unlocked(C.ZONES[7].unlock));
+      const off = (k === 'rmed' && !S.unlocked(C.ZONES[2].unlock)) || (k === 'rhigh' && !S.unlocked(C.ZONES[3].unlock)) || (k === 'off' && !S.unlocked(C.ZONES[9].unlock));
       el.classList.toggle('off', off);
     }
     const m = S.milestone, nx = C.MILESTONES[m + 1];
@@ -9613,12 +9938,18 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     const params = new URLSearchParams(location.search);
     let fresh = false;
     try { fresh = sessionStorage.getItem('openskylines.fresh') === '1'; sessionStorage.removeItem('openskylines.fresh'); } catch (e) { /* ignore */ }
-    let seed = save && !fresh ? save.seed : Math.floor(Math.random() * 1e6) + 1;
+    // a map picked on the start screen reloads the page to show it (the saved city stays available)
+    let pick = null, auto = false;
+    try { pick = sessionStorage.getItem('openskylines.map'); sessionStorage.removeItem('openskylines.map'); auto = sessionStorage.getItem('openskylines.autoload') === '1'; sessionStorage.removeItem('openskylines.autoload'); } catch (e) { /* ignore */ }
+    const useSave = save && !fresh && !pick;
+    let seed = useSave ? save.seed : Math.floor(Math.random() * 1e6) + 1;
+    let map = useSave ? (save.map || 'valley') : (pick || 'valley');
     if (params.get('seed')) seed = +params.get('seed');
+    if (params.get('map')) map = params.get('map');
     if (params.get('trace')) console.log('seed ' + seed);
     const settings = loadSettings();
     if (params.get('preset')) Object.assign(settings, C.QUALITY[params.get('preset')], { preset: params.get('preset') });
-    CB.World.init(seed);
+    CB.World.init(seed, map);
     CB.Gfx.init($('view'), settings);
     CB.Meshes.init();
     CB.Sim.init({ seed, name: 'Port Alder' });
@@ -9637,8 +9968,20 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
       Game.applySettings(Object.assign({}, CB.Gfx.settings, C.QUALITY[p], { preset: p }));
     };
     if (save && !fresh) { $('btnContinue').hidden = false; $('btnContinue').textContent = 'Continue ' + save.name; }
+    const ms = $('mapStart');
+    ms.innerHTML = C.MAPS.map(m => `<option value="${m.key}">${m.name}</option>`).join('');
+    ms.value = CB.World.map;
+    const mdesc = () => { const m = C.MAPS.find(q => q.key === ms.value); $('mapDesc').textContent = m ? m.desc : ''; };
+    mdesc();
+    ms.onchange = () => { try { sessionStorage.setItem('openskylines.map', ms.value); sessionStorage.setItem('openskylines.name', $('cityInput').value); } catch (e) { /* ignore */ } location.reload(); };
+    try { const nm = sessionStorage.getItem('openskylines.name'); if (nm && pick) $('cityInput').value = nm; sessionStorage.removeItem('openskylines.name'); } catch (e) { /* ignore */ }
     $('btnNew').onclick = () => startNew(($('cityInput').value || 'Port Alder').trim());
-    $('btnContinue').onclick = () => continueSave(save);
+    $('btnContinue').onclick = () => {
+      if (save.seed === CB.World.seed && (save.map || 'valley') === CB.World.map) { continueSave(save); return; }
+      try { sessionStorage.setItem('openskylines.autoload', '1'); } catch (e) { /* ignore */ }
+      location.reload();
+    };
+    if (auto && save && useSave) continueSave(save);
     G0.orbit = true;
     requestAnimationFrame(loop);
 
@@ -9719,6 +10062,7 @@ void main(){ vec3 d = normalize(vDir); float h = d.y;
     CB.Tools.update();
     if (CB.UI.follow && CB.UI.selVehicle) { const v = CB.UI.selVehicle; Gx.cam.tx += (v.x - Gx.cam.tx) * Math.min(1, dt * 5); Gx.cam.tz += (v.z - Gx.cam.tz) * Math.min(1, dt * 5); }
     Gx.updateCamera(dt);
+    if (Gx.terrainDirty) { Gx.terrainDirty = false; Gx.refreshTerrain(); }
     Mx.update(6);
     if (S.zoneTexDirty) { S.zoneTexDirty = false; Mx.updateZoneTex(CB.Tools.zoneView); }
     Mx.beginVehicles(); CB.Traffic.render(); CB.Transit.render(); Mx.endVehicles();

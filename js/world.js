@@ -25,8 +25,9 @@
     roadVer: 0, railVer: 0,
   };
 
-  Wd.init = function (seed) {
+  Wd.init = function (seed, map) {
     Wd.seed = seed;
+    Wd.map = C.MAPS.some(m => m.key === map) ? map : 'valley';
     Wd.hc = new Float32Array((W + 1) * (W + 1));
     Wd.road = new Uint8Array(W * W);
     Wd.link = new Uint8Array(W * W);
@@ -43,42 +44,96 @@
     Wd.tree = new Uint8Array(W * W);
     Wd.zonable = new Uint8Array(W * W);
     Wd.conn = new Uint8Array(W * W);
-    generate(seed);
+    Wd.hcEdits = new Map(); // corner index -> height set by levelling building lots (saved with the city)
+    generate(seed, Wd.map);
   };
 
-  function generate(seed) {
+  // Map presets. Every map keeps the highway from the west edge on flat ground so the start is the same.
+  C.MAPS = [
+    { key: 'valley', name: 'Alder Valley', desc: 'A river valley under northern mountains, opening onto the sea in the south.' },
+    { key: 'coast', name: 'Gull Bay', desc: 'A wide bay with sandy beaches to the east and a rocky headland. Lots of waterfront.' },
+    { key: 'lakes', name: 'Pine Lakes', desc: 'Rolling forest dotted with lakes. Build around the shores.' },
+    { key: 'highlands', name: 'Granite Highlands', desc: 'Hilly ground cut by a winding river gorge. Plan roads with the slopes.' },
+    { key: 'islands', name: 'Twin Isles', desc: 'The mainland and a big island across a strait. You will need bridges.' },
+  ];
+  function generate(seed, map) {
     const n1 = U.makeNoise(seed), n2 = U.makeNoise(seed + 17), n3 = U.makeNoise(seed + 91);
     const rnd = U.rng(seed * 7 + 3);
     const riverX0 = W * (0.6 + rnd() * 0.08), rp1 = rnd() * 6, rp2 = rnd() * 6;
     const hwRow = Wd.hwRow = Math.round(W * 0.5 + (rnd() - 0.5) * 20);
     const riverAt = y => riverX0 + Math.sin(y * 0.034 + rp1) * 13 + Math.sin(y * 0.012 + rp2) * 9;
     Wd.riverAt = riverAt;
+    const P0 = C.P0, P1 = C.P1, mid = (P0 + P1) / 2;
+    // lakes for Pine Lakes: a handful of blobs away from the highway
+    const lakes = [];
+    if (map === 'lakes') for (let k = 0; k < 80 && lakes.length < 9; k++) {
+      const lx = P0 + 30 + rnd() * (P1 - P0 - 40), ly = P0 + 12 + rnd() * (P1 - P0 - 24), lr = 7 + rnd() * 9;
+      if (Math.abs(ly - hwRow) < lr + 8 && lx < P0 + 40) continue;
+      if (lakes.some(l => Math.hypot(l[0] - lx, l[1] - ly) < l[2] + lr + 10)) continue;
+      lakes.push([lx, ly, lr, rnd() * 6]);
+    }
+    const gorgeAt = y => mid + 18 + Math.sin(y * 0.05 + rp1) * 16 + Math.sin(y * 0.021 + rp2) * 10;
+    const straitAt = y => W * 0.6 + Math.sin(y * 0.03 + rp1) * 8 + Math.sin(y * 0.011 + rp2) * 5;
     for (let y = 0; y <= W; y++) {
       for (let x = 0; x <= W; x++) {
         let h = 2.6 + U.fbm(n1, x * 0.018, y * 0.018, 4) * 4.2;
-        // gentle hills
         h += Math.max(0, U.fbm(n2, x * 0.03 + 50, y * 0.03, 3)) * 6;
-        // mountains along the north and east borders
-        const north = U.smooth(C.P0 + 18, C.P0 - 22, y);
-        const east = U.smooth(C.P1 - 16, C.P1 + 24, x);
-        const m = Math.max(north, east * 0.9);
-        if (m > 0) {
-          const ridge = 1 - Math.abs(U.fbm(n3, x * 0.035, y * 0.035, 4));
-          h += m * (ridge * ridge * 95 + 10);
-        }
-        // southern sea
-        const sea = U.smooth(C.P1 - 6, C.P1 + 14, y + U.fbm(n2, x * 0.05, 9, 2) * 10);
-        h = U.lerp(h, -9, sea);
-        // river
-        const d = Math.abs(x - riverAt(y));
-        if (y > C.P0 - 30) {
-          const rv = U.smooth(6.5, 2.2, d) * U.smooth(C.P0 - 30, C.P0 - 10, y);
-          h = U.lerp(h, -4.5, rv);
-          // flatten banks a bit
-          h = U.lerp(h, Math.min(h, 1.6), U.smooth(9, 6, d) * 0.6);
+        const ridge = () => { const r = 1 - Math.abs(U.fbm(n3, x * 0.035, y * 0.035, 4)); return r * r; };
+        if (map === 'coast') {
+          // headland hills to the north, the bay to the east and south-east, beaches along it
+          const north = U.smooth(P0 + 14, P0 - 24, y);
+          if (north > 0) h += north * (ridge() * 70 + 8);
+          const shore = P1 - 52 + Math.sin(y * 0.045 + rp1) * 10 + U.fbm(n2, 7, y * 0.06, 2) * 8;
+          const bayD = Math.hypot(x - (P1 - 10), (y - (mid + 26)) * 0.8) - 46;
+          const sea = Math.max(U.smooth(shore - 4, shore + 10, x), U.smooth(6, -10, bayD), U.smooth(P1 - 2, P1 + 14, y));
+          h = U.lerp(h, Math.min(h, 1.2), U.smooth(16, 4, Math.min(x - shore + 4, bayD + 6)) * 0.7); // flat beach strip
+          h = U.lerp(h, -9, sea);
+        } else if (map === 'lakes') {
+          h += Math.max(0, U.fbm(n3, x * 0.04, y * 0.04, 3)) * 5;
+          const east = U.smooth(P1 - 10, P1 + 24, x);
+          if (east > 0) h += east * (ridge() * 50 + 8);
+          for (const [lx, ly, lr, ph] of lakes) {
+            const ang = Math.atan2(y - ly, x - lx), rr = lr * (1 + 0.22 * Math.sin(ang * 3 + ph) + 0.12 * Math.sin(ang * 5 + ph * 2));
+            const d = Math.hypot(x - lx, y - ly) - rr;
+            h = U.lerp(h, Math.min(h, 1.3), U.smooth(5, 1, d) * 0.7);
+            h = U.lerp(h, -3.5, U.smooth(1, -2.5, d));
+          }
+        } else if (map === 'highlands') {
+          h += Math.max(0, U.fbm(n3, x * 0.02 + 9, y * 0.02, 4)) * 26 + Math.abs(U.fbm(n2, x * 0.05, y * 0.05, 2)) * 4;
+          const m = Math.max(U.smooth(P0 + 10, P0 - 22, y), U.smooth(P1 - 10, P1 + 22, x), U.smooth(P1 - 4, P1 + 20, y));
+          if (m > 0) h += m * (ridge() * 110 + 14);
+          if (y > P0 - 20) {
+            const d = Math.abs(x - gorgeAt(y));
+            h = U.lerp(h, Math.min(h, 3 + d * 1.1), U.smooth(14, 4, d));
+            h = U.lerp(h, -4.5, U.smooth(4.5, 1.8, d));
+          }
+        } else if (map === 'islands') {
+          const north = U.smooth(P0 + 14, P0 - 22, y);
+          if (north > 0 && x > W * 0.62) h += north * (ridge() * 80 + 8);
+          const ds = Math.abs(x - straitAt(y));
+          h = U.lerp(h, Math.min(h, 1.4), U.smooth(9, 5, ds) * 0.6);
+          h = U.lerp(h, -6.5, U.smooth(6, 3, ds));
+          const sea = U.smooth(P1 - 6, P1 + 14, y + U.fbm(n2, x * 0.05, 9, 2) * 10);
+          h = U.lerp(h, -9, sea);
+          const islet = U.fbm(n3, x * 0.06 + 3, y * 0.06, 2); // small islets in the southern sea
+          if (sea > 0.5 && islet > 0.32) h = U.lerp(h, 2.2 + (islet - 0.32) * 18, U.smooth(0.32, 0.42, islet));
+        } else {
+          // Alder Valley: mountains along the north and east borders, sea to the south, a river
+          const north = U.smooth(P0 + 18, P0 - 22, y);
+          const east = U.smooth(P1 - 16, P1 + 24, x);
+          const m = Math.max(north, east * 0.9);
+          if (m > 0) h += m * (ridge() * 95 + 10);
+          const sea = U.smooth(P1 - 6, P1 + 14, y + U.fbm(n2, x * 0.05, 9, 2) * 10);
+          h = U.lerp(h, -9, sea);
+          const d = Math.abs(x - riverAt(y));
+          if (y > P0 - 30) {
+            const rv = U.smooth(6.5, 2.2, d) * U.smooth(P0 - 30, P0 - 10, y);
+            h = U.lerp(h, -4.5, rv);
+            h = U.lerp(h, Math.min(h, 1.6), U.smooth(9, 6, d) * 0.6);
+          }
         }
         // highway corridor flatten
-        if (x <= C.P0 + 26 && Math.abs(y - hwRow - 0.5) < 5) {
+        if (x <= P0 + 26 && Math.abs(y - hwRow - 0.5) < 5) {
           const f = U.smooth(5, 2, Math.abs(y - hwRow - 0.5));
           h = U.lerp(h, Math.max(2.4, Math.min(h, 4)), f);
         }
@@ -95,7 +150,7 @@
         if (Wd.isWater(i) || Wd.slope(i) > 9) continue;
         const f = U.fbm(n2, x * 0.045 + 200, y * 0.045 + 200, 3);
         const play = U.inPlay(x, y);
-        const thr = play ? 0.18 : 0.02;
+        const thr = (play ? 0.18 : 0.02) - (map === 'lakes' ? 0.1 : map === 'highlands' ? 0.04 : 0);
         if (f > thr) {
           const r = U.hash(x, y, seed);
           Wd.tree[i] = f > thr + 0.15 ? 3 : (r < 0.6 ? 2 : 1);
@@ -126,6 +181,74 @@
     Wd.updateConn();
     Wd.updateJunctions();
   }
+
+  // ---------- lot levelling ----------
+  // A new building levels its lot instead of perching on the highest corner: the lot is graded to the height
+  // of the road it faces (the average of the corners it shares with road tiles), and the strip of land around
+  // it is eased halfway so there is no cliff. Corners under roads, paths and rail never move, so the network
+  // is untouched; corners shared with a neighbouring building only ever move down to below its floor.
+  Wd.setCorner = function (x, y, h) { const k = y * (W + 1) + x; Wd.hc[k] = h; Wd.hcEdits.set(k, h); };
+  Wd.levelLot = function (b) {
+    const S = CB.Sim;
+    const tilesAt = (x, y) => { const out = []; for (const [tx, ty] of [[x - 1, y - 1], [x, y - 1], [x - 1, y], [x, y]]) if (U.inWorld(tx, ty)) out.push(U.idx(tx, ty)); return out; };
+    const fixed = (x, y) => tilesAt(x, y).some(i => Wd.road[i] || Wd.pmask[i] || Wd.rail[i]);
+    const x0 = b.x, y0 = b.y, x1 = b.x + b.fw, y1 = b.y + b.fh;
+    let sum = 0, n = 0, all = 0, na = 0;
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+      const h = hcAt(x, y); all += h; na++;
+      if (tilesAt(x, y).some(i => Wd.road[i] && C.ROADS[Wd.road[i]].car)) { sum += h; n++; }
+    }
+    const target = Math.max(n ? sum / n : all / na, C.WATER + 0.35);
+    const touched = new Set();
+    let changed = false;
+    const setTo = (x, y, h) => {
+      if (Math.abs(hcAt(x, y) - h) < 0.01) return;
+      for (const i of tilesAt(x, y)) { const o = Wd.bld[i] && Wd.bld[i] !== b.id && S.buildings.get(Wd.bld[i]); if (o) { h = Math.min(h, o.baseY - 0.05); touched.add(o); } }
+      if (Math.abs(hcAt(x, y) - h) < 0.01) return;
+      Wd.setCorner(x, y, h); changed = true;
+    };
+    for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (!fixed(x, y)) setTo(x, y, target);
+    for (let y = y0 - 1; y <= y1 + 1; y++) for (let x = x0 - 1; x <= x1 + 1; x++) {
+      if (x >= x0 && x <= x1 && y >= y0 && y <= y1) continue;
+      if (x < 0 || y < 0 || x > W || y > W || fixed(x, y)) continue;
+      if (tilesAt(x, y).some(i => Wd.bld[i] && Wd.bld[i] !== b.id)) continue;
+      setTo(x, y, (hcAt(x, y) + target) / 2);
+    }
+    for (const o of touched) {
+      let mn = o.minY; for (let y = o.y; y <= o.y + o.fh; y++) for (let x = o.x; x <= o.x + o.fw; x++) mn = Math.min(mn, hcAt(x, y));
+      if (mn < o.minY - 0.01) { o.minY = mn; CB.Meshes.refreshBuilding(o); }
+    }
+    if (changed) { CB.Gfx.terrainDirty = true; CB.Meshes.treesDirty = true; }
+    return changed;
+  };
+  // How far a lot facing a curved road should turn to line up with it (radians, in the lot's own frame:
+  // + turns the frontage from local +x towards +z). 0 for straight roads and square corners.
+  Wd.frontAngle = function (b) {
+    if (b.kind !== 'zone') return 0;
+    const f = b.dir, FRm = [[1, 0, 0, 1], [0, -1, 1, 0], [-1, 0, 0, -1], [0, 1, -1, 0]][f];
+    let sx = 0, sz = 0, n = 0;
+    for (let y = b.y; y < b.y + b.fh; y++) for (let x = b.x; x < b.x + b.fw; x++) {
+      const i = U.idx(x, y), j = Wd.neighbor(i, f);
+      if (j < 0 || !Wd.road[j] || (b.x <= U.tx(j) && U.tx(j) < b.x + b.fw && b.y <= U.ty(j) && U.ty(j) < b.y + b.fh)) continue;
+      if (!Wd.isBent(j)) { n++; sx += C.DX[(f + 1) % 4]; sz += C.DY[(f + 1) % 4]; continue; }
+      const l2 = Wd.links2(j); if (!l2) continue;
+      const dout = l2.includes(Wd.rdir[j]) ? Wd.rdir[j] : l2[1], din = ((l2[0] === dout ? l2[1] : l2[0]) + 2) % 4;
+      const q = Wd.bendSeg(j, din, dout, 0, 0);
+      let tx = q[4] - q[0], tz = q[5] - q[1]; const l = Math.hypot(tx, tz) || 1; tx /= l; tz /= l;
+      if (n && tx * sx + tz * sz < 0) { tx = -tx; tz = -tz; }
+      sx += tx; sz += tz; n++;
+    }
+    if (!n) return 0;
+    const lx = FRm[0] * sx + FRm[2] * sz, lz = FRm[1] * sx + FRm[3] * sz;
+    let a = Math.atan2(lz, lx);
+    if (a > Math.PI / 2) a -= Math.PI; if (a < -Math.PI / 2) a += Math.PI;
+    if (Math.abs(a) < 0.07) return 0;
+    return U.clamp(a, -0.7, 0.7);
+  };
+  Wd.applyEdits = function (list) {
+    Wd.hcEdits = new Map();
+    for (let k = 0; k + 1 < list.length; k += 2) { Wd.hc[list[k]] = list[k + 1]; Wd.hcEdits.set(list[k], list[k + 1]); }
+  };
 
   // ---------- height queries ----------
   const hcAt = (x, y) => Wd.hc[y * (W + 1) + x];

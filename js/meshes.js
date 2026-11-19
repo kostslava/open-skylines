@@ -60,6 +60,10 @@
       const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
       const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
       let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+      if (Math.hypot(nx, ny, nz) < 1e-6) { // a collapsed edge (e.g. the inside of a tight curve): use the diagonals
+        const px = c[0] - a[0], py = c[1] - a[1], pz = c[2] - a[2], qx = d[0] - b[0], qy = d[1] - b[1], qz = d[2] - b[2];
+        nx = py * qz - pz * qy; ny = pz * qx - px * qz; nz = px * qy - py * qx;
+      }
       const l = Math.hypot(nx, ny, nz) || 1; const N = [nx / l, ny / l, nz / l];
       const col2 = lc(col);
       this._push([a, b, c], N, col2, st, [u0, v0, u1, v0, u1, v1]);
@@ -215,6 +219,18 @@
     const X0 = b.x * T, Z0 = b.y * T, X1 = (b.x + b.fw) * T, Z1 = (b.y + b.fh) * T;
     const o = [[X0, Z0], [X1, Z0], [X1, Z1], [X0, Z1]][b.dir];
     gb.frame(o[0], b.baseY, o[1], b.dir);
+    if (b.ang) {
+      // lots on curved roads: turn the whole building to face the road, shrunk a little to stay on its lot,
+      // and pushed back far enough that the front corner never reaches the sidewalk
+      const LW = b.w * T, LD = b.d * T, c = Math.cos(b.ang), s = Math.sin(b.ang), as = Math.abs(s);
+      const k = 1 / (c + as * 0.6);
+      const pz = U.clamp((0.3 + k * as * LW / 2) / Math.max(0.05, 1 - k * c), LD / 2, LD / 2 + 3), px = LW / 2;
+      const [ma, mb, mc, md] = FR[b.dir];
+      const na = (ma * c + mb * s) * k, nb = (-ma * s + mb * c) * k, nc = (mc * c + md * s) * k, nd = (-mc * s + md * c) * k;
+      gb.ox += ma * px + mb * pz - (na * px + nb * pz);
+      gb.oz += mc * px + md * pz - (nc * px + nd * pz);
+      gb.ma = na; gb.mb = nb; gb.mc = nc; gb.md = nd;
+    }
   }
   const M8 = { brick: 32, siding: 64, stucco: 96, shingle: 128, tile: 160, concrete: 192, metal: 224, lawn: 256, paving: 288, wood: 320, gravel: 352, seam: 384, asph: 416, walk: 448, dirt: 480 };
   M.MAT = M8;
@@ -932,6 +948,82 @@
       gb.flat(0.6, 0.4, LW - 0.6, cz - sz - 0.4, 0.115, '#cfc6b2', M8.paving);
       treesAlong(gb, 2.5, LW - 2.5, 1.2, r); bench(gb, cx, 1.6, false);
     }
+  };
+  // ---- low density offices: small professional buildings on 1x1 to 2x2 lots ----
+  // tier 0: tired 70s strip office or a house converted into an office; tier 1: brick two/three storey with
+  // a canopy and side parking; tier 2: timber and glass pavilion with a green roof, solar and landscaping.
+  GEN.olow = function (gb, b, r, LW, LD) {
+    const lvl = b.level, tr = tierOf(lvl), wide = LW >= 19, deep = LD >= 19;
+    if (tr === 0) {
+      if (!wide && r() < 0.55) {
+        // converted house: siding, porch, small sign on a post, paved front for parking
+        foundation(gb, LW, LD, b, '#7f9a4a', M8.lawn);
+        const w = LW - 3.2, d = Math.min(LD - 6, 8.5), x0 = 1.6, z0 = 4.4;
+        const wall = U.pick(WORN_WALL, r), trim = '#d8d2c2';
+        house(gb, r, x0, z0, w, d, 2, 'gable', { wall, wm: M8.siding, rc: U.pick(WORN_ROOF, r), trim, doorCol: '#3d4650', spacing: 2.4, band: false });
+        porch(gb, x0 + w / 2 - 1.6, x0 + w / 2 + 1.6, z0, 1.4, 2.6, '#55504a', trim);
+        gb.flat(0.5, 0.3, LW - 0.5, 2.8, 0.11, '#5a5c60');
+        for (let k = 0; k < 2; k++) parkedCarOld(gb, 2.4 + k * (LW - 4.8), 1.5, r);
+        gb.box(LW / 2 - 0.05, 0, 3.2, LW / 2 + 0.05, 1.6, 3.3, '#3a3d42');
+        gb.box(LW / 2 - 1.1, 1.0, 3.15, LW / 2 + 1.1, 1.9, 3.35, U.pick(['#2f5a9a', '#7a3a2a', '#2f6a4a'], r), 5);
+        acBox(gb, x0 + w - 0.8, 3.2, z0 - 0.02, -1);
+        return;
+      }
+      // one/two storey strip office: brown brick, band windows, flat roof with units, cracked lot in front
+      foundation(gb, LW, LD, b, '#55575b');
+      const floors = lvl === 1 ? 1 : 2, H = floors * 3.6 + 0.6, z0 = Math.min(7, LD * 0.42), z1 = LD - 1;
+      const br = U.pick(['#7a5a44', '#8a6a4a', '#6e5a48', '#9a8a70'], r);
+      gb.box(1, 0, z0, LW - 1, H, z1, br, 3 + M8.brick, { vb: 0.6 });
+      gb.box(0.8, H, z0 - 0.2, LW - 0.8, H + 0.5, z1 + 0.2, '#6d6a64', M8.concrete);
+      gb.box(1, H - 0.9, z0 - 1.2, LW - 1, H - 0.6, z0, '#5a4a3a');
+      for (let x = 2.5; x < LW - 2; x += Math.max(4, (LW - 4) / 3)) glassDoor(gb, x, z0, 1.2);
+      roofJunk(gb, 1, z0, LW - 1, z1, H + 0.5, r, true);
+      parkingLot(gb, 0.6, 0.6, LW - 0.6, z0 - 1.4, Math.max(2, Math.floor((LW - 1.2) / 2.6)), r, 0.45);
+      gb.box(LW - 1.5, 0, 0.5, LW - 1.4, 3.0, 0.6, '#3a3d42');
+      gb.box(LW - 2.8, 2.2, 0.45, LW - 0.1, 3.1, 0.65, U.pick(['#d8a23a', '#c8392e', '#e8e2d4'], r), 15);
+      return;
+    }
+    if (tr === 1) {
+      // brick office: punched windows with stone trim, cornice, entrance canopy, landscaped strip and parking
+      foundation(gb, LW, LD, b, '#a9a69e', M8.paving);
+      const floors = (wide ? 3 : 2) + (lvl >= 3 && r() < 0.4 ? 1 : 0), H = floors * 3.4 + 0.5;
+      const bw = wide ? LW - 2.4 : LW - 2, x0 = (LW - bw) / 2, z0 = 3.2, z1 = deep ? Math.min(LD - 7, 16) : LD - 1.2;
+      const br = U.pick(PAL.brick, r), stone = '#e3dccd';
+      gb.box(x0, 0, z0, x0 + bw, 0.9, z1, '#bdb6a8', M8.concrete);
+      gb.box(x0, 0.9, z0, x0 + bw, H, z1, br, 1 + M8.brick, { vb: 0.4 });
+      for (let f = 1; f < floors; f++) gb.box(x0 - 0.05, 0.9 + f * 3.4 - 0.1, z0 - 0.08, x0 + bw + 0.05, 0.9 + f * 3.4 + 0.1, z1 + 0.08, stone, M8.concrete);
+      gb.box(x0 - 0.3, H, z0 - 0.3, x0 + bw + 0.3, H + 0.55, z1 + 0.3, stone, M8.concrete);
+      gb.box(x0 + 0.2, H + 0.55, z0 + 0.2, x0 + bw - 0.2, H + 0.75, z1 - 0.2, '#56514c');
+      const dx = x0 + bw / 2;
+      glassDoor(gb, dx, z0, 1.8);
+      canopy(gb, dx - 2.0, dx + 2.0, z0 - 1.6, z0, 3.0, '#2f3640');
+      gb.box(dx - 1.6, 3.4, z0 - 0.1, dx + 1.6, 3.9, z0 - 0.02, '#f2efe8', 15);
+      shrubs(gb, x0 + 0.6, dx - 2.4, z0 - 0.9, r); shrubs(gb, dx + 2.6, x0 + bw - 0.4, z0 - 0.9, r);
+      pathStrip(gb, dx - 1.0, 0.2, dx + 1.0, z0 - 1.6, '#cfc6b2');
+      for (let k = 0; k < Math.floor(bw / 4); k++) acBox(gb, x0 + 1.5 + k * 4, H + 0.75, z0 + 2, 1);
+      if (deep) { parkingLot(gb, 0.8, z1 + 0.8, LW - 0.8, LD - 0.6, Math.max(3, Math.floor((LW - 1.6) / 2.6)), r, 0.7); }
+      else if (wide) flagpole(gb, x0 + 0.4, 1.0, 7);
+      if (!wide) yardTree(gb, LW - 1.0, 1.0, r);
+      return;
+    }
+    // modern pavilion: dark timber box cantilevered over a glass ground floor, green roof, solar, planting
+    foundation(gb, LW, LD, b, '#6b9444', M8.lawn);
+    const top = lvl >= 5 && (wide || deep) ? 3 : 2, z0 = 3.0, z1 = deep ? Math.min(LD - 6.5, 15) : LD - 1.4, x0 = 1.2, x1 = LW - 1.2;
+    gb.flat(0.4, 0.3, LW - 0.4, z0 - 0.2, 0.12, '#d9d4c6', M8.paving);
+    gb.box(x0 + 1.2, 0, z0 + 0.8, x1 - 1.2, 3.6, z1 - 0.4, '#fff', 2, { vb: 0.3 });                        // glass ground floor
+    for (let x = x0 + 1.2; x <= x1 - 1.2 + 0.01; x += 2.4) gb.box(x - 0.05, 0, z0 + 0.74, x + 0.05, 3.6, z0 + 0.8, '#2a2d31');
+    const timber = U.pick(['#6a4a32', '#5a3d2b', '#7a5a3a'], r), yTop = 3.6 + (top - 1) * 3.5;
+    gb.box(x0, 3.6, z0, x1, yTop, z1, timber, M8.wood);
+    ribbon(gb, x0 + 0.6, x1 - 0.6, 4.3, 3.6 + 2.6, z0, 0, 1.8, '#1c1d20');
+    if (top === 3) ribbon(gb, x0 + 0.6, x1 - 0.6, 7.8, 7.8 + 2.3, z0, 0, 1.8, '#1c1d20');
+    gb.box(x0 - 0.15, yTop, z0 - 0.15, x1 + 0.15, yTop + 0.35, z1 + 0.15, '#e8eaec', M8.metal);
+    roofGarden(gb, x0 + 0.3, z0 + 0.3, (x0 + x1) / 2, z1 - 0.3, yTop + 0.35, r);
+    solar(gb, (x0 + x1) / 2 + 0.4, z0 + 0.6, x1 - 0.4, z1 - 0.4, yTop + 0.35);
+    glassDoor(gb, LW / 2, z0 + 0.8, 2.2);
+    for (const x of [1.0, LW - 2.0]) planterBox(gb, x, 0.8);
+    bikeRack(gb, LW / 2 + 2.2, 1.4); bench(gb, LW / 2 - 3.0, 1.4, false);
+    if (deep) { parkingLot(gb, 0.8, z1 + 0.9, LW - 0.8, LD - 0.6, Math.max(3, Math.floor((LW - 1.6) / 2.6)), r, 0.55); }
+    else { yardTree(gb, 0.9, LD - 1.0, r); yardTree(gb, LW - 0.9, LD - 1.0, r); }
   };
   // ---- services ----
   function cross(gb, x, y, z, s) {

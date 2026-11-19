@@ -64,12 +64,18 @@
     const params = new URLSearchParams(location.search);
     let fresh = false;
     try { fresh = sessionStorage.getItem('openskylines.fresh') === '1'; sessionStorage.removeItem('openskylines.fresh'); } catch (e) { /* ignore */ }
-    let seed = save && !fresh ? save.seed : Math.floor(Math.random() * 1e6) + 1;
+    // a map picked on the start screen reloads the page to show it (the saved city stays available)
+    let pick = null, auto = false;
+    try { pick = sessionStorage.getItem('openskylines.map'); sessionStorage.removeItem('openskylines.map'); auto = sessionStorage.getItem('openskylines.autoload') === '1'; sessionStorage.removeItem('openskylines.autoload'); } catch (e) { /* ignore */ }
+    const useSave = save && !fresh && !pick;
+    let seed = useSave ? save.seed : Math.floor(Math.random() * 1e6) + 1;
+    let map = useSave ? (save.map || 'valley') : (pick || 'valley');
     if (params.get('seed')) seed = +params.get('seed');
+    if (params.get('map')) map = params.get('map');
     if (params.get('trace')) console.log('seed ' + seed);
     const settings = loadSettings();
     if (params.get('preset')) Object.assign(settings, C.QUALITY[params.get('preset')], { preset: params.get('preset') });
-    CB.World.init(seed);
+    CB.World.init(seed, map);
     CB.Gfx.init($('view'), settings);
     CB.Meshes.init();
     CB.Sim.init({ seed, name: 'Port Alder' });
@@ -88,8 +94,20 @@
       Game.applySettings(Object.assign({}, CB.Gfx.settings, C.QUALITY[p], { preset: p }));
     };
     if (save && !fresh) { $('btnContinue').hidden = false; $('btnContinue').textContent = 'Continue ' + save.name; }
+    const ms = $('mapStart');
+    ms.innerHTML = C.MAPS.map(m => `<option value="${m.key}">${m.name}</option>`).join('');
+    ms.value = CB.World.map;
+    const mdesc = () => { const m = C.MAPS.find(q => q.key === ms.value); $('mapDesc').textContent = m ? m.desc : ''; };
+    mdesc();
+    ms.onchange = () => { try { sessionStorage.setItem('openskylines.map', ms.value); sessionStorage.setItem('openskylines.name', $('cityInput').value); } catch (e) { /* ignore */ } location.reload(); };
+    try { const nm = sessionStorage.getItem('openskylines.name'); if (nm && pick) $('cityInput').value = nm; sessionStorage.removeItem('openskylines.name'); } catch (e) { /* ignore */ }
     $('btnNew').onclick = () => startNew(($('cityInput').value || 'Port Alder').trim());
-    $('btnContinue').onclick = () => continueSave(save);
+    $('btnContinue').onclick = () => {
+      if (save.seed === CB.World.seed && (save.map || 'valley') === CB.World.map) { continueSave(save); return; }
+      try { sessionStorage.setItem('openskylines.autoload', '1'); } catch (e) { /* ignore */ }
+      location.reload();
+    };
+    if (auto && save && useSave) continueSave(save);
     G0.orbit = true;
     requestAnimationFrame(loop);
 
@@ -170,6 +188,7 @@
     CB.Tools.update();
     if (CB.UI.follow && CB.UI.selVehicle) { const v = CB.UI.selVehicle; Gx.cam.tx += (v.x - Gx.cam.tx) * Math.min(1, dt * 5); Gx.cam.tz += (v.z - Gx.cam.tz) * Math.min(1, dt * 5); }
     Gx.updateCamera(dt);
+    if (Gx.terrainDirty) { Gx.terrainDirty = false; Gx.refreshTerrain(); }
     Mx.update(6);
     if (S.zoneTexDirty) { S.zoneTexDirty = false; Mx.updateZoneTex(CB.Tools.zoneView); }
     Mx.beginVehicles(); CB.Traffic.render(); CB.Transit.render(); Mx.endVehicles();

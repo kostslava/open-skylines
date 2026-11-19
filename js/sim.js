@@ -83,9 +83,12 @@
       res: 0, jobs: 0, filled: 0, outside: 0, work: [], happy: 60, garbage: 0, prog: 0, low: 0, abandT: 0,
       cust: 0, custRatio: 0.7, commute: 0, gTarget: false, vehOut: 0, fire: 0, prob: null, age: 0,
     }, spec);
+    if (!spec.noLevel) Wd.levelLot(b);
+    delete b.noLevel;
     let mx = -1e9, mn = 1e9;
     for (let y = b.y; y <= b.y + b.fh; y++) for (let x = b.x; x <= b.x + b.fw; x++) { const h = Wd.cornerH(x, y); mx = Math.max(mx, h); mn = Math.min(mn, h); }
     b.baseY = Math.max(mx, C.WATER + 0.3) + 0.05; b.minY = mn;
+    b.ang = Wd.frontAngle(b);
     for (const t of lotTiles(b)) { Wd.bld[t] = b.id; Wd.tree[t] = 0; }
     S.buildings.set(b.id, b);
     b.name = nameFor(b);
@@ -227,7 +230,7 @@
   // ------------------------------------------------------------------
   // Services
   // ------------------------------------------------------------------
-  S.serviceLot = function (key, cx, cy, dir) {
+  S.serviceLot = function (key, cx, cy, dir, ignore) {
     const sv = C.SERVICES[key], Wd = CB.World;
     const [w, d] = sv.size;
     const tryDir = f => {
@@ -241,7 +244,7 @@
         else if (Wd.road[t]) { ok = false; reason = 'Blocked by a road'; }
         else if (Wd.pmask[t]) { ok = false; reason = 'Blocked by a path'; }
         else if (Wd.rail[t] === 1) { ok = false; reason = 'Blocked by elevated track'; }
-        else if (Wd.bld[t]) { const b = S.buildings.get(Wd.bld[t]); if (!b || b.kind === 'svc') { ok = false; reason = 'Blocked by a building'; } }
+        else if (Wd.bld[t] && Wd.bld[t] !== ignore) { const b = S.buildings.get(Wd.bld[t]); if (!b || b.kind === 'svc') { ok = false; reason = 'Blocked by a building'; } }
       }
       // front edge must touch a road
       const g = (f + 2) % 4;
@@ -281,6 +284,28 @@
     const b = makeBuilding({ kind: 'svc', svc: key, x: lot.x, y: lot.y, fw: lot.fw, fh: lot.fh, w: lot.w, d: lot.d, dir: lot.dir, road: lot.road, state: 'live' });
     S.covDirty = true;
     return b;
+  };
+
+  // move a service building to a new lot (cheaper than demolishing and building again)
+  S.moveCost = b => Math.max(200, Math.round(C.SERVICES[b.svc].cost * 0.1 / 50) * 50);
+  S.relocateService = function (b, lot) {
+    const Wd = CB.World;
+    for (const t of lotTiles(b)) if (Wd.bld[t] === b.id) Wd.bld[t] = 0;
+    for (let yy = lot.y; yy < lot.y + lot.fh; yy++) for (let xx = lot.x; xx < lot.x + lot.fw; xx++) {
+      const t = U.idx(xx, yy);
+      if (Wd.bld[t]) { const o = S.buildings.get(Wd.bld[t]); if (o && o !== b) S.removeBuilding(o); }
+      Wd.zone[t] = 0;
+    }
+    CB.Meshes.removeBuilding(b);
+    Object.assign(b, { x: lot.x, y: lot.y, fw: lot.fw, fh: lot.fh, dir: lot.dir, road: lot.road });
+    Wd.levelLot(b);
+    let mx = -1e9, mn = 1e9;
+    for (let y = b.y; y <= b.y + b.fh; y++) for (let x = b.x; x <= b.x + b.fw; x++) { const h = Wd.cornerH(x, y); mx = Math.max(mx, h); mn = Math.min(mn, h); }
+    b.baseY = Math.max(mx, C.WATER + 0.3) + 0.05; b.minY = mn;
+    for (const t of lotTiles(b)) { Wd.bld[t] = b.id; Wd.tree[t] = 0; }
+    CB.Meshes.addBuilding(b);
+    CB.Meshes.treesDirty = true;
+    S.covDirty = true; S.zoneTexDirty = true; S.lotsDirty = true;
   };
 
   // ------------------------------------------------------------------
@@ -571,7 +596,7 @@
       for (let t = 0; t < 6; t++) {
         const o = open[Math.floor(S.rng() * open.length)];
         if (!Wd.conn[o.road]) continue;
-        if (o.zone === 7 && S.rng() > S.cov.edu[S.centerTile(b)] * 0.85 + 0.15) continue;
+        if ((o.zone === 7 || o.zone === 9) && S.rng() > S.cov.edu[S.centerTile(b)] * 0.85 + 0.15) continue;
         const d = U.dist(o.road, b.road) + S.rng() * 6;
         if (d < bd) { bd = d; best = o; }
       }
@@ -1110,16 +1135,18 @@
       work: b.work, happy: Math.round(b.happy), garbage: Math.round(b.garbage), prog: b.prog, low: b.low, abandT: b.abandT, custRatio: b.custRatio, commute: Math.round(b.commute), age: b.age,
     }));
     return {
-      v: 2, seed: Wd.seed, name: S.name, money: S.money, month: S.month, hour: S.hour, dayAcc: S.dayAcc || 0, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
+      v: 2, seed: Wd.seed, map: Wd.map, name: S.name, money: S.money, month: S.month, hour: S.hour, dayAcc: S.dayAcc || 0, milestone: S.milestone, tax: S.tax, loans: S.loans, nextId: S.nextId,
       history: S.history, last: S.last, budget: S.budget,
       road: U.encodeRLE(Wd.road), pcell: U.encodeRLE(Wd.pcell), unseen: S.unseen || [], link: U.encodeRLE(Wd.link), rdir: U.encodeRLE(Wd.rdir), rpart: U.encodeRLE(Wd.rpart), curv: U.encodeRLE(Wd.curv),
+      hce: [...Wd.hcEdits].flatMap(([k, h]) => [k, Math.round(h * 100) / 100]),
       jcfg: Wd.clusters.map(cl => ({ t: cl.tiles[0], c: cl.cfg })), rail: U.encodeRLE(Wd.rail), zone: U.encodeRLE(Wd.zone), tree: U.encodeRLE(Wd.tree),
       buildings: bl, transit: CB.Transit.serialize(),
     };
   };
   S.load = function (d) {
     const Wd = CB.World;
-    S.init({ name: d.name, seed: d.seed });
+    S.init({ name: d.name, seed: d.seed, map: d.map });
+    if (d.hce && d.hce.length) { Wd.applyEdits(d.hce); CB.Gfx.terrainDirty = true; }
     Object.assign(S, { dayAcc: d.dayAcc || 0, money: d.money, month: d.month, hour: d.hour, milestone: d.milestone, tax: d.tax, loans: d.loans || [], nextId: d.nextId, history: d.history || [], last: d.last || blankBudget(), budget: d.budget || blankBudget() });
     Wd.road.set(U.decodeRLE(d.road, Uint8Array, N));
     Wd.link.set(U.decodeRLE(d.link, Uint8Array, N));
@@ -1148,6 +1175,7 @@
       let mx = -1e9, mn = 1e9;
       for (let y = b.y; y <= b.y + b.fh; y++) for (let x = b.x; x <= b.x + b.fw; x++) { const h = Wd.cornerH(x, y); mx = Math.max(mx, h); mn = Math.min(mn, h); }
       b.baseY = Math.max(mx, C.WATER + 0.3) + 0.05; b.minY = mn;
+      b.ang = Wd.frontAngle(b);
       for (const t of lotTiles(b)) Wd.bld[t] = b.id;
       b.name = nameFor(b);
       S.buildings.set(b.id, b);
